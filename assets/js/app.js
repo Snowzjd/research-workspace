@@ -236,11 +236,12 @@ function projectCard(p, big) {
   const name = projName(p);
   const openTasks = DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length;
   const openLabel = incompleteLabel(openTasks);
-  const done = p.nodes.filter(n => n.s !== 'todo').length;
-  const fill = p.nodes.length > 1 ? Math.max(0, (done - 1) / (p.nodes.length - 1) * 100) : 100;
+  const nodes = Array.isArray(p.nodes) ? p.nodes : [];
+  const done = nodes.filter(n => n.s !== 'todo').length;
+  const fill = nodes.length > 1 ? Math.max(0, (done - 1) / (nodes.length - 1) * 100) : 100;
   const lastAct = (DB.activities || []).find(a => String(a.text || '').includes(p.name));
 
-  return `<article class="card proj-card ${state.project === p.id ? 'selected' : ''}" data-project="${p.id}" title="点击进入项目">
+  return `<article class="card proj-card ${state.project === p.id ? 'selected' : ''}" data-project="${p.id}" title="点击查看这个项目">
     <div class="proj-card-head">
       <div class="grow" style="min-width:0">
         <h4>${esc(name)}</h4>
@@ -267,7 +268,7 @@ function projectCard(p, big) {
 
     <div class="stepper">
       <span class="step-line"><i style="width:${fill}%"></i></span>
-      ${p.nodes.map(n => `<span class="step ${n.s !== 'todo' ? 'done' : ''}"><span class="node"></span><span class="lbl">${esc(n.l)}</span></span>`).join('')}
+      ${nodes.map(n => `<span class="step ${n.s !== 'todo' ? 'done' : ''}"><span class="node"></span><span class="lbl">${esc(n.l)}</span></span>`).join('')}
     </div>
     ${big ? `<div class="row mt-10" style="gap:6px;flex-wrap:wrap">
         ${(p.agents || []).filter(n => DB.agents.some(a => a.name === n))
@@ -283,7 +284,11 @@ function projectCard(p, big) {
    项目详情
    ========================================================================== */
 function detailCard(p) {
-  const agent = p.owner.agent;
+  const owner = p.owner || { n: '—', r: '', agent: '' };
+  const agent = owner.agent || '';
+  const tags = Array.isArray(p.tags) ? p.tags : [];
+  const members = Array.isArray(p.members) ? p.members : [];
+  const tools = Array.isArray(p.tools) ? p.tools : [];
   const fileCount = materialsIn(p.id).length;
   return `<div class="card panel">
     <div class="detail-hero">
@@ -299,9 +304,9 @@ function detailCard(p) {
         </div>
         <p class="detail-sub">${esc(p.goal)}</p>
         <div class="detail-meta">
-          ${p.tags.map(t => `<span class="meta-pill">${icon('target')}${esc(t)}</span>`).join('')}
-          <span class="meta-pill">${icon('calendar')}<b>${esc(p.period)}</b></span>
-          <span class="meta-pill">${icon('user')}<b>${p.members.length} 人</b> · ${p.members.map(m => esc(m.n)).join(' / ')}</span>
+          ${tags.map(t => `<span class="meta-pill">${icon('target')}${esc(t)}</span>`).join('')}
+          <span class="meta-pill">${icon('calendar')}<b>${esc(p.period || '—')}</b></span>
+          <span class="meta-pill">${icon('user')}<b>${members.length} 人</b> · ${members.map(m => esc(m.n)).join(' / ')}</span>
           <span class="meta-pill">${icon('folder')}<b>${projectFolderCount(p.id)} 个材料目录</b> · ${fileCount} 个文件</span>
           ${p.next ? `<span class="meta-pill">${icon('chevronRight')}下一步 <b>${esc(p.next)}</b></span>` : ''}
         </div>
@@ -352,8 +357,8 @@ function detailCard(p) {
       <div>
         <h5>负责人 / Agent</h5>
         <div class="owner-row">
-          <span class="avatar">${esc(p.owner.n.slice(0, 1))}</span>
-          <div><div class="o-name">${esc(p.owner.n)}</div><div class="o-sub">${esc(p.owner.r)}</div></div>
+          <span class="avatar">${esc(String(owner.n || '—').slice(0, 1))}</span>
+          <div><div class="o-name">${esc(owner.n || '—')}</div><div class="o-sub">${esc(owner.r || '')}</div></div>
           <span class="grow"></span>
           <span class="agent-chip">${agentTile(agent, 22)}<span>${esc(agent)}</span></span>
         </div>
@@ -361,7 +366,7 @@ function detailCard(p) {
       <div>
         <h5>涉及软件</h5>
         <div class="row" style="flex-wrap:wrap;gap:6px">
-          ${p.tools.map(t => `<span class="chip gray">${appTile(t, 13)}${esc(t)}</span>`).join('')}
+          ${tools.map(t => `<span class="chip gray">${appTile(t, 13)}${esc(t)}</span>`).join('')}
         </div>
         <div class="row mt-10"><span class="mono muted" style="font-size:9.5px">${esc(p.git)}</span></div>
       </div>
@@ -636,7 +641,28 @@ function homeView() {
       primary: { act: 'new-project', label: '新建项目', ico: 'plus' },
       secondary: { act: 'open-root-folder', label: '打开工作区', ico: 'folderOpen' }
     })}
+    ${homeProjectPreview(P(state.project) || list[0] || DB.projects[0])}
   </div>`;
+}
+
+/* 首页选中项目后，内容直接铺在卡片下面，不另开一页。 */
+function showProjectOnHome(id) {
+  const p = P(id);
+  if (!p) return false;
+  state.project = p.id;
+  if (DB.workspace) DB.workspace.project = projName(p);
+  state.projectTab = 'overview';
+  state.route = 'home';
+  return true;
+}
+
+function homeProjectPreview(p) {
+  if (!p) return '';
+  return `<div class="detail-grid" id="project-preview" style="margin-top:var(--gap)">
+      <div class="detail-main">${detailCard(p)}</div>
+      <div class="detail-side">${flowCard(p)}${activityCard()}</div>
+    </div>
+    <div class="bottom-grid bottom-grid-2">${todoCard()}${resourceCard()}</div>`;
 }
 
 /* ==========================================================================
