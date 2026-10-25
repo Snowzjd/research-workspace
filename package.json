@@ -1,0 +1,9 @@
+{
+  "name": "research-workspace",
+  "productName": "个人科研工作台",
+  "version": "2.8.6",
+  "description": "Personal AI Research & Engineering Workspace — 个人 AI 科研工程工作台",
+  "main": "desktop/main.js",
+  "author": "researcher",
+  "license": "MIT"
+}
