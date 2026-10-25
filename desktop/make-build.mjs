@@ -44,7 +44,7 @@ function findRcedit() {
 }
 const ico = path.join(here, 'build', 'icon.ico');
 const rcedit = findRcedit();
-const pkg = JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8'));
+const pkg = JSON.parse(fs.readFileSync(path.join(here, '..', 'package.json'), 'utf8'));
 const exePath = path.join(out, EXE);
 if (rcedit && fs.existsSync(ico)) {
   try {
