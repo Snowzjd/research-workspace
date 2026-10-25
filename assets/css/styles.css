@@ -1435,7 +1435,7 @@ body.no-badges .sidebar-foot .pill-running { display: none; }
   padding: 5px 8px; border-radius: var(--r-sm);
 }
 .staff-card-jobs { display: flex; flex-direction: column; gap: 1px; border-top: 1px solid var(--line); padding-top: 6px; }
-.staff-card-actions { display: flex; gap: 6px; margin-top: auto; }
+.staff-card-actions { display: flex; gap: 6px; margin-top: auto; flex-wrap: wrap; }
 
 /* Sprint B：拖拽导入区 */
 .drop-zone {

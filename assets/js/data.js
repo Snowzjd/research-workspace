@@ -707,10 +707,13 @@ function monthsFromPeriod(period) {
 /* ---------- 全新安装的初始数据：空工作区，只有模板 ---------- */
 /* ==========================================================================
    预置的科研写作 Agent（移植自 SnowAgent 的 TASK_SYSTEM_PROMPTS，适配本工作台工具）
-   只在「全新安装」和「老数据补齐」时各注入一次，用户删掉后不会再被加回来
+   只在「全新安装」和「老数据补齐」时各注入一次。
+   用户删掉后不会再被加回来；改过的职责 / 标签 / 提示词也不会被预置文案盖掉。
+   presetKey 是稳定身份：改名之后仍能认出「这是那一个预置」。
    ========================================================================== */
 const WRITING_AGENTS = [
       {
+        presetKey: 'writing-paper',
         name: '科研写作·论文', role: '期刊 / 会议论文撰写（IMRaD）', status: 'idle',
         tags: ['论文', 'LaTeX', '润色', '投稿'],
         task: '', stats: [0, 0, 0],
@@ -732,6 +735,7 @@ const WRITING_AGENTS = [
         ].join('\n')
       },
       {
+        presetKey: 'writing-review',
         name: '科研写作·综述', role: '文献综述撰写（多视角主题式组织）', status: 'idle',
         tags: ['综述', '文献梳理', '研究空白'],
         task: '', stats: [0, 0, 0],
@@ -753,6 +757,7 @@ const WRITING_AGENTS = [
         ].join('\n')
       },
       {
+        presetKey: 'writing-patent',
         name: '科研写作·专利', role: '发明专利撰写（中国专利法 / 审查指南）', status: 'idle',
         tags: ['专利', '权利要求', '现有技术'],
         task: '', stats: [0, 0, 0],
@@ -987,15 +992,12 @@ function migrate(d) {
     return runs > 0;                                                   /* 真的执行过才保留 */
   });
 
-  /* 补齐三个预置写作 Agent：只补一次（用版本标记），用户删掉后不会再被加回来 */
-  if (d.agentsPresetVersion !== AGENTS_PRESET_VERSION) {
-    for (const preset of WRITING_AGENTS) {
-      if (!d.agents.some(a => a && a.name === preset.name)) {
-        d.agents.push(JSON.parse(JSON.stringify(preset)));
-      }
-    }
-    d.agentsPresetVersion = AGENTS_PRESET_VERSION;
-  }
+  /* 补齐三个预置写作 Agent。
+     版本标记仍是一次性的（不提升 AGENTS_PRESET_VERSION）：
+     只在版本对不上时注入「还没有的」那几个，用户删掉后不会再被加回来。
+     已经在册的一律不回写 role / tags / prompt —— 包括名字还和预置一样、但人设已被改过的。
+     每次加载只给还没有 presetKey 的在册预置补上稳定身份，改名后不会被当成缺失再塞一份。 */
+  ensureWritingPresets(d);
 
   (d.apps || []).forEach(a => {
     if (typeof a.path !== 'string') a.path = '';
@@ -1118,5 +1120,100 @@ function projectFolderCount(projectId) { return Object.keys(materialIndexOf(proj
 
 const P = id => DB.projects.find(p => p.id === id);
 const A = n => DB.agents.find(a => a.name === n);
+
+/* 预置写作 Agent 的稳定身份。改名后仍靠它认出原预置，避免补齐时再插入一份。 */
+function writingPresetKey(preset) {
+  return (preset && preset.presetKey) || ('name:' + (preset && preset.name));
+}
+
+function ensureWritingPresets(d) {
+  if (!Array.isArray(d.agents)) d.agents = [];
+  for (const preset of WRITING_AGENTS) {
+    const key = writingPresetKey(preset);
+    const keyed = d.agents.find(a => a && a.presetKey === key);
+    if (keyed) continue;
+    const byName = d.agents.find(a => a && !a.presetKey && a.name === preset.name);
+    if (byName) byName.presetKey = key;
+  }
+  if (d.agentsPresetVersion !== AGENTS_PRESET_VERSION) {
+    for (const preset of WRITING_AGENTS) {
+      const key = writingPresetKey(preset);
+      const exists = d.agents.some(a => a && (a.presetKey === key || a.name === preset.name));
+      if (!exists) {
+        const copy = JSON.parse(JSON.stringify(preset));
+        copy.presetKey = key;
+        d.agents.push(copy);
+      }
+    }
+    d.agentsPresetVersion = AGENTS_PRESET_VERSION;
+  }
+}
+
+/* 改名时把仍指向旧名字的引用一起改掉，避免任务、项目关联和派单历史变成孤儿。
+   不改 Agent 自己的 name —— 由调用方写回那一条记录（保留 id / presetKey / 统计）。 */
+function renameAgentRefs(data, oldName, newName) {
+  if (!data) return 0;
+  const from = String(oldName || '');
+  const to = String(newName || '');
+  if (!from || from === to) return 0;
+  let n = 0;
+  const hit = () => { n += 1; };
+
+  (Array.isArray(data.tasks) ? data.tasks : []).forEach(t => {
+    if (t && t.agent === from) { t.agent = to; hit(); }
+  });
+  (Array.isArray(data.projects) ? data.projects : []).forEach(p => {
+    if (!p) return;
+    if (Array.isArray(p.agents)) {
+      const next = p.agents.map(name => {
+        if (name !== from) return name;
+        hit();
+        return to;
+      });
+      p.agents = next.filter((name, i) => next.indexOf(name) === i);
+    }
+    if (p.owner && p.owner.agent === from) { p.owner.agent = to; hit(); }
+  });
+  (Array.isArray(data.agentJobs) ? data.agentJobs : []).forEach(j => {
+    if (j && j.agent === from) { j.agent = to; hit(); }
+  });
+  (Array.isArray(data.templates) ? data.templates : []).forEach(tpl => {
+    if (!tpl || !Array.isArray(tpl.tasks)) return;
+    tpl.tasks = tpl.tasks.map(row => {
+      if (Array.isArray(row)) {
+        if (row[1] !== from) return row;
+        hit();
+        return [row[0], to].concat(row.slice(2));
+      }
+      if (row && typeof row === 'object' && row.agent === from) {
+        hit();
+        return Object.assign({}, row, { agent: to });
+      }
+      return row;
+    });
+  });
+  if (data.chats && typeof data.chats === 'object') {
+    Object.keys(data.chats).forEach(k => {
+      const list = data.chats[k];
+      if (!Array.isArray(list)) return;
+      list.forEach(m => {
+        if (m && m.agent === from) { m.agent = to; hit(); }
+      });
+    });
+  }
+  if (typeof AGENT_COLORS !== 'undefined' && AGENT_COLORS && AGENT_COLORS[from]) {
+    if (!AGENT_COLORS[to]) AGENT_COLORS[to] = AGENT_COLORS[from];
+    delete AGENT_COLORS[from];
+  }
+  if (typeof PROJECT_TEMPLATE !== 'undefined' && PROJECT_TEMPLATE && Array.isArray(PROJECT_TEMPLATE.tasks)) {
+    PROJECT_TEMPLATE.tasks = PROJECT_TEMPLATE.tasks.map(row => {
+      if (Array.isArray(row) && row[1] === from) return [row[0], to].concat(row.slice(2));
+      if (row && typeof row === 'object' && row.agent === from) return Object.assign({}, row, { agent: to });
+      return row;
+    });
+  }
+  if (typeof state !== 'undefined' && state && state.aiAgent === from) state.aiAgent = to;
+  return n;
+}
 const APP = n => DB.apps.find(a => a.n === n);
 const T = i => DB.tasks[i];

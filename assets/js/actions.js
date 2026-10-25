@@ -383,15 +383,20 @@ function openAgentDetail(name) {
   const a = A(name);
   if (!a) return;
   const tasks = DB.tasks.filter(t => t.agent === name);
-  const linked = DB.projects.filter(p => p.agents.includes(name));
+  const linked = DB.projects.filter(p => Array.isArray(p.agents) && p.agents.includes(name));
   openModal({
     title: a.name,
     sub: a.role,
     body: `
       <div class="row" style="gap:8px;margin-bottom:12px">${liveBadge(a.status)}
-        ${a.tags.map(t => `<span class="chip gray">${esc(t)}</span>`).join('')}</div>
+        ${(a.tags || []).map(t => `<span class="chip gray">${esc(t)}</span>`).join('')}</div>
       <div class="field"><label>当前任务</label>
         <div class="ac-task">${esc(a.task)}</div></div>
+      <div class="field"><label>专属人设提示词</label>
+        ${a.prompt
+          ? `<div class="ac-task" style="white-space:pre-wrap;max-height:180px;overflow:auto">${esc(a.prompt)}</div>`
+          : '<span class="muted" style="font-size:11px">未填写。点「编辑」可写一段专属规范，之后派任务会放进系统提示。</span>'}
+      </div>
       <div class="field"><label>关联项目</label>
         <div class="row" style="gap:6px;flex-wrap:wrap">
           ${linked.length ? linked.map(p => `<button class="chip accent" data-act="pick-project" data-id="${p.id}" style="cursor:pointer">${esc(p.name)}</button>`).join('') : '<span class="muted">无</span>'}
@@ -404,8 +409,9 @@ function openAgentDetail(name) {
             ${stChip(t.st)}
           </div>`).join('') || '<span class="muted" style="font-size:11px">暂无任务</span>'}</div></div>`,
     footer: `<span class="grow"></span>
+      <button class="btn" data-act="agent-edit" data-a="${esc(name)}">${icon('pencil')}编辑</button>
       <button class="btn" data-act="agent-assign" data-a="${esc(name)}">${icon('plus')}派发任务</button>
-      <button class="btn primary" data-act="agent-run" data-a="${esc(name)}">${a.status === 'idle' ? icon('play') + '启动执行' : icon('stop') + '停止执行'}</button>`
+      <button class="btn primary" data-act="agent-run" data-a="${esc(name)}">${icon('send')}派任务</button>`
   });
 }
 
@@ -428,6 +434,77 @@ function openAgentAssign(name) {
   if (sel) sel.value = name;
   const title = document.querySelector('.modal-head h3');
   if (title) title.textContent = `向 ${name} 派发任务`;
+}
+
+/* 新建 / 编辑共用同一组字段。编辑时多一句改名说明。 */
+function parseAgentTags(raw) {
+  return String(raw || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
+}
+function agentFormFields(agent) {
+  const a = agent || {};
+  const tags = Array.isArray(a.tags) ? a.tags.join('，') : '';
+  const editing = !!a.name;
+  return `${fText('name', 'Agent 名称', a.name || '', {
+      req: true,
+      ph: '例如：Simulator',
+      hint: editing ? '可以改名。已有任务、项目关联和派单记录会一起改过去，历史不会断掉。' : ''
+    })}
+    ${fText('role', '职责描述', a.role || '', { req: true, ph: 'CFD 求解与参数扫描' })}
+    ${fText('tags', '能力标签（逗号分隔）', tags, { ph: '仿真, 参数扫描, 批处理' })}
+    ${fArea('prompt', '专属人设提示词（可选）', a.prompt || '', {
+      rows: editing ? 8 : 4,
+      ph: '执行时的专属规范与工作流，例如：先查知识库再列大纲；成文用全角标点纯文本，可直接粘贴进 Word'
+    })}`;
+}
+function openAgentEdit(name) {
+  const a = A(name);
+  if (!a) return toast('这个 Agent 已被删除', 'err');
+  openModal({
+    title: '编辑 Agent',
+    sub: a.presetKey
+      ? '内置写作 Agent。这里改过的职责、标签和提示词会保留，重新打开软件不会被预置文案盖掉。'
+      : '修改名称、职责、标签和专属提示词',
+    wide: true,
+    body: agentFormFields(a),
+    footer: `<span class="grow"></span>
+      <button class="btn" data-act="modal-close">取消</button>
+      <button class="btn primary" data-submit data-act="agent-save" data-a="${esc(name)}">保存</button>`
+  });
+}
+function saveAgentEdits(oldName) {
+  const a = A(oldName);
+  if (!a) return toast('这个 Agent 已被删除', 'err');
+  const m = document.querySelector('.modal');
+  if (!m || !validate(m, ['name', 'role'])) return;
+  const v = formValues(m);
+  const newName = v.name;
+  if (!newName) return;
+  if (newName !== oldName && DB.agents.some(x => x && x !== a && x.name === newName)) {
+    return toast(`已经有名为「${esc(newName)}」的 Agent`, 'err');
+  }
+  const role = v.role;
+  const tags = parseAgentTags(v.tags);
+  const prompt = (v.prompt || '').trim();
+  const renamed = newName !== oldName;
+  mutate(() => {
+    if (renamed) renameAgentRefs(DB, oldName, newName);
+    a.name = newName;
+    a.role = role;
+    a.tags = tags;
+    a.prompt = prompt;
+    a.customized = true;
+  }, {
+    activity: {
+      text: renamed
+        ? `将 Agent <b>${esc(oldName)}</b> 改名为 <b>${esc(newName)}</b>`
+        : `更新 Agent <b>${esc(newName)}</b> 的职责与提示词`,
+      kind: 'agent',
+      color: '#6E56CF'
+    }
+  });
+  closeModal();
+  toast(renamed ? `已改名为 <b>${esc(newName)}</b>` : 'Agent 已保存', 'ok');
+  openAgentDetail(newName);
 }
 
 /* ==========================================================================
@@ -892,9 +969,10 @@ document.addEventListener('click', async e => {
             const t = Array.isArray(row) ? row[0] : (row && row.t);
             const agent = Array.isArray(row) ? row[1] : (row && row.agent);
             if (!t) return;
+            const agentName = (agent && (DB.agents || []).some(a => a && a.name === agent)) ? agent : '';
             DB.tasks.push({
               id: 'tk' + Date.now().toString(36) + i.toString(36) + Math.random().toString(36).slice(2, 4),
-              t: String(t), p: proj.id, agent: agent || '', tool: '文档', due: due((i + 1) * 5),
+              t: String(t), p: proj.id, agent: agentName, tool: '文档', due: due((i + 1) * 5),
               pri: i === 0 ? 'high' : 'mid', st: 'todo', dir: (Object.keys(materialIndexOf(proj.id))[0]) || '', src: 'template'
             });
           });
@@ -2292,7 +2370,7 @@ document.addEventListener('click', async e => {
       return;
     }
     case 'agent-run': {
-      /* Agent 中心里的「启动」= 派单（同一套弹窗） */
+      /* 详情里的主按钮只打开员工派单窗，不会直接跑任务，也不会中止正在跑的任务 */
       closeModal();
       return openStaffAssign(t.dataset.a);
     }
@@ -2329,26 +2407,28 @@ document.addEventListener('click', async e => {
       openModal({
         title: '新建 Agent',
         sub: '为科研工作流添加一个专职 Agent',
-        body: `${fText('name', 'Agent 名称', '', { req: true, ph: '例如：Simulator' })}
-               ${fText('role', '职责描述', '', { req: true, ph: 'CFD 求解与参数扫描' })}
-               ${fText('tags', '能力标签（逗号分隔）', '', { ph: '仿真, 参数扫描, 批处理' })}
-               ${fArea('prompt', '专属人设提示词（可选）', '', { rows: 4, ph: '执行时的专属规范与工作流，例如：先查知识库再列大纲；成文用全角标点纯文本，可直接粘贴进 Word' })}`,
+        body: agentFormFields(null),
         footer: `<span class="grow"></span>
           <button class="btn" data-act="modal-close">取消</button>
           <button class="btn primary" data-submit data-act="agent-create">创建</button>`
       });
       return;
     }
+    case 'agent-edit': return openAgentEdit(t.dataset.a);
+    case 'agent-save': return saveAgentEdits(t.dataset.a);
     case 'agent-create': {
       const m = document.querySelector('.modal'); if (!validate(m, ['name', 'role'])) return;
       const v = formValues(m);
+      if (DB.agents.some(a => a && a.name === v.name)) {
+        return toast(`已经有名为「${esc(v.name)}」的 Agent`, 'err');
+      }
       const pal = [['linear-gradient(135deg,#E0668E,#B01E58)', 'bot'], ['linear-gradient(135deg,#3E63DD,#23409C)', 'cpu'], ['linear-gradient(135deg,#218358,#14603C)', 'pencil']];
       const p = pal[DB.agents.length % pal.length];
       mutate(() => {
         AGENT_COLORS[v.name] = { bg: p[0], ico: p[1] };
         DB.agents.push({
           name: v.name, role: v.role, status: 'idle',
-          tags: (v.tags || '').split(/[,，]/).map(s => s.trim()).filter(Boolean),
+          tags: parseAgentTags(v.tags),
           task: '待分配任务', stats: [0, 0, 90],
           prompt: (v.prompt || '').trim()
         });

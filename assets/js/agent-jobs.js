@@ -224,6 +224,7 @@ function staffPanelHTML() {
         <div class="staff-name">${esc(a.name)}</div>
         <div class="staff-sub">${sub}</div>
       </div>
+      <button class="btn sm" data-act="agent-edit" data-a="${esc(a.name)}" title="编辑职责、标签和提示词">编辑</button>
       <button class="btn sm ${running ? '' : 'primary'}" data-act="staff-assign" data-a="${esc(a.name)}"
         ${running ? 'disabled' : ''}>${running ? '忙碌' : '派单'}</button>
     </div>`;
@@ -382,6 +383,7 @@ function aiAssignView() {
             </div>`).join('')}
           </div>` : ''}
           <div class="staff-card-actions">
+            <button class="btn sm" data-act="agent-edit" data-a="${esc(a.name)}">${icon('pencil')}编辑</button>
             <button class="btn sm primary" data-act="staff-assign" data-a="${esc(a.name)}" ${running ? 'disabled' : ''}>
               ${icon('send')}${running ? '忙碌中' : '派任务'}</button>
             <button class="btn sm" data-act="job-view" data-id="${(st.last || {}).id || ''}" ${st.last ? '' : 'disabled'}>最近一单</button>
