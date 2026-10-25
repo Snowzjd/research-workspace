@@ -177,7 +177,7 @@ function buildOpenApi(tools) {
     openapi: '3.0.3',
     info: {
       title: '个人科研工作台 本地 Agent API',
-      version: '2.5.0',
+      version: '3.0.0',
       description: '仅监听 127.0.0.1；请求需带 Authorization: Bearer <token>（完整权限）或只读令牌。'
     },
     servers: [{ url: `http://127.0.0.1:${listenPort}` }],
@@ -213,6 +213,19 @@ function buildOpenApi(tools) {
       },
       '/api/tools': {
         get: { summary: '工具清单（与 /api/openapi.json 同源）', tags: ['rest'], responses: { 200: { description: 'tools[]' } } }
+      },
+      '/api/tasks': {
+        get: {
+          summary: '任务列表（含稳定 task_id）', tags: ['rest'],
+          parameters: [
+            { name: 'project', in: 'query', required: false, schema: { type: 'string' } },
+            { name: 'status', in: 'query', required: false, schema: { type: 'string' } }
+          ],
+          responses: { 200: { description: 'tasks[]，每条含 task_id' } }
+        }
+      },
+      '/api/openapi.json': {
+        get: { summary: 'OpenAPI 描述', tags: ['rest'], responses: { 200: { description: 'OpenAPI 3.0.3' } } }
       }
     })
   };
@@ -379,7 +392,8 @@ function authScope(req, url) {
 
 /* 只读 scope 能用的工具前缀 */
 function readAllowed(tool) {
-  return /^(get_|list_|search_)/.test(tool) || ['switch_project'].includes(tool);
+  /* switch_project 会改当前工作区，只读令牌不能调用 */
+  return /^(get_|list_|search_)/.test(String(tool || ''));
 }
 
 /* ---------- 路由 ---------- */
@@ -403,7 +417,7 @@ async function handle(req, res) {
     return sendBare(res, 200, {
       ok: true,
       app: '个人 AI 科研工程工作台',
-      version: diag.version || '1.3.0',
+      version: diag.version || '3.0.0',
       port: listenPort,
       windowReady: ready,
       tools_count: diag.tools_count || 0,
@@ -466,6 +480,17 @@ async function handle(req, res) {
       return send(res, r.ok === false ? 500 : 200, r);
     }
 
+    /* 任务列表：稳定 task_id，和工具 list_tasks 同一份数据 */
+    if (p === '/api/tasks' && req.method === 'GET') {
+      const args = {};
+      const proj = url.searchParams.get('project');
+      const status = url.searchParams.get('status');
+      if (proj) args.project = proj;
+      if (status) args.status = status;
+      const r = await invokeInRenderer('list_tasks', args, clientName(req));
+      return send(res, r.ok === false ? 400 : 200, r);
+    }
+
     /* 通用工具调用入口：POST /api/tools/<toolName>  body = args */
     const m = p.match(/^\/api\/tools\/([A-Za-z0-9_]+)$/);
     if (m) {
@@ -499,8 +524,10 @@ async function handle(req, res) {
           'GET  /api/health': '服务与窗口状态（无需鉴权）',
           'GET  /api/tools': '可用工具清单',
           'GET  /api/projects': '项目列表',
+          'GET  /api/tasks?project=<id>': '任务列表（含稳定 task_id）',
           'GET  /api/context?project=<id>': '项目全量上下文（任务/待办/材料目录）',
-          'POST /api/tools/<name>': '调用工具，body 为参数对象'
+          'GET  /api/openapi.json': 'OpenAPI 描述',
+          'POST /api/tools/<name>': '调用工具，body 为参数对象；写工具可带 dry_run:true 只预览'
         },
         auth: 'Authorization: Bearer <token>'
       });
@@ -559,4 +586,4 @@ const info = () => ({
   tokenFull: tokens.full || ''
 });
 
-module.exports = { start, stop, setWindow, info, rotateToken, readAudit, DEFAULT_PORT };
+module.exports = { start, stop, setWindow, info, rotateToken, readAudit, readAllowed, DEFAULT_PORT };

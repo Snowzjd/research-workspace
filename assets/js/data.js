@@ -437,16 +437,16 @@ const SEED = {
 
   /* ---------- 软件（kind: exe=可执行文件 / folder=文件夹 / builtin=内置视图） ---------- */
   apps: [
-    { n: 'Fluent',     ico: 'FL',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4A7FB5,#1E4A7D)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\fluent\\ntbin\\win64\\fluent.exe', run: 'tpms' },
-    { n: 'SpaceClaim', ico: 'SC',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#7A6AD6,#4636A0)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\scdm\\SpaceClaim.exe', run: null },
-    { n: 'Workbench',  ico: 'WB',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#3A9CAD,#17616F)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\Framework\\bin\\Win64\\RunWB2.exe', run: null },
-    { n: 'Tecplot',    ico: 'TP',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#C79A3E,#8A5E14)', path: 'C:\\Program Files\\Tecplot\\Tecplot 360 EX 2023 R1\\bin\\tecplot360ex.exe', run: 'tpms' },
-    { n: 'Python',     ico: 'PY',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4E88C0,#2A5C8C)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', run: 'opt' },
-    { n: 'Jupyter',    ico: 'JT',  kind: 'exe',    args: ['lab'], bg: 'linear-gradient(135deg,#CC7B45,#8E4D22)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\jupyter-lab.exe', run: null },
-    { n: 'MATLAB',     ico: 'ML',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#BE5159,#852E36)', path: 'C:\\Program Files\\MATLAB\\R2024a\\bin\\matlab.exe', run: null },
-    { n: 'VS Code',    ico: 'VS',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4E8CC8,#245E92)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe', run: null },
-    { n: '浏览器',      ico: 'WEB', kind: 'builtin', args: [], bg: 'linear-gradient(135deg,#7A6AD6,#4636A0)', path: '', run: null },
-    { n: '文档',        ico: 'DOC', kind: 'folder', args: [], bg: 'linear-gradient(135deg,#BE5590,#7E2E56)', path: 'F:\\ResearchWorkspace', run: null }
+    { n: 'Fluent',     ico: 'FL',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4A7FB5,#1E4A7D)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\fluent\\ntbin\\win64\\fluent.exe', run: true, bound: 'tpms' },
+    { n: 'SpaceClaim', ico: 'SC',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#7A6AD6,#4636A0)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\scdm\\SpaceClaim.exe', run: null, bound: '' },
+    { n: 'Workbench',  ico: 'WB',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#3A9CAD,#17616F)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\Framework\\bin\\Win64\\RunWB2.exe', run: null, bound: '' },
+    { n: 'Tecplot',    ico: 'TP',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#C79A3E,#8A5E14)', path: 'C:\\Program Files\\Tecplot\\Tecplot 360 EX 2023 R1\\bin\\tecplot360ex.exe', run: true, bound: 'tpms' },
+    { n: 'Python',     ico: 'PY',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4E88C0,#2A5C8C)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', run: true, bound: 'opt' },
+    { n: 'Jupyter',    ico: 'JT',  kind: 'exe',    args: ['lab'], bg: 'linear-gradient(135deg,#CC7B45,#8E4D22)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\jupyter-lab.exe', run: null, bound: '' },
+    { n: 'MATLAB',     ico: 'ML',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#BE5159,#852E36)', path: 'C:\\Program Files\\MATLAB\\R2024a\\bin\\matlab.exe', run: null, bound: '' },
+    { n: 'VS Code',    ico: 'VS',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4E8CC8,#245E92)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe', run: null, bound: '' },
+    { n: '浏览器',      ico: 'WEB', kind: 'builtin', args: [], bg: 'linear-gradient(135deg,#7A6AD6,#4636A0)', path: '', run: null, bound: '' },
+    { n: '文档',        ico: 'DOC', kind: 'folder', args: [], bg: 'linear-gradient(135deg,#BE5590,#7E2E56)', path: 'F:\\ResearchWorkspace', run: null, bound: '' }
   ],
   sidebarLaunch: ['Fluent', 'SpaceClaim', 'Tecplot', 'Python', '浏览器', '文档'],
 
@@ -663,11 +663,13 @@ function makeProject(input = {}) {
   const name = String(input.name || '').trim() || '未命名项目';
   const tpl = templateById(input.templateId || input.template || 'standard');
   const folder = String(input.folder || '').trim() || safeFolderName(name);
+  const displayName = String(input.displayName || '').trim().slice(0, 60);
   const id = input.id || ('p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
   const now = new Date();
   const owner = (DB.user && DB.user.name) || '研究员';
   return {
     id, name, folder,
+    ...(displayName && displayName !== name ? { displayName } : {}),
     subtitle: String(input.subtitle || '').trim() || (tpl ? tpl.name : '未填写描述'),
     accent: input.accent || TPL_ACCENTS[DB.projects.length % TPL_ACCENTS.length],
     thumb: 'tpms', seed: Math.floor(Math.random() * 900) + 100,
@@ -710,7 +712,15 @@ function monthsFromPeriod(period) {
    只在「全新安装」和「老数据补齐」时各注入一次。
    用户删掉后不会再被加回来；改过的职责 / 标签 / 提示词也不会被预置文案盖掉。
    presetKey 是稳定身份：改名之后仍能认出「这是那一个预置」。
+   成稿清理按 lieflat-less-ai-tone 的白名单压成短段，三条写作 Agent 共用；不贴完整研究 skill。
    ========================================================================== */
+/* 只改命中条目的句子。未命中逐字保留，文章框架不动。 */
+const WRITING_TONE_CLEANUP = [
+  '【成稿清理】白名单改写：只动命中下列条目的句子，未命中的逐字保留；不改文章框架（标题、段落顺序、列表、表格、引文、代码）。',
+  '学术与专利不强制「我/你」或短段落；公式、符号、权利要求编号、术语、引用占位、法律固定用语不动。信息守恒：不增删事实、数字与限定（可能、通常、据说）。',
+  '存档前扫：翻案腔（不是…而是…/看似…实则…）；顿号罗列过密；相邻句同骨架；揭晓式破折号；提示语/空转冒号；小标题「一、二、三」通篇编号（正文首先、其次不改）；理想化拟人喻体；概括词盖住同段已有数据（无数据只恢复动词、不编造）；说白了/说穿了/先说结论；五种翻译腔（过长前置定语、当…时、对于…来说等话题壳、句首然而因此此外、这意味着式复述）；段首零主语评论补回指。',
+  '不做：不调句长凑节奏、不补虚词、不改被动句/名词化/长句本身、不删问句与普通比喻、不改代码与外语段落与引文。'
+].join('\n');
 const WRITING_AGENTS = [
       {
         presetKey: 'writing-paper',
@@ -724,14 +734,15 @@ const WRITING_AGENTS = [
           '',
           '【写作规范】',
           '1. 中文输出用全角标点；纯文本，禁用 Markdown 加粗/斜体，可直接粘贴进 Word 或转 LaTeX。',
-          '2. 去 AI 味：不用"毋庸置疑/范式转移/痛点"等空话，不堆砌机械连接词；已自然的句子保持原样。',
-          '3. 方法与结论用一般现在时；术语不随意展开；公式与符号保持原样。',
-          '4. 引用观点用占位标注（如 [作者, 年份]），文末提醒用户替换为真实文献。',
+          '2. 方法与结论用一般现在时；术语不随意展开；公式与符号保持原样。',
+          '3. 引用观点用占位标注（如 [作者, 年份]），文末提醒用户替换为真实文献。',
+          '',
+          WRITING_TONE_CLEANUP,
           '',
           '【工作流】',
           '1. 先用 search_knowledge 查工作台已有资料与文献，明确素材边界；',
           '2. 给出章节大纲请用户确认，再逐章成文；',
-          '3. 每章成文后用 save_document 存档（kind=paper），并告知保存位置。'
+          '3. 每章成文后、调用 save_document 之前，按【成稿清理】通读一遍，再存档（kind=paper），并告知保存位置。'
         ].join('\n')
       },
       {
@@ -748,12 +759,14 @@ const WRITING_AGENTS = [
           '引言（范围与动机）→ 分类框架（怎么分的类、为什么这样分）→ 各主题脉络对比 →',
           '研究空白与展望。',
           '',
-          '【写作规范】与论文相同：全角标点、纯文本、去 AI 味、引用占位标注。',
+          '【写作规范】与论文相同：全角标点、纯文本、引用占位标注。',
+          '',
+          WRITING_TONE_CLEANUP,
           '',
           '【工作流】',
           '1. 先用 search_knowledge 检索工作台已登记的文献与资料；',
           '2. 输出"文献清单 + 分类框架"请用户补充遗漏后，再逐节成文；',
-          '3. 每节成文后用 save_document 存档（kind=review）。'
+          '3. 每节成文后、调用 save_document 之前，按【成稿清理】通读一遍，再存档（kind=review）。'
         ].join('\n')
       },
       {
@@ -772,10 +785,12 @@ const WRITING_AGENTS = [
           '3. 具体实施方式要支持权利要求的每个技术特征，给出可复现的实施例；',
           '4. 全文避免"等""之类"模糊表述出现在权利要求中。',
           '',
+          WRITING_TONE_CLEANUP,
+          '',
           '【工作流】',
           '1. 请用户提供技术方案（或用 search_knowledge 查已有资料）；',
           '2. 先产出权利要求书草稿请用户确认保护范围，再补齐其余部分；',
-          '3. 完成后用 save_document 存档（kind=patent）。'
+          '3. 每一部分成文后、调用 save_document 之前，按【成稿清理】通读一遍，再存档（kind=patent）。'
         ].join('\n')
       }
 ];
@@ -784,7 +799,7 @@ const AGENTS_PRESET_VERSION = 'writing-3@2026-10';
 function freshData() {
   const y = new Date().getFullYear();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     user: { name: '研究员', initial: '研', greet: '', mode: '本地工作台' },
     rootDir: '',
     projects: [], tasks: [], todos: [], timeline: [], kbDocs: [], resources: [], automations: [], templates: [], tombstones: [],
@@ -803,7 +818,7 @@ function freshData() {
     /* 软件清单保留，但不带任何本机路径 —— 新设备需要自己绑定 */
     apps: (SEED.apps || []).map(a => ({
       ...JSON.parse(JSON.stringify(a)),
-      path: '', cwd: '', run: null, pending: a.kind !== 'builtin'
+      path: '', cwd: '', run: null, bound: '', pending: a.kind !== 'builtin'
     })),
     sidebarLaunch: ['浏览器'],
     months: (SEED.months || []).slice(),
@@ -853,7 +868,7 @@ const MATERIALS = {
 
 /* ---------- 设置默认值 ---------- */
 const SETTINGS_DEFAULT = {
-  glass: true, ambient: true, compact: false,
+  glass: true, ambient: true, compact: true,
   defaultWorkspace: 'tpms',
   resumeLast: true, motion: true, notifyDot: true,
   /* agentAuto 已从设置页移除，仅由 Agent 中心的「编排策略」弹窗写入，当前无消费方 */
@@ -884,6 +899,11 @@ function migrate(d) {
   /* 老数据视为已完成引导：不要给已有用户显示首次使用的欢迎页 */
   if (typeof d.onboarded === 'boolean') { delete d.onboarded; }
   if (!d.settings) d.settings = {};
+  /* v3：默认紧凑密度。只在第一次升到 3 时打开，之后尊重用户在设置里关掉的选择 */
+  if (d.schemaVersion < 3) {
+    d.settings.compact = true;
+    d.schemaVersion = 3;
+  }
   if (typeof d.settings.onboarded !== 'boolean') d.settings.onboarded = true;
   ['projects', 'tasks', 'todos', 'timeline', 'kbDocs', 'agents', 'automations',
     'activities', 'templates', 'resources', 'tombstones'].forEach(k => {
@@ -1008,6 +1028,13 @@ function migrate(d) {
     if (typeof a.displayName !== 'string') a.displayName = a.n;
     if (typeof a.source !== 'string') a.source = 'builtin';   // builtin | imported
     if (typeof a.pending !== 'boolean') a.pending = false;
+    /* run 只表示进程是否在跑。老数据把项目 id 塞进 run，绑定会在启动时被清掉，界面还把它显示成「运行中」 */
+    if (typeof a.bound !== 'string') {
+      const legacy = a.run;
+      const known = typeof legacy === 'string' && (d.projects || []).some(p => p && p.id === legacy);
+      a.bound = known ? legacy : '';
+    }
+    if (typeof a.run === 'string') a.run = null;
   });
 
   /* 左侧快捷启动里若有已不存在的软件名，剔除掉 */
@@ -1101,6 +1128,12 @@ function setDB(next) { DB = next; _stampBase = null; initStampBase(); }
 
 /* ---------- 路径工具 ---------- */
 function rootDir() { return (DB.settings && DB.settings.rootDir) || ''; }
+function projName(p) { return (p && (p.displayName || p.name)) || ''; }
+function incompleteLabel(n, unit) {
+  const c = Number(n) || 0;
+  if (c <= 0) return '';
+  return c + ' ' + (unit || '个未完成');
+}
 function projectDir(p) { return rootDir() + '\\' + (typeof p === 'string' ? p : (p.folder || p.name)); }
 function taskDir(task) { const p = P(task.p); return p ? projectDir(p) + '\\' + (task.dir || '') : rootDir(); }
 /* 项目材料索引：DB.materialIndex 是真实登记（可持久化、可同步），

@@ -35,6 +35,53 @@ test('preset version string is unchanged', () => {
   assert.match(src, /const AGENTS_PRESET_VERSION = 'writing-3@2026-10'/);
 });
 
+test('writing presets share a compact whitelist 成稿清理 before save_document', () => {
+  const ctx = loadData();
+  const fresh = ctx.freshData();
+  const marks = [
+    '【成稿清理】',
+    '未命中的逐字保留',
+    '不改文章框架',
+    '不强制「我/你」或短段落',
+    '信息守恒',
+    '翻案腔（不是…而是…/看似…实则…）',
+    '顿号罗列过密',
+    '相邻句同骨架',
+    '揭晓式破折号',
+    '提示语/空转冒号',
+    '通篇编号（正文首先、其次不改）',
+    '理想化拟人喻体',
+    '无数据只恢复动词、不编造',
+    '说白了/说穿了/先说结论',
+    '五种翻译腔',
+    '段首零主语评论补回指',
+    '不调句长凑节奏',
+    '不补虚词',
+    '不改被动句/名词化/长句本身',
+    '不删问句与普通比喻',
+    '不改代码与外语段落与引文',
+    '调用 save_document 之前，按【成稿清理】通读一遍'
+  ];
+  const prompts = ['writing-paper', 'writing-review', 'writing-patent'].map(key => {
+    const agent = fresh.agents.find(a => a.presetKey === key);
+    assert.ok(agent, key);
+    return agent.prompt;
+  });
+  for (const prompt of prompts) {
+    for (const mark of marks) assert.ok(prompt.includes(mark), mark);
+    assert.equal(prompt.includes('毋庸置疑'), false);
+    assert.equal(prompt.includes('去 AI 味'), false);
+  }
+  assert.equal(prompts[0].includes('全角标点'), true);
+  assert.equal(prompts[0].includes('search_knowledge'), true);
+  assert.equal(prompts[1].includes('引用占位标注'), true);
+  assert.equal(prompts[2].includes('工程热物理'), true);
+  assert.equal(prompts[2].includes('权利要求编号'), true);
+  const cleanup = prompts[0].slice(prompts[0].indexOf('【成稿清理】'), prompts[0].indexOf('【工作流】'));
+  assert.equal(prompts[1].includes(cleanup.trim()), true);
+  assert.equal(prompts[2].includes(cleanup.trim()), true);
+});
+
 test('edited preset role, tags, and prompt survive reload', () => {
   const ctx = loadData();
   const saved = ctx.freshData();

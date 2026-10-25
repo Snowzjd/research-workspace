@@ -16,11 +16,15 @@ function projectView() {
   if (!p) return emptyWorkspace({ title: '还没有项目', desc: '新建一个项目，任务、材料与软件都会收在它里面。', full: true });
   const tab = PROJECT_TABS.some(t => t[0] === state.projectTab) ? state.projectTab : 'overview';
   const openTasks = DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length;
+  const openLabel = incompleteLabel(openTasks);
+  const headBits = [p.stage || '未设置阶段', `进度 ${p.progress || 0}%`];
+  if (openLabel) headBits.push(openLabel);
 
-  return `<div class="fade-in">
+  return `<div class="page">
     <div class="page-head">
-      <h2>${esc(p.displayName || p.name)}</h2>
-      <span class="page-sub">${esc(p.stage || '未设置阶段')} · 整体进度 ${p.progress || 0}% · ${openTasks} 个未完成任务</span>
+      <h2>${esc(projName(p))}</h2>
+      <span class="page-stage">${esc(p.stage || '未设置阶段')}</span>
+      <span class="page-sub">${headBits.slice(1).join(' · ')}</span>
       <span class="ph-right">
         <button class="btn sm" data-act="project-back">${icon('grid')}全部项目</button>
         <button class="btn sm" data-act="open-project-folder" data-id="${p.id}">${icon('folderOpen')}打开目录</button>
@@ -30,7 +34,7 @@ function projectView() {
 
     <div class="proj-tabs seg" style="margin-bottom:var(--gap)">
       ${PROJECT_TABS.map(([k, label, ico]) =>
-        `<button class="${k === tab ? 'active' : ''}" data-act="project-tab" data-v="${k}">${icon(ico)}${label}${k === 'tasks' && openTasks ? ` <span class="pinfo">${openTasks}</span>` : ''}</button>`).join('')}
+        `<button class="${k === tab ? 'active' : ''}" data-act="project-tab" data-v="${k}">${icon(ico)}${label}${k === 'tasks' && openLabel ? ` <span class="pinfo">${openTasks}</span>` : ''}</button>`).join('')}
     </div>
 
     ${tab === 'overview' ? `<div class="detail-grid">
@@ -39,14 +43,15 @@ function projectView() {
       </div>
       ${(() => {
         /* S1：新项目从概览就能去任务 / 材料 / 软件 */
-        const openTasks = DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length;
+        const openHere = DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length;
         const matCount = materialsIn(p.id).length;
-        const appCount = (DB.apps || []).filter(a => a.run === p.id).length;
+        const appCount = (DB.apps || []).filter(a => a.bound === p.id).length;
+        const taskTitle = openHere ? `任务 · ${incompleteLabel(openHere)}` : '任务';
         return `<div class="ov-guides">
           <button class="ov-guide" data-act="project-tab" data-v="tasks">
             <span class="og-ico">${icon('tasks')}</span>
-            <div><div class="og-title">任务 · ${openTasks} 个未完成</div>
-              <div class="og-sub">${openTasks ? '继续推进当前任务' : '拆出第一个待办'}</div></div>
+            <div><div class="og-title">${taskTitle}</div>
+              <div class="og-sub">${openHere ? '继续推进当前任务' : '拆出第一个任务'}</div></div>
           </button>
           <button class="ov-guide" data-act="project-tab" data-v="materials">
             <span class="og-ico">${icon('folder')}</span>
@@ -82,7 +87,7 @@ function projectTasksHTML(p) {
   return `<div class="card panel">
     <div class="panel-head">
       <h3>${icon('tasks')}本项目任务</h3>
-      <span class="head-sub">${all.length} 条 · ${all.filter(t => t.st !== 'done').length} 条未完成</span>
+      <span class="head-sub">${all.length} 条${incompleteLabel(all.filter(t => t.st !== 'done').length) ? ' · ' + incompleteLabel(all.filter(t => t.st !== 'done').length) : ''}</span>
       <span class="grow"></span>
       <button class="btn sm primary" data-act="new-task" data-p="${p.id}">${icon('plus')}新建任务</button>
     </div>
@@ -91,20 +96,26 @@ function projectTasksHTML(p) {
         `<button class="chip ${k === filter ? 'accent' : 'gray'}" data-act="proj-task-filter" data-v="${k}" style="cursor:pointer">${label} ${n}</button>`).join('')}
     </div>
     ${sorted.length ? `<div class="table-wrap"><table class="table">
-      <thead><tr><th style="width:34%">任务</th><th>负责 Agent</th><th>工具</th><th>截止</th><th>优先级</th><th>状态</th></tr></thead>
+      <thead><tr><th style="width:34%">任务</th><th>负责 Agent</th><th>工具</th><th>截止</th><th>优先级</th><th>状态</th><th></th></tr></thead>
       <tbody>${sorted.map(t => {
         const idx = DB.tasks.indexOf(t);
-        return `<tr data-act="open-task" data-idx="${idx}" title="点击查看任务详情与材料目录">
+        return `<tr data-act="open-task" data-idx="${idx}" title="点击打开任务">
           <td><div class="t-title">${esc(t.t)}</div><div class="t-sub">${icon('folder', 'width:10px;height:10px')} ${esc(t.dir || '—')}</div></td>
           <td><span class="row" style="gap:6px">${agentTile(t.agent, 20)}<span>${esc(t.agent || '—')}</span></span></td>
           <td><span class="row" style="gap:5px">${appTile(t.tool, 16)}<span class="muted">${esc(t.tool || '—')}</span></span></td>
           <td class="mono muted">${esc(t.due || '—')}</td>
           <td>${priTag(t.pri)}</td>
           <td>${stChip(t.st)}</td>
+          <td class="row-actions"><button class="btn sm ghost" data-act="open-task-folder" data-idx="${idx}" title="打开材料文件夹">${icon('folderOpen')}</button></td>
         </tr>`;
       }).join('')}</tbody>
-    </table></div>` : `<div class="empty">${icon('tasks')}<div>${all.length ? '该状态下暂无任务' : '这个项目还没有任务'}</div>
-      <button class="btn sm primary" data-act="new-task" data-p="${p.id}" style="margin-top:10px">${icon('plus')}新建任务</button></div>`}
+    </table></div>` : emptyState({
+      icon: 'tasks',
+      title: all.length ? '该状态下暂无任务' : '这个项目还没有任务',
+      sub: all.length ? '换一个状态筛选，或新建一条。' : '任务归在这个项目里，建好后会出现在这张表。',
+      primary: { act: 'new-task', label: '新建任务', ico: 'plus', data: { p: p.id } },
+      secondary: { act: 'ai-open-project', label: '让助手拆', ico: 'sparkles', data: { id: p.id } }
+    })}
   </div>`;
 }
 
@@ -133,22 +144,21 @@ function projectMaterialsHTML(p) {
             <div class="proj-mat-sub">${inDir.length} 个已登记文件</div></div>
           <button class="btn sm ghost" data-act="proj-open-mat" data-id="${p.id}" data-d="${esc(d)}">${icon('folderOpen')}打开</button>
         </div>`;
-      }).join('') : `<div class="empty">${icon('folder')}<div>还没有材料目录</div>
-        <div class="field-hint" style="margin:6px 0 10px;max-width:420px;line-height:1.7">
-          先把文件放进项目目录，再点「与磁盘同步」登记进来。<b>同步只读磁盘，不会改动你的文件。</b>
-        </div>
-        <div class="row" style="gap:6px;justify-content:center">
-          <button class="btn sm primary" data-act="mat-scan" data-id="${p.id}">${icon('refresh')}与磁盘同步</button>
-          <button class="btn sm" data-act="open-project-folder" data-id="${p.id}">${icon('folderOpen')}打开目录</button>
-        </div></div>`}
+      }).join('') : emptyState({
+        icon: 'folder',
+        title: '还没有材料目录',
+        sub: '先把文件放进项目目录，再与磁盘同步。同步只读磁盘，不会改你的文件。',
+        primary: { act: 'mat-scan', label: '与磁盘同步', ico: 'refresh', data: { id: p.id } },
+        secondary: { act: 'open-project-folder', label: '打开目录', ico: 'folderOpen', data: { id: p.id } }
+      })}
     </div>
   </div>`;
 }
 
 /* ---------- 本项目软件 ---------- */
 function projectSoftwareHTML(p) {
-  const bound = (DB.apps || []).filter(a => a.run === p.id);
-  const others = (DB.apps || []).filter(a => a.run !== p.id);
+  const bound = (DB.apps || []).filter(a => a.bound === p.id);
+  const others = (DB.apps || []).filter(a => a.bound !== p.id);
   return `<div class="card panel">
     <div class="panel-head">
       <h3>${icon('rocket')}本项目软件</h3>
@@ -174,16 +184,19 @@ function projectSoftwareHTML(p) {
           <button class="icon-btn" data-act="proj-app-unbind" data-n="${esc(a.n)}" data-id="${p.id}" title="从本项目移除">${icon('x')}</button>
         </div>
       </div>`).join('')}</div>`
-      : `<div class="empty">${icon('rocket')}<div>还没有绑定软件</div>
-        <div class="field-hint" style="margin:6px 0 2px;max-width:420px;line-height:1.7">
-          把 <b>Fluent / SpaceClaim 的快捷方式</b>拖到上面的虚线框里，会自动识别名称与路径。
-        </div></div>`}
+      : emptyState({
+        icon: 'rocket',
+        title: '还没有绑定到本项目的软件',
+        sub: '把 Fluent / SpaceClaim 的快捷方式拖进上面的框，或从下面未绑定的程序里绑过来。绑定不会把程序标成正在运行。',
+        primary: { act: 'import-launch', label: '导入快捷方式', ico: 'link', data: { mode: 'shortcut' } },
+        secondary: { act: 'rescan-apps', label: '扫描已安装', ico: 'search' }
+      })}
 
     ${others.length ? `<div class="panel-head" style="padding:12px 12px 4px"><h3 style="font-size:11px">其它已登记软件（可绑定到本项目）</h3></div>
       <div class="proj-app-grid">${others.map(a => `<div class="proj-app">
         ${appTile(a.n, 30)}
         <div class="proj-app-name">${esc(a.displayName || a.n)}</div>
-        <div class="proj-app-sub">${a.run ? '已属 ' + esc((P(a.run) || {}).name || '其它项目') : '未绑定项目'}</div>
+        <div class="proj-app-sub">${a.bound ? '已属 ' + esc(projName(P(a.bound)) || '其它项目') : '未绑定项目'}${a.run === true ? ' · 运行中' : ''}</div>
         <button class="btn sm" data-act="proj-bind-app" data-id="${p.id}" data-n="${esc(a.n)}">绑到本项目</button>
       </div>`).join('')}</div>` : ''}
   </div>`;
@@ -192,9 +205,12 @@ function projectSoftwareHTML(p) {
 /* ---------- 文档 ---------- */
 function projectDocsHTML(p) {
   const fileOf = d => String(d.file || '');
-  const docs = (DB.kbDocs || []).filter(d =>
-    (String(d.type || '').startsWith('写作') || d.ext === 'md') &&
-    (fileOf(d).startsWith(p.name + '/') || fileOf(d).includes('/' + p.name + '/')));
+  const roots = [p.folder || p.name, p.name].filter((v, i, arr) => v && arr.indexOf(v) === i);
+  const docs = (DB.kbDocs || []).filter(d => {
+    const f = fileOf(d);
+    const writing = String(d.type || '').startsWith('写作') || d.ext === 'md';
+    return writing && roots.some(r => f.startsWith(r + '/') || f.includes('/' + r + '/'));
+  });
   return `<div class="card panel">
     <div class="panel-head">
       <h3>${icon('pencil')}文档</h3>
@@ -210,11 +226,13 @@ function projectDocsHTML(p) {
         <td class="mono muted">${esc(d.date || '—')}</td>
         <td style="text-align:right"><button class="btn sm ghost" data-act="proj-open-doc" data-file="${esc(d.file || '')}">${icon('folderOpen')}打开</button></td>
       </tr>`).join('')}</tbody>
-    </table></div>` : `<div class="empty">${icon('pencil')}<div>还没有写作产出</div>
-      <div class="field-hint" style="margin:6px 0 10px;line-height:1.7">
-        到「AI 助手 · 派任务」给写作员工派一单，成稿会自动存进 <span class="mono">${esc(p.name)}/写作/</span>
-      </div>
-      <button class="btn sm primary" data-act="ai-open-project" data-id="${p.id}">${icon('sparkles')}去派写作任务</button></div>`}
+    </table></div>` : emptyState({
+      icon: 'pencil',
+      title: '还没有写作产出',
+      subHtml: `派一单写作任务后，成稿存进 <span class="mono">${esc(p.folder || p.name)}/写作/</span>`,
+      primary: { act: 'ai-mode', label: '去派任务', ico: 'send', data: { v: 'assign' } },
+      secondary: { act: 'open-project-folder', label: '打开项目目录', ico: 'folderOpen', data: { id: p.id } }
+    })}
   </div>`;
 }
 
@@ -254,7 +272,7 @@ async function importDroppedApps(zone, fileList) {
       if (r.cwd) exist.cwd = r.cwd;
       if ((r.args || []).length) exist.args = r.args;
       if (r.icon) exist.icon = r.icon;
-      exist.run = pid;
+      exist.bound = pid;
       exist.pending = false;
       if (!exist.displayName) exist.displayName = exist.n;
       rebound.push(exist.n);
@@ -266,7 +284,7 @@ async function importDroppedApps(zone, fileList) {
         bg: APP_PALETTE[DB.apps.length % APP_PALETTE.length],
         path: r.path, icon: r.icon || '',
         source: 'dropped', sourcePath: abs,
-        run: pid, pending: false
+        run: null, bound: pid, pending: false
       });
       added.push(r.name);
     }

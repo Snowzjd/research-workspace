@@ -64,7 +64,7 @@ async function syncRunning() {
   if (!Bridge.desktop) return;
   const list = await window.workspace.listRunning();
   const names = list.map(x => x.name);
-  DB.apps.forEach(a => { a.run = names.includes(a.n) ? (a.run || state.project) : null; });
+  DB.apps.forEach(a => { a.run = names.includes(a.n) ? true : null; });
   DB.workspace.running = names;
   DB.workspace.project = (P(state.project) || DB.projects[0] || {}).name || '';
   DB.workspace.agents = DB.agents.filter(a => a.status === 'running').length;
@@ -147,7 +147,7 @@ function openTaskForm(idx) {
   const body = `
     ${fText('t', '任务名称', t.t, { req: true, ph: '例如：优化 TPMS 晶胞参数' })}
     <div class="field-row">
-      ${fSelect('p', '所属项目', t.p, DB.projects.map(p2 => [p2.id, p2.name]))}
+      ${fSelect('p', '所属项目', t.p, DB.projects.map(p2 => [p2.id, projName(p2)]))}
       ${fSelect('agent', '负责 Agent', t.agent, DB.agents.map(a => [a.name, a.name]))}
     </div>
     <div class="field-row">
@@ -251,6 +251,7 @@ function openProjectForm(id, draft) {
 
   const body = isNew ? `
     ${fText('name', '项目名称', name0, { req: true, ph: '例如：TPMS换热器' })}
+    ${fText('displayName', '显示名', d.displayName || '', { ph: '留空则与项目名称相同', hint: '只用于界面。文件夹名单独保存，互不影响' })}
     ${fText('folder', '项目文件夹名', folder0, {
       hint: '建在工作区根目录下的这个子目录；默认跟项目名一致，可改（项目名以后改了也不影响文件夹）'
     })}
@@ -270,7 +271,8 @@ function openProjectForm(id, draft) {
     ${fCheckbox('starterTasks', '生成模板自带的起始任务', true, { hint: '不勾选则只建项目与材料目录' })}
   ` : `
     ${fText('name', '项目名称', p.name, { req: true })}
-    ${fText('folder', '项目文件夹名', p.folder || p.name, { hint: '改这里不会移动磁盘上已有的文件夹' })}
+    ${fText('displayName', '显示名', p.displayName || '', { ph: '留空则使用项目名称', hint: '只改界面上的名字，不改项目名称，也不改文件夹' })}
+    ${fText('folder', '项目文件夹名', p.folder || p.name, { hint: '改这里不会移动磁盘上已有的文件夹，也不改显示名' })}
     ${fText('subtitle', '一句话描述', p.subtitle)}
     ${fArea('goal', '研究目标', p.goal, { rows: 2 })}
     <div class="field-row">
@@ -344,7 +346,7 @@ function openProjectForm(id, draft) {
 function projectMenu(id) {
   const p = P(id);
   openModal({
-    title: esc(p.name),
+    title: esc(projName(p)),
     sub: '项目操作',
     body: `<div class="col" style="gap:6px">
       <button class="btn" style="justify-content:flex-start;height:34px" data-act="pick-project" data-id="${id}">${icon('target')}设为当前工作区</button>
@@ -882,17 +884,15 @@ document.addEventListener('click', async e => {
   /* 路由 */
   if (t.dataset.route && !t.dataset.act) { go(t.dataset.route); return; }
 
-  /* 项目卡片：只切换当前工作区，详情在主界面下方跟随（不跳转项目页） */
-  if (t.dataset.project) {
+  /* 项目卡片的主路径是进入项目。次要操作在卡片上的「⋯」里。 */
+  if (t.dataset.project && !t.dataset.act) {
     const p = P(t.dataset.project);
     if (!p) return;
-    if (state.project === p.id) return;
-    mutate(() => {
-      state.project = p.id;
-      DB.workspace.project = p.name;
-    }, { activity: { text: `切换工作区到 <b>${esc(p.displayName || p.name)}</b>`, kind: 'switch', color: '#8A8A96' } });
-    if (state.route !== 'home') go('home');
-    toast(`当前工作区：<b>${esc(p.displayName || p.name)}</b>`, 'ok');
+    state.project = p.id;
+    DB.workspace.project = projName(p);
+    state.projectTab = 'overview';
+    persist();
+    go('project');
     return;
   }
 
@@ -949,7 +949,7 @@ document.addEventListener('click', async e => {
       const tpl = templateById(v.template);
       const withTasks = !starterEl || starterEl.checked;
       const proj = makeProject({
-        name: v.name, folder, subtitle: v.subtitle, goal: v.goal,
+        name: v.name, folder, displayName: v.displayName, subtitle: v.subtitle, goal: v.goal,
         period: v.period, templateId: v.template
       });
       const span = monthsFromPeriod(proj.period);
@@ -980,7 +980,7 @@ document.addEventListener('click', async e => {
 
         DB.settings.onboarded = true;
         if (!DB.settings.defaultWorkspace) DB.settings.defaultWorkspace = proj.id;
-        DB.workspace.project = proj.name;
+        DB.workspace.project = projName(proj);
         state.project = proj.id;
       }, { activity: { text: `创建项目 <b>${esc(proj.name)}</b>`, kind: 'create', color: '#218358' } });
 
@@ -999,7 +999,10 @@ document.addEventListener('click', async e => {
           folder: v.folder ? safeFolderName(v.folder) : (p.folder || p.name),
           tools: (v.tools || '').split(/[,，]/).map(s => s.trim()).filter(Boolean)
         });
-        if (DB.workspace.project === p.name) DB.workspace.project = v.name;
+        const dn = String(v.displayName || '').trim().slice(0, 60);
+        if (dn && dn !== p.name) p.displayName = dn;
+        else delete p.displayName;
+        if (state.project === p.id) DB.workspace.project = projName(p);
       }, { activity: { text: `更新项目 <b>${esc(v.name)}</b>`, kind: 'edit', color: '#AD5700' } });
       closeModal(); toast('项目已更新', 'ok');
       return;
@@ -1712,8 +1715,8 @@ document.addEventListener('click', async e => {
       const a = APP(t.dataset.n);
       if (!a) return;
       const p = P(t.dataset.id);
-      mutate(() => { a.run = null; },
-        { activity: { text: `把 <b>${esc(a.n)}</b> 从项目 ${esc(p ? p.name : '')} 移除绑定`, kind: 'edit', color: '#AD5700' } });
+      mutate(() => { if (!p || a.bound === p.id) a.bound = ''; },
+        { activity: { text: `把 <b>${esc(a.n)}</b> 从项目 ${esc(p ? projName(p) : '')} 移除绑定`, kind: 'edit', color: '#AD5700' } });
       toast(`已从本项目移除（磁盘上的程序不受影响）`, 'ok'); return;
     }
     case 'proj-app-move': {
@@ -1732,8 +1735,8 @@ document.addEventListener('click', async e => {
       const a = APP(t.dataset.n);
       const p = P(t.dataset.id);
       if (!a || !p) return;
-      mutate(() => { a.run = p.id; },
-        { activity: { text: `把 <b>${esc(a.n)}</b> 绑定到项目 ${esc(p.name)}`, kind: 'edit', color: '#AD5700' } });
+      mutate(() => { a.bound = p.id; },
+        { activity: { text: `把 <b>${esc(a.n)}</b> 绑定到项目 ${esc(projName(p))}`, kind: 'edit', color: '#AD5700' } });
       toast(`<b>${esc(a.n)}</b> 已绑定到「${esc(p.name)}」`, 'ok');
       return;
     }
@@ -1742,7 +1745,12 @@ document.addEventListener('click', async e => {
       if (!rel) return toast('这条记录没有文件路径', 'err');
       return openPath(rootDir() + '\\' + rel.replace(/\//g, '\\'), rel);
     }
-    case 'new-task': closeModal(); openTaskForm(null); return;
+    case 'new-task': {
+      closeModal();
+      if (t.dataset.p && P(t.dataset.p)) state.project = t.dataset.p;
+      openTaskForm(null);
+      return;
+    }
     case 'edit-task': closeModal(); openTaskForm(+t.dataset.idx); return;
     case 'open-task': openTaskDetail(+t.dataset.idx); return;
     case 'open-task-folder': {
@@ -1896,7 +1904,7 @@ document.addEventListener('click', async e => {
       const a = APP(t.dataset.n);
       openModal({
         title: `绑定 ${esc(a.n)} 到项目`,
-        body: `${fSelect('p', '项目', a.run || state.project, DB.projects.map(p => [p.id, p.name]))}`,
+        body: `${fSelect('p', '项目', a.bound || state.project, DB.projects.map(p => [p.id, projName(p)]))}`,
         footer: `<span class="grow"></span><button class="btn" data-act="modal-close">取消</button>
           <button class="btn primary" data-submit data-act="bind-app-save" data-n="${esc(a.n)}">保存</button>`
       });
@@ -1905,7 +1913,7 @@ document.addEventListener('click', async e => {
     case 'bind-app-save': {
       const m = document.querySelector('.modal'); const v = formValues(m);
       const a = APP(t.dataset.n);
-      mutate(() => { a.run = v.p; }, { activity: { text: `<b>${esc(a.n)}</b> 绑定到 ${esc((P(v.p) || {}).name)}`, kind: 'link', color: '#6E56CF' } });
+      mutate(() => { a.bound = v.p; }, { activity: { text: `<b>${esc(a.n)}</b> 绑定到 ${esc(projName(P(v.p)))}`, kind: 'link', color: '#6E56CF' } });
       closeModal(); toast('绑定已更新', 'ok'); return;
     }
     case 'open-builtin': go('browser'); return;
@@ -1933,7 +1941,7 @@ document.addEventListener('click', async e => {
     }
     case 'goto-tools': closeModal(); state.setTab = 'tools'; go('settings'); return;
     case 'goto-external': closeModal(); state.setTab = 'external'; go('settings'); return;
-    case 'goto-dock': closeModal(); go('dock'); return;
+    case 'goto-dock': closeModal(); state.projectTab = 'software'; go('project'); return;
     case 'import-launch': {
       if (!Bridge.desktop) return toast('导入本地程序需要桌面端运行', 'err');
       const picked = await Bridge.pickLaunchTarget(t.dataset.mode || 'any');
@@ -2325,7 +2333,7 @@ document.addEventListener('click', async e => {
     case 'agent-assign': return openAgentAssign(t.dataset.a);
     case 'ai-mode': {
       const v = t.dataset.v;
-      if (v === 'browser') { state.aiMode = 'chat'; go('browser'); return; }
+      if (v === 'browser') { state.aiMode = 'browser'; go('browser'); return; }
       state.aiMode = v === 'assign' ? 'assign' : 'chat';
       if (state.route !== 'ai') go('ai'); else render();
       return;
@@ -2934,22 +2942,11 @@ document.addEventListener('click', async e => {
     }
 
     /* ---------- 自动化 ---------- */
-    case 'flow-toggle': {
-      const f = DB.automations[+t.dataset.idx];
-      mutate(() => { f.on = !f.on; },
-        { activity: { text: `${f.on ? '启用' : '停用'}流程 <b>${esc(f.n)}</b>`, kind: f.on ? 'run' : 'stop', color: f.on ? '#218358' : '#AD5700' } });
-      toast(`流程「${esc(f.n)}」已${f.on ? '启用' : '停用'}`, 'ok'); return;
-    }
-    case 'flow-run': {
-      const f = DB.automations[+t.dataset.idx];
-      toast(`正在运行 <b>${esc(f.n)}</b>…`, 'ok');
-      setTimeout(() => {
-        mutate(() => { f.last = `刚刚 · 手动触发成功`; },
-          { activity: { text: `手动运行流程 <b>${esc(f.n)}</b>`, kind: 'run', color: '#C9256B' } });
-      }, 1100);
-      return;
-    }
+    case 'flow-toggle':
+    case 'flow-run':
     case 'new-flow':
+      toast('自动化流程已从侧栏收起，这个开关不会执行任何流程', 'err');
+      return;
     case 'flow-log': {
       openModal({
         title: act === 'new-flow' ? '新建自动化流程' : '流程运行日志',
@@ -2966,14 +2963,9 @@ document.addEventListener('click', async e => {
       return;
     }
     case 'flow-create': {
-      const m = document.querySelector('.modal'); if (!validate(m, ['n'])) return;
-      const v = formValues(m);
-      const steps = (v.steps || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
-      mutate(() => DB.automations.push({
-        n: v.n, on: false, last: '尚未运行',
-        nodes: (steps.length ? steps : ['触发', '执行', '完成']).map(s => ({ i: 'zap', l: s }))
-      }), { activity: { text: `新建流程 <b>${esc(v.n)}</b>`, kind: 'create', color: '#218358' } });
-      closeModal(); toast('流程已创建', 'ok'); return;
+      closeModal();
+      toast('自动化流程已从侧栏收起，不会创建一条看起来能跑的流程', 'err');
+      return;
     }
 
     /* ---------- 设置 ---------- */
@@ -3398,8 +3390,16 @@ const ROUTE_ALIAS = {
   /* browser 保留独立路由：入口从侧栏移到 AI 助手的「浏览」模式 */
 };
 
+function consumeRoute(raw) {
+  if (raw === 'agents') state.aiMode = 'assign';
+  if (raw === 'browser') state.aiMode = 'browser';
+  if (raw === 'dock') state.projectTab = 'software';
+  if (raw === 'tasks') state.projectTab = 'tasks';
+  return ROUTE_ALIAS[raw] || raw;
+}
+
 function go(route) {
-  route = ROUTE_ALIAS[route] || route;
+  route = consumeRoute(route);
   state.route = VIEWS[route] ? route : 'home';
   if (location.hash.slice(1) !== state.route) location.hash = state.route;
   /* 记住所在页面，供「启动时恢复上次页面」使用 */
@@ -3431,7 +3431,12 @@ document.addEventListener('drop', async e => {
 });
 
 window.addEventListener('hashchange', () => {
-  const r = ROUTE_ALIAS[location.hash.slice(1)] || location.hash.slice(1);
+  const raw = location.hash.slice(1);
+  const r = consumeRoute(raw);
+  if (raw && r !== raw) {
+    if (location.hash.slice(1) !== r) location.hash = r;
+    return;
+  }
   if (VIEWS[r] && r !== state.route) { state.route = r; render(); }
 });
 
@@ -3474,22 +3479,17 @@ window.__RW_API__ = async function (req) {
         tools_count: AI_TOOLS.length,
         projects_count: DB.projects.length,
         tasks_count: DB.tasks.length,
-        knowledge_indexed: (DB.kbDocs || []).length,
+        knowledge_registered: (DB.kbDocs || []).length,
+        knowledge_indexed: (eng === 'http' || eng === 'rag_snowz') && state.rag && state.rag.status === 'ok' ? (state.rag.indexed || 0) : 0,
         knowledge_engine: eng,
         last_error: state.lastApiError || '',
         version: (state.update && state.update.version) || ''
       };
     }
 
-    /* dry_run 统一网关（S0）：只有只读工具豁免，其余一律只回预览。
-       白名单式的漏项曾导致 create_task 带 dry_run 仍真实建任务。 */
-    const READ_ONLY_TOOL = /^(get_|list_|search_)/;
-    if (rawArgs && rawArgs.dry_run === true && !READ_ONLY_TOOL.test(tool)) {
-      return {
-        ok: true, dryRun: true, tool,
-        args: Object.fromEntries(Object.entries(rawArgs).filter(([k]) => k !== 'dry_run')),
-        message: '预览模式：没有执行任何写入、删除或启动操作'
-      };
+    /* dry_run 统一网关：字符串 "true" 也算预览。写工具在这里返回，不进 executeTool。 */
+    if (typeof isDryRun === 'function' && isDryRun(rawArgs) && !/^(get_|list_|search_)/.test(tool)) {
+      return dryRunResult(tool, rawArgs);
     }
 
     /* 防原型链污染：只允许调用显式登记的工具 */
@@ -3691,9 +3691,9 @@ async function launchApp(name) {
   }
   toast(`正在启动 <b>${esc(name)}</b>…`, 'ok');
   const r = await window.workspace.launchApp({ name, execPath: a.path, args: a.args || [] });
-  if (r.ok) {
+    if (r.ok) {
     mutate(() => {
-      a.run = state.project;
+      a.run = true;
       if (!DB.workspace.running.includes(name)) DB.workspace.running.push(name);
     }, { activity: { text: `启动 <b>${esc(name)}</b> (PID ${r.pid})`, kind: 'run', color: '#C9256B' }, undo: false });
     toast(`<b>${esc(name)}</b> 已启动 · PID ${r.pid}`, 'ok');
@@ -3719,8 +3719,13 @@ async function boot() {
   } catch (_) {}
 
   const h = location.hash.slice(1);
-  if (VIEWS[h]) state.route = h;
-  else if (DB.settings.resumeLast && VIEWS[DB.settings.lastRoute]) state.route = DB.settings.lastRoute;
+  const resolved = h ? consumeRoute(h) : '';
+  if (resolved && VIEWS[resolved]) state.route = resolved;
+  else if (DB.settings.resumeLast && DB.settings.lastRoute) {
+    const last = consumeRoute(DB.settings.lastRoute);
+    if (VIEWS[last]) state.route = last;
+  }
+  if (h && resolved && resolved !== h) location.hash = resolved;
   const def = DB.settings.defaultWorkspace;
   if (P(def)) state.project = def;
   if (!P(state.project) && DB.projects.length) state.project = DB.projects[0].id;

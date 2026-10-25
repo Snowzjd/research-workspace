@@ -45,8 +45,8 @@ function resolveProject(q) {
   const key = String(q || '').trim();
   if (!key) return null;
   return DB.projects.find(x => x.id === key)
-    || DB.projects.find(x => x.name === key)
-    || DB.projects.find(x => x.name.includes(key) || key.includes(x.name))
+    || DB.projects.find(x => x.name === key || x.displayName === key)
+    || DB.projects.find(x => x.name.includes(key) || (x.displayName || '').includes(key) || key.includes(x.name))
     || null;
 }
 const projectHint = () => DB.projects.length ? DB.projects.map(x => x.name).join('、') : '（还没有项目）';
@@ -190,7 +190,7 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'update_project',
-      description: '更新当前项目的进度、当前阶段、下一阶段、研究目标或一句话描述。',
+      description: '更新当前项目的进度、当前阶段、下一阶段、研究目标、一句话描述或界面显示名。显示名与文件夹名互相独立。',
       parameters: {
         type: 'object',
         properties: {
@@ -198,7 +198,8 @@ const AI_TOOLS = [
           stage: { type: 'string', description: '当前阶段' },
           next_stage: { type: 'string', description: '下一阶段' },
           goal: { type: 'string', description: '研究目标' },
-          subtitle: { type: 'string', description: '一句话描述' }
+          subtitle: { type: 'string', description: '一句话描述' },
+          display_name: { type: 'string', description: '界面显示名。不改项目名称，也不改磁盘文件夹名' }
         },
         required: []
       }
@@ -346,6 +347,23 @@ const AI_TOOLS = [
 /* ==========================================================================
    工具实现
    ========================================================================== */
+/* dry_run 的唯一判定：布尔 true、数字 1、字符串 "true"/"1" 都算预览。写工具不得落盘。 */
+function isDryRun(args) {
+  if (!args || typeof args !== 'object') return false;
+  const v = Object.prototype.hasOwnProperty.call(args, 'dry_run') ? args.dry_run : args.dryRun;
+  return v === true || v === 1 || v === 'true' || v === '1';
+}
+function dryRunResult(tool, args) {
+  const preview = { ...(args || {}) };
+  delete preview.dry_run;
+  delete preview.dryRun;
+  return {
+    ok: true, dryRun: true, tool,
+    args: preview,
+    message: '预览模式：没有执行任何写入、删除或启动操作'
+  };
+}
+const TOOL_READ_ONLY = /^(get_|list_|search_)/;
 /* 兜底检索：只按资料名称匹配。不伪造相关度分数，明确标注 matched='name' */
 function kbNameMatch(q) {
   const kw = String(q).toLowerCase();
@@ -357,7 +375,7 @@ function kbNameMatch(q) {
   return { ok: true, query: q, count: hits.length, results: hits };
 }
 
-const AI_TOOL_IMPL = {
+const AI_TOOL_IMPL_RAW = {
   async save_document({ title, kind, content } = {}) {
     const p = P(state.project);
     if (!p) return { ok: false, error: '当前没有选中项目' };
@@ -367,7 +385,8 @@ const AI_TOOL_IMPL = {
     if (body.trim().length < 20) return { ok: false, error: 'content 太短，像是不完整的成文，未保存' };
     const catName = { paper: '论文', review: '综述', patent: '专利' }[kind] || '文档';
     const safe = title.replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
-    const rel = [p.name, '写作', `${safe}.md`].join('/');
+    const folder = p.folder || p.name;
+    const rel = [folder, '写作', `${safe}.md`].join('/');
     const r = await Bridge.saveWritingDoc({ relPath: rel, content: body, meta: { title, kind: catName } });
     if (!r || !r.ok) return { ok: false, error: (r && r.error) || '保存失败' };
     let kbId = '';
@@ -398,13 +417,16 @@ const AI_TOOL_IMPL = {
     return {
       ok: true,
       project: {
-        id: p.id, name: p.name, subtitle: p.subtitle, goal: p.goal,
+        id: p.id, name: p.name, display_name: p.displayName || p.name,
+        folder: p.folder || p.name,
+        subtitle: p.subtitle, goal: p.goal,
         stage: p.stage, next_stage: p.next, progress: p.progress,
         period: p.period, tools: p.tools, agents: p.agents, owner: p.owner.n
       },
       material_dirs: dirsOf(p.id),
       project_folder: projectDir(p),
       tasks: DB.tasks.filter(t => t.p === p.id).map(t => ({
+        task_id: t.id || '', id: t.id || '',
         title: t.t, agent: t.agent, tool: t.tool, due: t.due,
         priority: PRI_OUT[t.pri], status: ST_OUT[t.st], material_dir: t.dir
       })),
@@ -425,6 +447,7 @@ const AI_TOOL_IMPL = {
       ok: true,
       count: list.length,
       tasks: list.map(t => ({
+        task_id: t.id || '',
         id: t.id || '',
         title: t.t, agent: t.agent, tool: t.tool, due: t.due,
         priority: PRI_OUT[t.pri], status: ST_OUT[t.st], material_dir: t.dir
@@ -460,7 +483,10 @@ const AI_TOOL_IMPL = {
     DB.tasks.unshift(task);
     logActivity(`<b>AI</b> 新建任务「${esc(title)}」`, 'create', '#218358');
     persist();
-    return { ok: true, created: task.t, project: p.name, material_dir: dir, message: `已在项目「${p.name}」下创建任务` };
+    return {
+      ok: true, created: task.t, task_id: task.id, id: task.id,
+      project: p.name, material_dir: dir, message: `已在项目「${p.name}」下创建任务`
+    };
   },
 
   async update_task(args = {}) {
@@ -497,7 +523,7 @@ const AI_TOOL_IMPL = {
     if (!changes.length) return { ok: false, error: '没有提供任何要修改的字段' };
     logActivity(`<b>AI</b> 更新任务「${esc(t.t)}」：${esc(changes.join('、'))}`, 'edit', '#AD5700');
     persist();
-    return { ok: true, task: t.t, changes };
+    return { ok: true, task: t.t, task_id: t.id || '', id: t.id || '', changes };
   },
 
   async delete_task(args = {}) {
@@ -525,7 +551,7 @@ const AI_TOOL_IMPL = {
     const [removed] = DB.tasks.splice(i, 1);
     logActivity(`<b>AI</b> 删除任务「${esc(removed.t)}」`, 'delete', '#CE2C31');
     persist();
-    return { ok: true, deleted: removed.t, id: removed.id || '' };
+    return { ok: true, deleted: removed.t, task_id: removed.id || '', id: removed.id || '' };
   },
 
   async create_todo(args = {}) {
@@ -589,6 +615,11 @@ const AI_TOOL_IMPL = {
     if (args.next_stage) { p.next = args.next_stage; changes.push(`下一阶段→${args.next_stage}`); }
     if (args.goal) { p.goal = args.goal; changes.push('研究目标已更新'); }
     if (args.subtitle) { p.subtitle = args.subtitle; changes.push('描述已更新'); }
+    if (args.display_name != null) {
+      const dn = String(args.display_name).trim().slice(0, 60);
+      if (!dn || dn === p.name) { delete p.displayName; changes.push('显示名恢复为项目名称'); }
+      else { p.displayName = dn; changes.push('显示名已更新'); }
+    }
     if (!changes.length) return { ok: false, error: '没有提供任何要修改的字段' };
     logActivity(`<b>AI</b> 更新项目「${esc(p.name)}」：${esc(changes.join('、'))}`, 'edit', '#6E56CF');
     persist();
@@ -640,6 +671,7 @@ const AI_TOOL_IMPL = {
       tpl.tasks.forEach(([t, agent], i) => {
         const d = new Date(Date.now() + (i + 1) * 5 * 864e5);
         DB.tasks.push({
+          id: newTaskId(),
           t, p: proj.id, agent, tool: '文档', due: md(d),
           pri: i === 0 ? 'high' : 'mid', st: 'todo', dir: tpl.dirs[0], src: 'template'
         });
@@ -658,11 +690,12 @@ const AI_TOOL_IMPL = {
       ok: true,
       id: proj.id,
       name: proj.name,
+      display_name: proj.displayName || proj.name,
       template: tplId,
       folder: proj.folder,
+      project_folder: projectDir(proj),
       material_dirs: dirsOf(proj.id),
       starter_tasks: wantTasks ? tpl.tasks.length : 0,
-      folder: projectDir(proj),
       message: `项目「${proj.name}」已创建，材料目录会在下次打开时落盘`
     };
   },
@@ -777,7 +810,10 @@ const AI_TOOL_IMPL = {
       });
     }
 
-    return { ...kbNameMatch(q), channel: 'name' };
+    return Object.assign(kbNameMatch(q), {
+      channel: 'name', engine: 'builtin', indexed: 0, code: 'name_only',
+      warning: '内置知识库只按资料名称匹配，没有向量索引。'
+    });
   },
 
   async list_software() {
@@ -787,8 +823,9 @@ const AI_TOOL_IMPL = {
         name: a.n,
         kind: a.kind === 'builtin' ? '内置视图' : a.kind === 'folder' ? '文件夹' : '程序',
         path: a.path || '(内置)',
-        running: !!a.run,
-        bound_project: a.run ? (P(a.run) || {}).name : null
+        running: a.run === true,
+        bound_project: a.bound ? (P(a.bound) || {}).name || null : null,
+        bound_project_id: a.bound || null
       })),
       sidebar_quick_launch: DB.sidebarLaunch
     };
@@ -804,7 +841,7 @@ const AI_TOOL_IMPL = {
     }
     const r = await Bridge.launchApp({ name: a.n, execPath: a.path, args: a.args || [], cwd: a.cwd || undefined });
     if (r.ok) {
-      a.run = state.project;
+      a.run = true;
       if (!DB.workspace.running.includes(a.n)) DB.workspace.running.push(a.n);
       logActivity(`<b>AI</b> 启动软件 <b>${esc(a.n)}</b> (PID ${r.pid})`, 'run', '#C9256B');
       persist();
@@ -821,6 +858,8 @@ const AI_TOOL_IMPL = {
       projects: DB.projects.map(p => ({
         id: p.id,
         name: p.name,
+        display_name: p.displayName || p.name,
+        folder_name: p.folder || p.name,
         subtitle: p.subtitle,
         goal: p.goal,
         progress: p.progress,
@@ -842,16 +881,21 @@ const AI_TOOL_IMPL = {
     const q = String(args.project || '').trim();
     if (!q) return { ok: false, error: 'project 不能为空' };
     const p = DB.projects.find(x => x.id === q)
-      || DB.projects.find(x => x.name === q)
-      || DB.projects.find(x => x.name.includes(q) || q.includes(x.name));
+      || DB.projects.find(x => x.name === q || x.displayName === q)
+      || DB.projects.find(x => x.name.includes(q) || (x.displayName || '').includes(q) || q.includes(x.name));
     if (!p) return { ok: false, error: `未找到项目「${q}」。可用项目：${DB.projects.map(x => x.name).join('、')}` };
     state.project = p.id;
     DB.workspace.project = p.name;
     logActivity(`切换工作区到 <b>${esc(p.name)}</b>`, 'edit', '#6E56CF');
     persist();
-    return { ok: true, current: p.id, name: p.name, message: `当前工作区已切换为「${p.name}」` };
+    return { ok: true, current: p.id, name: p.name, display_name: p.displayName || p.name, message: `当前工作区已切换为「${p.displayName || p.name}」` };
   }
 };
+
+const AI_TOOL_IMPL = Object.fromEntries(Object.entries(AI_TOOL_IMPL_RAW).map(([name, fn]) => [name, async function (args) {
+  if (isDryRun(args) && !TOOL_READ_ONLY.test(name)) return dryRunResult(name, args);
+  return fn.call(this, args || {});
+}]));
 
 /* ==========================================================================
    调用描述（用于对话流可视化，让用户看清 AI 到底做了什么）
