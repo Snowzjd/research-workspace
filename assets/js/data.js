@@ -437,16 +437,16 @@ const SEED = {
 
   /* ---------- 软件（kind: exe=可执行文件 / folder=文件夹 / builtin=内置视图） ---------- */
   apps: [
-    { n: 'Fluent',     ico: 'FL',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4A7FB5,#1E4A7D)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\fluent\\ntbin\\win64\\fluent.exe', run: 'tpms' },
-    { n: 'SpaceClaim', ico: 'SC',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#7A6AD6,#4636A0)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\scdm\\SpaceClaim.exe', run: null },
-    { n: 'Workbench',  ico: 'WB',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#3A9CAD,#17616F)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\Framework\\bin\\Win64\\RunWB2.exe', run: null },
-    { n: 'Tecplot',    ico: 'TP',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#C79A3E,#8A5E14)', path: 'C:\\Program Files\\Tecplot\\Tecplot 360 EX 2023 R1\\bin\\tecplot360ex.exe', run: 'tpms' },
-    { n: 'Python',     ico: 'PY',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4E88C0,#2A5C8C)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', run: 'opt' },
-    { n: 'Jupyter',    ico: 'JT',  kind: 'exe',    args: ['lab'], bg: 'linear-gradient(135deg,#CC7B45,#8E4D22)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\jupyter-lab.exe', run: null },
-    { n: 'MATLAB',     ico: 'ML',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#BE5159,#852E36)', path: 'C:\\Program Files\\MATLAB\\R2024a\\bin\\matlab.exe', run: null },
-    { n: 'VS Code',    ico: 'VS',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4E8CC8,#245E92)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe', run: null },
-    { n: '浏览器',      ico: 'WEB', kind: 'builtin', args: [], bg: 'linear-gradient(135deg,#7A6AD6,#4636A0)', path: '', run: null },
-    { n: '文档',        ico: 'DOC', kind: 'folder', args: [], bg: 'linear-gradient(135deg,#BE5590,#7E2E56)', path: 'F:\\ResearchWorkspace', run: null }
+    { n: 'Fluent',     ico: 'FL',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4A7FB5,#1E4A7D)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\fluent\\ntbin\\win64\\fluent.exe', run: true, bound: 'tpms' },
+    { n: 'SpaceClaim', ico: 'SC',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#7A6AD6,#4636A0)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\scdm\\SpaceClaim.exe', run: null, bound: '' },
+    { n: 'Workbench',  ico: 'WB',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#3A9CAD,#17616F)', path: 'C:\\Program Files\\ANSYS Inc\\v231\\Framework\\bin\\Win64\\RunWB2.exe', run: null, bound: '' },
+    { n: 'Tecplot',    ico: 'TP',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#C79A3E,#8A5E14)', path: 'C:\\Program Files\\Tecplot\\Tecplot 360 EX 2023 R1\\bin\\tecplot360ex.exe', run: true, bound: 'tpms' },
+    { n: 'Python',     ico: 'PY',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4E88C0,#2A5C8C)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', run: true, bound: 'opt' },
+    { n: 'Jupyter',    ico: 'JT',  kind: 'exe',    args: ['lab'], bg: 'linear-gradient(135deg,#CC7B45,#8E4D22)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\jupyter-lab.exe', run: null, bound: '' },
+    { n: 'MATLAB',     ico: 'ML',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#BE5159,#852E36)', path: 'C:\\Program Files\\MATLAB\\R2024a\\bin\\matlab.exe', run: null, bound: '' },
+    { n: 'VS Code',    ico: 'VS',  kind: 'exe',    args: [], bg: 'linear-gradient(135deg,#4E8CC8,#245E92)', path: 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe', run: null, bound: '' },
+    { n: '浏览器',      ico: 'WEB', kind: 'builtin', args: [], bg: 'linear-gradient(135deg,#7A6AD6,#4636A0)', path: '', run: null, bound: '' },
+    { n: '文档',        ico: 'DOC', kind: 'folder', args: [], bg: 'linear-gradient(135deg,#BE5590,#7E2E56)', path: 'F:\\ResearchWorkspace', run: null, bound: '' }
   ],
   sidebarLaunch: ['Fluent', 'SpaceClaim', 'Tecplot', 'Python', '浏览器', '文档'],
 
@@ -663,11 +663,13 @@ function makeProject(input = {}) {
   const name = String(input.name || '').trim() || '未命名项目';
   const tpl = templateById(input.templateId || input.template || 'standard');
   const folder = String(input.folder || '').trim() || safeFolderName(name);
+  const displayName = String(input.displayName || '').trim().slice(0, 60);
   const id = input.id || ('p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
   const now = new Date();
   const owner = (DB.user && DB.user.name) || '研究员';
   return {
     id, name, folder,
+    ...(displayName && displayName !== name ? { displayName } : {}),
     subtitle: String(input.subtitle || '').trim() || (tpl ? tpl.name : '未填写描述'),
     accent: input.accent || TPL_ACCENTS[DB.projects.length % TPL_ACCENTS.length],
     thumb: 'tpms', seed: Math.floor(Math.random() * 900) + 100,
@@ -797,7 +799,7 @@ const AGENTS_PRESET_VERSION = 'writing-3@2026-10';
 function freshData() {
   const y = new Date().getFullYear();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     user: { name: '研究员', initial: '研', greet: '', mode: '本地工作台' },
     rootDir: '',
     projects: [], tasks: [], todos: [], timeline: [], kbDocs: [], resources: [], automations: [], templates: [], tombstones: [],
@@ -816,7 +818,7 @@ function freshData() {
     /* 软件清单保留，但不带任何本机路径 —— 新设备需要自己绑定 */
     apps: (SEED.apps || []).map(a => ({
       ...JSON.parse(JSON.stringify(a)),
-      path: '', cwd: '', run: null, pending: a.kind !== 'builtin'
+      path: '', cwd: '', run: null, bound: '', pending: a.kind !== 'builtin'
     })),
     sidebarLaunch: ['浏览器'],
     months: (SEED.months || []).slice(),
@@ -866,7 +868,7 @@ const MATERIALS = {
 
 /* ---------- 设置默认值 ---------- */
 const SETTINGS_DEFAULT = {
-  glass: true, ambient: true, compact: false,
+  glass: true, ambient: true, compact: true,
   defaultWorkspace: 'tpms',
   resumeLast: true, motion: true, notifyDot: true,
   /* agentAuto 已从设置页移除，仅由 Agent 中心的「编排策略」弹窗写入，当前无消费方 */
@@ -897,6 +899,11 @@ function migrate(d) {
   /* 老数据视为已完成引导：不要给已有用户显示首次使用的欢迎页 */
   if (typeof d.onboarded === 'boolean') { delete d.onboarded; }
   if (!d.settings) d.settings = {};
+  /* v3：默认紧凑密度。只在第一次升到 3 时打开，之后尊重用户在设置里关掉的选择 */
+  if (d.schemaVersion < 3) {
+    d.settings.compact = true;
+    d.schemaVersion = 3;
+  }
   if (typeof d.settings.onboarded !== 'boolean') d.settings.onboarded = true;
   ['projects', 'tasks', 'todos', 'timeline', 'kbDocs', 'agents', 'automations',
     'activities', 'templates', 'resources', 'tombstones'].forEach(k => {
@@ -1021,6 +1028,13 @@ function migrate(d) {
     if (typeof a.displayName !== 'string') a.displayName = a.n;
     if (typeof a.source !== 'string') a.source = 'builtin';   // builtin | imported
     if (typeof a.pending !== 'boolean') a.pending = false;
+    /* run 只表示进程是否在跑。老数据把项目 id 塞进 run，绑定会在启动时被清掉，界面还把它显示成「运行中」 */
+    if (typeof a.bound !== 'string') {
+      const legacy = a.run;
+      const known = typeof legacy === 'string' && (d.projects || []).some(p => p && p.id === legacy);
+      a.bound = known ? legacy : '';
+    }
+    if (typeof a.run === 'string') a.run = null;
   });
 
   /* 左侧快捷启动里若有已不存在的软件名，剔除掉 */
@@ -1114,6 +1128,12 @@ function setDB(next) { DB = next; _stampBase = null; initStampBase(); }
 
 /* ---------- 路径工具 ---------- */
 function rootDir() { return (DB.settings && DB.settings.rootDir) || ''; }
+function projName(p) { return (p && (p.displayName || p.name)) || ''; }
+function incompleteLabel(n, unit) {
+  const c = Number(n) || 0;
+  if (c <= 0) return '';
+  return c + ' ' + (unit || '个未完成');
+}
 function projectDir(p) { return rootDir() + '\\' + (typeof p === 'string' ? p : (p.folder || p.name)); }
 function taskDir(task) { const p = P(task.p); return p ? projectDir(p) + '\\' + (task.dir || '') : rootDir(); }
 /* 项目材料索引：DB.materialIndex 是真实登记（可持久化、可同步），

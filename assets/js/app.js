@@ -151,6 +151,9 @@ function undoLast() {
 /* 统一的工具执行入口：写操作自动进审计。
    外部 Agent（HTTP/MCP）与内置 AI 助手都走这里，保证口径一致。 */
 async function executeTool(name, args) {
+  if (typeof isDryRun === 'function' && isDryRun(args) && !/^(get_|list_|search_)/.test(name)) {
+    return dryRunResult(name, args);
+  }
   const isWrite = !READ_ONLY_TOOLS.has(name);
   const origin = currentOrigin();
   /* 写操作先拍快照：Agent 与内置助手改动的东西，用户同样能撤销 */
@@ -207,10 +210,32 @@ const stChip = s => { const [l, c] = ST_MAP[s] || ['—', 'gray']; return `<span
 /* ==========================================================================
    项目卡片
    ========================================================================== */
+function emptyState(opts = {}) {
+  const actBtn = (a, primary) => {
+    if (!a || !a.act) return '';
+    const data = Object.entries(a.data || {}).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
+    return `<button class="btn sm ${primary ? 'primary' : ''}" data-act="${esc(a.act)}"${data}>${a.ico ? icon(a.ico) : ''}${esc(a.label || '')}</button>`;
+  };
+  return `<div class="empty empty-state">
+    <span class="es-ico">${icon(opts.icon || 'inbox')}</span>
+    <div class="es-title">${esc(opts.title || '这里还是空的')}</div>
+    <div class="es-sub">${opts.subHtml || esc(opts.sub || '')}</div>
+    <div class="es-actions">${actBtn(opts.primary, true)}${actBtn(opts.secondary, false)}</div>
+  </div>`;
+}
+
+function aiModeSeg(active) {
+  const items = [['chat', '聊天'], ['assign', '派任务'], ['browser', '浏览']];
+  return `<div class="seg ai-modes" role="tablist">${items.map(([v, l]) =>
+    `<button type="button" role="tab" aria-selected="${v === active ? 'true' : 'false'}" class="${v === active ? 'active' : ''}" data-act="ai-mode" data-v="${v}">${l}</button>`
+  ).join('')}</div>`;
+}
+
 function projectCard(p, big) {
-  /* S1：信息层级 = 显示名 > 阶段+进度 > 未完成数/下一阶段/最近活动 */
-  const name = p.displayName || p.name;
+  /* 信息层级：显示名最重，阶段其次，未完成数仅在 >0 时出现 */
+  const name = projName(p);
   const openTasks = DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length;
+  const openLabel = incompleteLabel(openTasks);
   const done = p.nodes.filter(n => n.s !== 'todo').length;
   const fill = p.nodes.length > 1 ? Math.max(0, (done - 1) / (p.nodes.length - 1) * 100) : 100;
   const lastAct = (DB.activities || []).find(a => String(a.text || '').includes(p.name));
@@ -233,7 +258,7 @@ function projectCard(p, big) {
     <span class="bar" style="display:block;margin:2px 0 8px"><i style="width:${p.progress || 0}%"></i></span>
 
     <div class="proj-line2">
-      <span class="proj-kpi ${openTasks ? 'hot' : ''}">${openTasks ? openTasks + ' 个未完成' : '任务已清空'}</span>
+      ${openLabel ? `<span class="proj-kpi hot">${esc(openLabel)}</span>` : ''}
       <span class="proj-next">${p.next ? '下一步：' + esc(p.next) : ''}</span>
     </div>
     ${lastAct ? `<div class="proj-recent" title="${esc(String(lastAct.text).replace(/<[^>]+>/g, ''))}">
@@ -265,8 +290,7 @@ function detailCard(p) {
       <div class="thumb">${thumbSVG(p.thumb, p.seed)}</div>
       <div class="detail-hero-body">
         <div class="detail-title-row">
-          <h2>${esc(p.name)}</h2>
-          <span class="badge-live"><i class="d"></i>进行中</span>
+          <h2>${esc(projName(p))}</h2>
           <span class="grow"></span>
           <button class="btn sm primary" data-act="project-open" data-id="${p.id}">${icon('grid')}项目页</button>
           <button class="btn sm" data-act="ai-open-project" data-id="${p.id}">${icon('sparkles')}AI 助手</button>
@@ -301,7 +325,7 @@ function detailCard(p) {
       return `<div class="detail-tasks">
         <div class="dt-head">
           <h5>本项目任务</h5>
-          <span class="dt-count">${open.length} 个未完成${doneN ? ` · ${doneN} 个已完成` : ''}</span>
+          ${open.length ? `<span class="dt-count">${incompleteLabel(open.length)}${doneN ? ` · ${doneN} 个已完成` : ''}</span>` : (doneN ? `<span class="dt-count">${doneN} 个已完成</span>` : '')}
           <span class="grow"></span>
           <button class="head-link" data-act="project-tab" data-v="tasks">全部 ${mine.length} 个 ${icon('chevronRight')}</button>
           <button class="head-link" data-act="new-task">${icon('plus')}新建</button>
@@ -314,10 +338,13 @@ function detailCard(p) {
             <span class="dt-due">${esc(t.due || '')}</span>
           </div>`).join('')}
           ${open.length > 4 ? `<div class="dt-more">还有 ${open.length - 4} 个未完成，点右上「全部」查看</div>` : ''}
-        </div>` : `<div class="dt-empty">
-          <span>本项目还没有未完成任务</span>
-          <button class="btn sm" data-act="new-task">${icon('plus')}建一个</button>
-        </div>`}
+        </div>` : emptyState({
+          icon: 'tasks',
+          title: mine.length ? '没有未完成任务' : '还没有任务',
+          sub: mine.length ? '已完成的任务收在「任务」页。' : '拆出第一条任务，或让助手按项目目标来拆。',
+          primary: { act: 'new-task', label: '新建任务', ico: 'plus' },
+          secondary: { act: 'ai-open-project', label: '让助手拆', ico: 'sparkles', data: { id: p.id } }
+        })}
       </div>`;
     })()}
 
@@ -414,8 +441,13 @@ function flowCard(p) {
         <span class="head-sub">${esc(p.displayName || p.name)}</span>
         <button class="head-link" data-act="flow-edit" data-id="${p.id}">${icon('plus')}添加阶段</button>
       </div>
-      <div class="empty">${icon('branch')}<div>还没有阶段</div>
-        <div class="field-hint" style="margin-top:4px">点「添加阶段」建出你的研究流程</div></div>
+      ${emptyState({
+        icon: 'branch',
+        title: '还没有阶段',
+        sub: '阶段决定当前进度。至少留下一个进行中的阶段。',
+        primary: { act: 'flow-edit', label: '添加阶段', ico: 'plus', data: { id: p.id } },
+        secondary: { act: 'edit-project', label: '编辑项目', ico: 'pencil', data: { id: p.id } }
+      })}
     </div>`;
   }
   const ci = flowCurrentIndex(nodes);
@@ -500,7 +532,7 @@ function todoCard() {
   return `<div class="card panel fill-card">
     <div class="panel-head">
       <h3>${icon('tasks')}待办事项</h3>
-      <span class="head-sub">${DB.todos.filter(t => !t.done).length} 项未完成</span>
+      ${(() => { const n = DB.todos.filter(t => !t.done).length; return n ? `<span class="head-sub">${incompleteLabel(n, '项未完成')}</span>` : ''; })()}
       <span class="grow"></span>
       <button class="btn sm primary" data-act="new-todo">${icon('plus')}新建任务</button>
     </div>
@@ -509,7 +541,11 @@ function todoCard() {
       ${TODO_CATS.map(([k, l]) => `<button class="tab" data-tab="todo" data-val="${k}">${l}</button>`).join('')}
     </div>
     <div class="todo-list" id="todo-list">
-      ${list.map((t, i) => todoRow(t, i)).join('') || `<div class="empty">${icon('tasks')}<div>暂无待办，点击右上角新建</div></div>`}
+      ${list.map((t, i) => todoRow(t, i)).join('') || emptyState({
+        icon: 'tasks', title: '暂无待办', sub: '待办是今天要勾掉的小事，和项目任务分开记。',
+        primary: { act: 'new-todo', label: '新建待办', ico: 'plus' },
+        secondary: { act: 'project-tab', label: '看项目任务', ico: 'tasks', data: { v: 'tasks' } }
+      })}
     </div>
   </div>`;
 }
@@ -541,55 +577,33 @@ function resourceCard() {
    ========================================================================== */
 /* 空工作区：新装软件只有它，不预置任何示例项目 */
 function emptyWorkspace(opts = {}) {
-  /* 首次使用给完整介绍；之后删光项目只给简洁提示，不重复引导 */
   const firstRun = opts.firstRun != null ? opts.firstRun : !DB.settings.onboarded;
-  const full = opts.full !== false && firstRun;
-  return `<div class="fade-in">
-    <div class="card panel welcome">
-      <div class="wl-hero">
-        <span class="wl-ico">${icon('sparkles')}</span>
-        <h2>${esc(opts.title || (firstRun ? '从这里开始' : '还没有项目'))}</h2>
-        <p>${opts.desc || (firstRun
-          ? '这个工作台不预置任何示例数据。新建项目时可选「标准模板」（带阶段流程、材料目录和 3 条起始任务）或「空白项目」（只有 01_资料 目录）——阶段、材料、任务会一起搭好。'
-          : '新建一个项目，或从上次的备份里恢复。')}</p>
-        <div class="row" style="justify-content:center;gap:8px;margin-top:16px">
-          <button class="btn primary" data-act="new-project">${icon('plus')}新建第一个项目</button>
-          <button class="btn" data-act="goto-external">${icon('bot')}让 Agent 管理</button>
-        </div>
-      </div>
-      ${full ? `<div class="wl-grid">
-        <div class="wl-card">
-          <div class="wl-t">${icon('layers')}一个模板</div>
-          <div class="wl-d">${esc(PROJECT_TEMPLATE.name)}：${esc(PROJECT_TEMPLATE.flow.join(' → '))}，
-            自动建好 ${PROJECT_TEMPLATE.dirs.length} 类材料目录和 ${PROJECT_TEMPLATE.tasks.length} 条起始任务。</div>
-        </div>
-        <div class="wl-card">
-          <div class="wl-t">${icon('bot')}也可以交给 Agent</div>
-          <div class="wl-d">外部 Agent 通过 MCP 接入后可以创建项目、拆任务、更新进度；
-            每个写操作都记审计，也能撤销。</div>
-          <button class="btn sm" style="margin-top:10px" data-act="goto-external">${icon('externalLink')}查看接入方式</button>
-        </div>
-        <div class="wl-card">
-          <div class="wl-t">${icon('shield')}数据在你自己机器上</div>
-          <div class="wl-d">本机 JSON 存储 + 每日自动备份，不经过任何服务器。
-            工作区根目录可以自己指定。</div>
-        </div>
-      </div>` : ''}
-    </div>
-  </div>`;
+  const sub = opts.desc || (firstRun
+    ? `不预置示例数据。标准模板带 ${PROJECT_TEMPLATE.dirs.length} 个材料目录和 ${PROJECT_TEMPLATE.tasks.length} 条起始任务；也可以建空白项目。数据只在本机。`
+    : '新建一个项目，或从上次的备份里恢复。');
+  return `<div class="page">${emptyState({
+    icon: 'grid',
+    title: opts.title || (firstRun ? '从这里开始' : '还没有项目'),
+    sub,
+    primary: { act: 'new-project', label: firstRun ? '新建第一个项目' : '新建项目', ico: 'plus' },
+    secondary: { act: opts.secondaryAct || 'goto-external', label: opts.secondaryLabel || '让 Agent 管理', ico: 'bot' }
+  })}</div>`;
 }
 
 /* 首页 = 项目总览（Sprint A：合并原「首页」与「项目总览」双入口） */
 function homeView() {
   if (!DB.projects.length) return emptyWorkspace({ full: true });
   const q = (state.search || '').toLowerCase();
-  const list = DB.projects.filter(p => !q || (p.name + p.subtitle + p.stage).toLowerCase().includes(q));
-  const sel = P(state.project) || DB.projects[0];
+  const list = DB.projects.filter(p => !q || (projName(p) + p.name + p.subtitle + p.stage).toLowerCase().includes(q));
   const dueTodos = DB.todos.filter(t => !t.done).length;
-  return `<div class="fade-in">
+  const openN = DB.tasks.filter(t => t.st !== 'done').length;
+  const bits = [`共 ${DB.projects.length} 个项目`];
+  if (openN) bits.push(incompleteLabel(openN, '个未完成任务'));
+  if (dueTodos) bits.push(`${dueTodos} 条待办`);
+  return `<div class="page">
     <div class="page-head">
-      <h2>我的项目</h2>
-      <span class="page-sub">共 ${DB.projects.length} 个项目 · ${DB.tasks.filter(t => t.st !== 'done').length} 个未完成任务 · ${dueTodos} 条待办</span>
+      <h2>项目总览</h2>
+      <span class="page-sub">${bits.join(' · ')}</span>
       <span class="ph-right">
         <label class="search" style="max-width:170px;height:29px">
           ${icon('search', 'color:var(--text-4)')}
@@ -615,13 +629,13 @@ function homeView() {
       </div>`;
     })()}
     <div class="projects-grid">${list.map(p => projectCard(p, true)).join('')}</div>
-    ${list.length ? '' : `<div class="empty">${icon('grid')}<div>没有匹配的项目</div></div>`}
-
-    <div class="detail-grid" style="margin-top:var(--gap)">
-      <div class="detail-main">${detailCard(sel)}</div>
-      <div class="detail-side">${flowCard(sel)}${activityCard()}</div>
-    </div>
-    <div class="bottom-grid bottom-grid-2">${todoCard()}${resourceCard()}</div>
+    ${list.length ? '' : emptyState({
+      icon: 'search',
+      title: '没有匹配的项目',
+      sub: q ? `没有名称或阶段包含「${q}」的项目。` : '筛选条件把项目都滤掉了。',
+      primary: { act: 'new-project', label: '新建项目', ico: 'plus' },
+      secondary: { act: 'open-root-folder', label: '打开工作区', ico: 'folderOpen' }
+    })}
   </div>`;
 }
 
@@ -682,8 +696,17 @@ function tasksView() {
       }).join('')}</tbody>
     </table>
     </div>
-    ${sorted.length ? '' : `<div class="empty">${icon('tasks')}<div>${DB.projects.length ? '该状态下暂无任务' : '还没有项目，先建一个项目再拆任务'}</div>
-      ${DB.projects.length ? '' : `<button class="btn sm primary" data-act="new-project" style="margin-top:10px">${icon('plus')}新建项目</button>`}</div>`}
+    ${sorted.length ? '' : emptyState({
+      icon: 'tasks',
+      title: DB.projects.length ? '该状态下暂无任务' : '还没有项目',
+      sub: DB.projects.length ? '换一个状态，或在当前项目里新建一条。' : '先建项目，任务才能归到项目里。',
+      primary: DB.projects.length
+        ? { act: 'new-task', label: '新建任务', ico: 'plus' }
+        : { act: 'new-project', label: '新建项目', ico: 'plus' },
+      secondary: DB.projects.length
+        ? { act: 'project-tab', label: '回到当前项目', ico: 'grid', data: { v: 'tasks' } }
+        : { act: 'goto-external', label: '让 Agent 建', ico: 'bot' }
+    })}
   </div>`;
 
   const kanban = `<div class="kanban">${DB.taskStatus.map(s => {
@@ -839,18 +862,19 @@ function knowledgeView() {
     : !ragOn
       ? `<span class="chip gray">未启用</span>`
       : rs.status === 'ok'
-        ? `<span class="chip emerald">已连接${rs.indexed ? ' · 索引 ' + rs.indexed + ' 条' : ''}</span>`
+        ? `<span class="chip emerald">已连接${rs.indexed ? ' · 向量索引 ' + rs.indexed + ' 条' : ' · 向量索引 0 条'}</span>`
         : rs.status === 'fail'
           ? `<span class="chip rose">连接失败</span>`
           : `<span class="chip amber">未检测</span>`;
 
   const modeLabel = { rag: '语义检索', name: '名称匹配', list: '资料清单' }[mode];
-  const sub = ragOn && rs.status === 'ok'
-    ? `外部 RAG 检索 · 索引 ${rs.indexed || 0} 条`
-    : `资料 ${total} 条 · 未接入向量索引`;
-
-  /* S4：引擎徽章（builtin / http / rag_snowz / none） */
+  /* 引擎徽章：builtin 只做名称匹配，indexed 保持 0，避免把登记条数说成向量索引 */
   const engine = (DB.settings.kbEngine) || (ragOn ? 'http' : 'builtin');
+  const vectorOn = (engine === 'http' || engine === 'rag_snowz') && ragOn && rs.status === 'ok';
+  const indexedN = vectorOn ? (rs.indexed || 0) : 0;
+  const sub = vectorOn
+    ? `外部检索 · 向量索引 ${indexedN} 条`
+    : `登记 ${total} 条 · 按名称匹配 · 没有向量索引`;
   const ENGINE_LABEL = { builtin: '内置引擎', http: 'HTTP 引擎', rag_snowz: 'RAG_Snowz', none: '未启用引擎' };
   const engineChip = `<span class="chip ${engine === 'none' ? 'gray' : (ragOn && rs.status === 'ok' ? 'emerald' : 'sky')}">
     ${esc(ENGINE_LABEL[engine] || engine)}</span>`;
@@ -861,7 +885,9 @@ function knowledgeView() {
       <span class="page-sub">${engineChip} ${sub}</span>
       <span class="ph-right">
         <button class="btn sm" data-act="kb-import">${icon('inbox')}导入资料</button>
-        <button class="btn sm primary" data-act="kb-reindex">${icon('refresh')}重建索引</button>
+        ${vectorOn
+          ? `<button class="btn sm primary" data-act="kb-reindex">${icon('refresh')}重建索引</button>`
+          : `<button class="btn sm" disabled title="内置登记只按名称匹配，没有向量索引可重建">没有向量索引</button>`}
       </span>
     </div>
 
@@ -870,8 +896,8 @@ function knowledgeView() {
       <b>知识库还是空的</b>
       <span class="tb-list">把论文 / 报告 / 数据说明放进「知识库材料」文件夹，再点「重建索引」即可被检索</span>
       <span class="grow"></span>
+      <button class="btn sm primary" data-act="kb-import">${icon('inbox')}导入资料</button>
       <button class="btn sm" data-act="kb-open-materials">${icon('folderOpen')}打开材料夹</button>
-      <button class="btn sm primary" data-act="kb-reindex">${icon('refresh')}重建索引</button>
     </div>` : ''}
 
     <div class="kb-query">
@@ -905,7 +931,15 @@ function knowledgeView() {
                 ? `<span>${d.page ? '第 ' + esc(String(d.page)) + ' 页' : '片段'}</span><span title="${esc(d.path)}">${esc(baseName(d.path) || '—')}</span>`
                 : `<span>${esc(d.size)}</span><span>${esc(d.date)}</span>`}
             </div>
-          </div>`).join('') || `<div class="empty">${icon('search')}<div>${mode === 'name' ? '没有名称匹配的资料' : '暂无资料'}</div></div>`}
+          </div>`).join('') || emptyState({
+            icon: mode === 'name' ? 'search' : 'file',
+            title: mode === 'name' ? '没有名称匹配的资料' : '还没有资料',
+            sub: mode === 'name'
+              ? '内置知识库只匹配登记名称，不按正文检索。'
+              : '把论文、报告或数据说明登记进来后，才能按名称查找。',
+            primary: { act: 'kb-import', label: '导入资料', ico: 'inbox' },
+            secondary: { act: 'kb-open-materials', label: '打开材料夹', ico: 'folderOpen' }
+          })}
         </div>
       </div>
 
@@ -939,9 +973,9 @@ function knowledgeView() {
             ${Object.entries(byType).map(([k, v]) => `<div class="kbs-row"><span>${esc(k)}</span><b>${v}</b></div>`).join('')}
           </div>
           <div class="mt-10" style="font-size:10.5px;color:var(--text-3);line-height:1.7">
-            向量索引：${ragOn && rs.status === 'ok'
-              ? `<b>${rs.indexed || 0}</b> 条（外部服务${rs.model ? ' · ' + esc(rs.model) : ''}）`
-              : '<b>未建立</b>'}
+            向量索引：${vectorOn
+              ? `<b>${indexedN}</b> 条（外部服务${rs.model ? ' · ' + esc(rs.model) : ''}）`
+              : '<b>0</b> 条（内置登记不做向量化）'}
           </div>
         </div>
 
@@ -949,7 +983,11 @@ function knowledgeView() {
           <div class="panel-head"><h3>${icon('clock')}最近入库</h3></div>
           ${recent.map(d => `<div class="activity-row">
             <span class="a-dot" style="background:${fileType(d.ext).c}">${icon(extIcon(d.ext))}</span>
-            <span class="a-txt">${esc(d.n)}</span><span class="a-time">${esc(d.date)}</span></div>`).join('') || '<div class="empty" style="padding:14px">暂无</div>'}
+            <span class="a-txt">${esc(d.n)}</span><span class="a-time">${esc(d.date)}</span></div>`).join('') || emptyState({
+              icon: 'clock', title: '还没有入库记录', sub: '导入或让写作助手存档后，最近的文件会出现在这里。',
+              primary: { act: 'kb-import', label: '导入资料', ico: 'inbox' },
+              secondary: { act: 'kb-open-root', label: '打开知识库目录', ico: 'folderOpen' }
+            })}
           <button class="btn sm mt-10" style="width:100%;justify-content:center" data-act="kb-open-root">${icon('folderOpen')}打开知识库目录</button>
         </div>
       </div>
@@ -1103,12 +1141,14 @@ function baseName(p) {
 }
 
 function dockView() {
-  const running = DB.apps.filter(a => a.run);
+  const pid = state.project;
+  const visible = (DB.apps || []).filter(a => !pid || !a.bound || a.bound === pid);
+  const running = visible.filter(a => a.run === true);
   const quick = DB.sidebarLaunch;
   return `<div class="fade-in">
     <div class="page-head">
       <h2>软件启动台</h2>
-      <span class="page-sub">工程软件统一入口 · 已登记 ${DB.apps.length} 个 · ${running.length} 个运行中</span>
+      <span class="page-sub">${esc(projName(P(pid)) || '未选项目')} · 本项目与未绑定 ${visible.length} 个 · 运行中 ${running.length}</span>
       <span class="ph-right">
         <button class="btn sm" data-act="rescan-apps">${icon('search')}扫描已安装</button>
         <button class="btn sm" data-act="import-launch" data-mode="folder">${icon('folderOpen')}文件夹</button>
@@ -1119,20 +1159,23 @@ function dockView() {
 
     <div class="card panel" style="margin-bottom:var(--gap)">
       <div class="panel-head"><h3>${icon('pulse')}当前工作区运行状态</h3>
-        <span class="chip accent">${esc(DB.workspace.project)}</span>
+        <span class="chip accent">${esc(projName(P(pid)) || '未选项目')}</span>
         <span class="grow"></span>
         <span class="mono muted" style="font-size:10px">${Bridge.desktop ? '进程监控已开启' : '浏览器模式 · 进程功能不可用'}</span></div>
       ${running.length ? `<div class="row" style="gap:10px;flex-wrap:wrap">
-        ${running.map((a, i) => {
-          const load = [['42%', '1.2G'], ['18%', '0.6G'], ['63%', '2.4G'], ['9%', '0.4G']][i % 4];
-          return `<div class="row" style="gap:8px;padding:8px 12px;border-radius:var(--r-md);background:var(--surface-sunken);border:1px solid var(--line-soft)">
+        ${running.map(a => `<div class="row" style="gap:8px;padding:8px 12px;border-radius:var(--r-md);background:var(--surface-sunken);border:1px solid var(--line-soft)">
           ${appIconHTML(a, 24)}
           <div><div style="font-size:11.5px;font-weight:620">${esc(a.displayName || a.n)}</div>
-          <div class="mono muted" style="font-size:9.5px">CPU ${load[0]} · MEM ${load[1]}</div></div>
+          <div class="mono muted" style="font-size:9.5px">进程在跑 · 不读取 CPU / 内存</div></div>
           <button class="btn sm ghost" data-act="stop-app" data-n="${esc(a.n)}">${icon('stop')}结束</button>
-        </div>`;
-        }).join('')}
-      </div>` : `<div class="empty">${icon('pulse')}<div>当前没有由工作台启动的程序</div></div>`}
+        </div>`).join('')}
+      </div>` : emptyState({
+        icon: 'pulse',
+        title: '当前没有由工作台启动的程序',
+        sub: '从本项目软件里启动后，进程会出现在这里。这里不编造 CPU 或内存。',
+        primary: { act: 'project-tab', label: '本项目软件', ico: 'rocket', data: { v: 'software' } },
+        secondary: { act: 'import-launch', label: '导入程序', ico: 'link', data: { mode: 'shortcut' } }
+      })}
     </div>
 
     <div class="card panel" style="margin-bottom:var(--gap)">
@@ -1143,7 +1186,7 @@ function dockView() {
         ${quick.length ? `<button class="head-link" data-act="clear-quick">全部清空</button>` : ''}
       </div>
       <div class="quick-pool">
-        ${DB.apps.map(a => {
+        ${visible.map(a => {
           const on = quick.includes(a.n);
           return `<button class="quick-toggle${on ? ' on' : ''}" data-act="toggle-quick" data-n="${esc(a.n)}" title="${esc(a.path || '内置视图')}">
             ${on ? icon('check') : icon('plus')}<span>${esc(a.displayName || a.n)}</span>
@@ -1154,7 +1197,7 @@ function dockView() {
     </div>
 
     <div class="dock-grid">
-      ${DB.apps.map(a => {
+      ${visible.map(a => {
         const nm = esc(a.n);
         const mainBtn = a.kind === 'builtin'
           ? `<button class="btn sm primary" data-act="open-builtin" data-n="${nm}">${icon('globe')}打开</button>`
@@ -1164,7 +1207,7 @@ function dockView() {
               ? `<button class="btn sm" data-act="stop-app" data-n="${nm}">${icon('stop')}结束</button>`
               : `<button class="btn sm primary" data-act="launch-app" data-n="${nm}">${icon('play')}启动</button>`;
         const subBtns = [
-          (a.kind === 'exe' && a.run) ? `<button class="btn sm" data-act="bind-app" data-n="${nm}">${icon('link')}改绑定</button>` : '',
+          (a.kind === 'exe') ? `<button class="btn sm ghost" data-act="bind-app" data-n="${nm}">${icon('link')}改绑定</button>` : '',
           a.kind === 'exe' ? `<button class="btn sm ghost" data-act="set-app-path" data-n="${nm}" title="重新指定可执行文件">${icon('settings')}路径</button>` : '',
           a.source === 'imported' ? `<button class="btn sm ghost" data-act="remove-app" data-n="${nm}" title="从启动台移除">${icon('trash')}移除</button>` : ''
         ].filter(Boolean).join('');
@@ -1173,9 +1216,10 @@ function dockView() {
         <h4 title="${esc(a.displayName || a.n)}">${esc(a.displayName || a.n)}</h4>
         <div class="dk-path" title="${esc(a.path || '应用内视图')}">${esc(baseName(a.path) || (a.kind === 'builtin' ? '应用内视图' : '未配置路径'))}</div>
         <div class="dk-chips">
-          ${a.run
-            ? `<span class="chip emerald">${icon('pulse')}运行中 · ${esc((P(a.run) || {}).name || '—')}</span>`
+          ${a.run === true
+            ? `<span class="chip emerald">${icon('pulse')}运行中</span>`
             : `<span class="chip gray">${a.kind === 'builtin' ? '应用内视图' : a.kind === 'folder' ? '文件夹' : '未运行'}</span>`}
+          ${a.bound ? `<span class="chip accent">${esc(projName(P(a.bound)) || '已绑定')}</span>` : `<span class="chip gray">未绑定项目</span>`}
           ${a.source === 'imported' ? `<span class="chip violet">${icon('link')}导入</span>` : ''}
         </div>
         <div class="dk-foot">
@@ -1239,15 +1283,17 @@ function aiMessageHTML(m) {
 
 function aiEmptyState(p) {
   const samples = [
-    `把「${p.name}」下一步要做的事拆成 3 个任务`,
-    '列出所有进行中的任务，按截止时间排序',
-    '更新项目进度到 80%，并把当前阶段改成「多目标优化」',
-    '打开这个项目的材料文件夹'
+    `把「${projName(p)}」下一步要做的事拆成 3 个任务`,
+    '列出所有进行中的任务，按截止时间排序'
   ];
   return `<div class="ai-empty">
-    ${icon('sparkles')}
-    <div class="ai-empty-title">用自然语言管理项目</div>
-    <div class="ai-empty-sub">AI 会先读取项目现状，再调用工具真实修改数据 —— 改动立即落盘，可在其它页面看到</div>
+    ${emptyState({
+      icon: 'sparkles',
+      title: '用自然语言管理这个项目',
+      sub: '助手先读项目现状，再调用工具改数据。写操作会落盘，也能撤销。',
+      primary: { act: 'ai-sample', label: '拆 3 个任务', ico: 'plus', data: { text: samples[0] } },
+      secondary: { act: 'ai-mode', label: '去派任务', ico: 'send', data: { v: 'assign' } }
+    })}
     <div class="ai-samples">
       ${samples.map(s => `<button class="ai-sample" data-act="ai-sample" data-text="${esc(s)}">${esc(s)}</button>`).join('')}
     </div>
@@ -1287,16 +1333,12 @@ function aiView() {
   return `<div class="fade-in">
     <div class="page-head">
       <h2>AI 助手</h2>
-      <span class="page-sub">用自然语言管理「${esc(p.name)}」</span>
+      <span class="page-sub">聊天 · ${esc(projName(p))}</span>
       <span class="ph-right">
         <select class="select" data-act="ai-switch-project" title="切换 AI 操作的项目">
-          ${DB.projects.map(x => `<option value="${x.id}"${x.id === p.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}
+          ${DB.projects.map(x => `<option value="${x.id}"${x.id === p.id ? ' selected' : ''}>${esc(projName(x))}</option>`).join('')}
         </select>
-        <div class="seg">
-          <button class="active" data-act="ai-mode" data-v="chat">聊天</button>
-          <button data-act="ai-mode" data-v="assign">派任务</button>
-          <button data-act="ai-mode" data-v="browser">浏览</button>
-        </div>
+        ${aiModeSeg('chat')}
         <button class="btn sm" data-act="ai-config">${icon('settings')}模型设置</button>
         <button class="btn sm" data-act="ai-clear">${icon('trash')}清空会话</button>
       </span>
@@ -1374,7 +1416,12 @@ function browserChromeHTML() {
   const active = Math.max(0, Math.min(state.webActive, pages.length - 1));
   const page = pages[active] || pages[0];
   const nav = state.webNav || {};
-  return `<div class="browser-tabs">
+  return `<div class="page-head browser-mode-head">
+      <h2>AI 助手</h2>
+      <span class="page-sub">浏览</span>
+      <span class="ph-right">${aiModeSeg('browser')}</span>
+    </div>
+    <div class="browser-tabs">
       ${pages.map((t, i) => `<button class="btab ${i === active ? 'active' : ''}" data-act="web-tab" data-idx="${i}" title="${esc(t.url || '起始页')}">
         ${icon('globe')}<span class="t">${esc(t.title || '新标签页')}</span>
         <span class="x" data-act="web-tab-close" data-idx="${i}" title="关闭标签">${icon('x')}</span>
@@ -1870,7 +1917,7 @@ function settingsView() {
       ['版本', '当前软件版本', (() => {
         const u = state.update || {};
         const chip = u.portable ? '<span class="chip gray" style="font-size:9px;padding:1px 5px">便携版</span>' : '';
-        return `<span class="row" style="gap:6px"><span class="set-path" style="max-width:150px">v${esc(u.version || '2.8.7')} Desktop</span>${chip}</span>`;
+        return `<span class="row" style="gap:6px"><span class="set-path" style="max-width:150px">v${esc(u.version || '3.0.0')} Desktop</span>${chip}</span>`;
       })()],
       ['检查更新', '从更新源拉取版本清单，只下载约 1MB 的应用资源增量包；替换在软件关闭后自动完成并重启', (() => {
         const u = state.update || {};
@@ -1925,7 +1972,7 @@ function settingsView() {
    ========================================================================== */
 /* Sprint A：侧栏只留个人每周会用的入口（时间线/自动化/任务中心/Agent 中心/启动台/浏览器已并入） */
 const NAV = [
-  ['home', 'grid', '项目'],
+  ['home', 'grid', '首页'],
   ['knowledge', 'book', '知识库'],
   ['ai', 'sparkles', 'AI 助手'],
   ['settings', 'settings', '设置']
@@ -1977,9 +2024,9 @@ function renderSidebar() {
   return `<aside class="sidebar">
     <div class="brand">
       <span class="brand-mark">${icon('flask')}</span>
-      <div class="brand-text"><h1>个人科研工作台</h1><p>RESEARCH OS</p></div>
+      <div class="brand-text"><h1>个人科研工作台</h1></div>
     </div>
-    <nav>${NAV.map(([k, i, l]) => `<button class="nav-item ${state.route === k ? 'active' : ''}" data-route="${k}">
+    <nav>${NAV.map(([k, i, l]) => `<button class="nav-item ${(state.route === k || (k === 'ai' && state.route === 'browser')) ? 'active' : ''}" data-route="${k}">
       ${icon(i)}<span>${l}</span>
       ${badges[k] ? `<span class="nav-badge">${badges[k]}</span>` : ''}
     </button>`).join('')}</nav>
@@ -2016,7 +2063,7 @@ function buildNotifications() {
 function renderTopbar() {
   const stats = [
     ['tasks', 'linear-gradient(135deg,#E0668E,#B01E58)', `${DB.todos.filter(t => !t.done).length}`, '今日待办'],
-    ['grid', 'linear-gradient(135deg,#8A7ED6,#5B4C9E)', `${DB.projects.length}`, '进行中项目'],
+    ['grid', 'linear-gradient(135deg,#8A7ED6,#5B4C9E)', `${DB.projects.length}`, '项目'],
     ['bot', 'linear-gradient(135deg,#4E88C0,#2A5C8C)', `${DB.agents.filter(a => a.status !== 'idle').length}`, '运行Agent']
   ];
   const hasAlert = buildNotifications().some(n => n.alert);
@@ -2069,7 +2116,7 @@ function renderStatusbar() {
   return `<footer class="statusbar">
     ${FRESH_PREVIEW ? `<span class="sb-item" title="这是预览窗口：数据写在临时目录，关闭后自动删除">
       <span class="sb-dot" style="background:#AD5700"></span><b>全新安装预览</b><span class="k sb-hide-sm">临时数据</span></span>` : ''}
-    <span class="sb-item"><span class="sb-dot" style="background:#C9256B"></span><span class="k sb-hide-sm">当前工作区：</span><b>${esc(w.project || '—')}</b></span>
+    <span class="sb-item"><span class="sb-dot" style="background:#C9256B"></span><span class="k sb-hide-sm">当前工作区：</span><b>${esc(projName(P(state.project)) || w.project || '—')}</b></span>
     <span class="sb-item"><span class="k sb-hide-sm">运行：</span>${w.running.length
       ? w.running.map(n => `<button class="sb-run-chip" data-act="focus-app" data-n="${esc(n)}">${appTile(n, 13)}${esc(n)}</button>`).join('')
       : '<span class="muted">无</span>'}</span>

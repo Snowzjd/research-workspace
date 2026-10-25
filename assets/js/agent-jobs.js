@@ -333,26 +333,19 @@ function aiAssignView() {
       <h2>派任务</h2>
       <span class="page-sub">${agents.length} 名员工${pending ? ` · ${pending} 个在跑` : ''} · 与聊天共用同一接入配置</span>
       <span class="ph-right">
-        <div class="seg">
-          <button data-act="ai-mode" data-v="chat">聊天</button>
-          <button class="active" data-act="ai-mode" data-v="assign">派任务</button>
-          <button data-act="ai-mode" data-v="browser">浏览</button>
-        </div>
+        ${aiModeSeg('assign')}
         <button class="btn sm" data-act="new-agent">${icon('plus')}新建 Agent</button>
         <button class="btn sm" data-act="goto-agents">${icon('settings')}管理员工</button>
       </span>
     </div>
 
-    ${!agents.length ? `<div class="card panel welcome">
-      <div class="wl-hero">
-        <span class="wl-ico">${icon('bot')}</span>
-        <h2>还没有员工</h2>
-        <p>新建一个 Agent，它就会成为这里的员工，可以单独派活。</p>
-        <div class="row" style="justify-content:center;margin-top:16px">
-          <button class="btn primary" data-act="new-agent">${icon('plus')}新建第一个 Agent</button>
-        </div>
-      </div>
-    </div>` : `<div class="staff-board">
+    ${!agents.length ? emptyState({
+      icon: 'bot',
+      title: '还没有员工',
+      sub: '新建一个 Agent，它就会出现在这里，可以单独派活。和聊天共用同一套接入配置。',
+      primary: { act: 'new-agent', label: '新建第一个 Agent', ico: 'plus' },
+      secondary: { act: 'ai-mode', label: '回到聊天', ico: 'sparkles', data: { v: 'chat' } }
+    }) : `<div class="staff-board">
       ${agents.map(a => {
         const running = jobRunning(a.name);
         const st = agentStaffStats(a.name);
@@ -392,7 +385,7 @@ function aiAssignView() {
       }).join('')}
     </div>
     ${p ? `<div class="field-hint" style="margin-top:12px;text-align:center">
-      派单默认归属当前项目「${esc(p.name)}」，可在派单窗里改；产出会存进该项目的 写作/ 目录</div>` : ''}`}
+      派单默认归属当前项目「${esc(projName(p))}」，可在派单窗里改；产出会存进 <span class="mono">${esc((p.folder || p.name))}/写作/</span></div>` : ''}`}
 
     <div class="card panel" style="margin-top:var(--gap)">
       <div class="panel-head"><h3>${icon('clock')}全部任务</h3><span class="head-sub">${jobsAll().length} 条</span></div>
