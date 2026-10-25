@@ -236,11 +236,12 @@ function projectCard(p, big) {
   const name = projName(p);
   const openTasks = DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length;
   const openLabel = incompleteLabel(openTasks);
-  const done = p.nodes.filter(n => n.s !== 'todo').length;
-  const fill = p.nodes.length > 1 ? Math.max(0, (done - 1) / (p.nodes.length - 1) * 100) : 100;
+  const nodes = Array.isArray(p.nodes) ? p.nodes : [];
+  const done = nodes.filter(n => n.s !== 'todo').length;
+  const fill = nodes.length > 1 ? Math.max(0, (done - 1) / (nodes.length - 1) * 100) : 100;
   const lastAct = (DB.activities || []).find(a => String(a.text || '').includes(p.name));
 
-  return `<article class="card proj-card ${state.project === p.id ? 'selected' : ''}" data-project="${p.id}" title="点击进入项目">
+  return `<article class="card proj-card ${state.project === p.id ? 'selected' : ''}" data-project="${p.id}" title="点击查看这个项目">
     <div class="proj-card-head">
       <div class="grow" style="min-width:0">
         <h4>${esc(name)}</h4>
@@ -267,7 +268,7 @@ function projectCard(p, big) {
 
     <div class="stepper">
       <span class="step-line"><i style="width:${fill}%"></i></span>
-      ${p.nodes.map(n => `<span class="step ${n.s !== 'todo' ? 'done' : ''}"><span class="node"></span><span class="lbl">${esc(n.l)}</span></span>`).join('')}
+      ${nodes.map(n => `<span class="step ${n.s !== 'todo' ? 'done' : ''}"><span class="node"></span><span class="lbl">${esc(n.l)}</span></span>`).join('')}
     </div>
     ${big ? `<div class="row mt-10" style="gap:6px;flex-wrap:wrap">
         ${(p.agents || []).filter(n => DB.agents.some(a => a.name === n))
@@ -283,7 +284,11 @@ function projectCard(p, big) {
    项目详情
    ========================================================================== */
 function detailCard(p) {
-  const agent = p.owner.agent;
+  const owner = p.owner || { n: '—', r: '', agent: '' };
+  const agent = owner.agent || '';
+  const tags = Array.isArray(p.tags) ? p.tags : [];
+  const members = Array.isArray(p.members) ? p.members : [];
+  const tools = Array.isArray(p.tools) ? p.tools : [];
   const fileCount = materialsIn(p.id).length;
   return `<div class="card panel">
     <div class="detail-hero">
@@ -299,9 +304,9 @@ function detailCard(p) {
         </div>
         <p class="detail-sub">${esc(p.goal)}</p>
         <div class="detail-meta">
-          ${p.tags.map(t => `<span class="meta-pill">${icon('target')}${esc(t)}</span>`).join('')}
-          <span class="meta-pill">${icon('calendar')}<b>${esc(p.period)}</b></span>
-          <span class="meta-pill">${icon('user')}<b>${p.members.length} 人</b> · ${p.members.map(m => esc(m.n)).join(' / ')}</span>
+          ${tags.map(t => `<span class="meta-pill">${icon('target')}${esc(t)}</span>`).join('')}
+          <span class="meta-pill">${icon('calendar')}<b>${esc(p.period || '—')}</b></span>
+          <span class="meta-pill">${icon('user')}<b>${members.length} 人</b> · ${members.map(m => esc(m.n)).join(' / ')}</span>
           <span class="meta-pill">${icon('folder')}<b>${projectFolderCount(p.id)} 个材料目录</b> · ${fileCount} 个文件</span>
           ${p.next ? `<span class="meta-pill">${icon('chevronRight')}下一步 <b>${esc(p.next)}</b></span>` : ''}
         </div>
@@ -352,8 +357,8 @@ function detailCard(p) {
       <div>
         <h5>负责人 / Agent</h5>
         <div class="owner-row">
-          <span class="avatar">${esc(p.owner.n.slice(0, 1))}</span>
-          <div><div class="o-name">${esc(p.owner.n)}</div><div class="o-sub">${esc(p.owner.r)}</div></div>
+          <span class="avatar">${esc(String(owner.n || '—').slice(0, 1))}</span>
+          <div><div class="o-name">${esc(owner.n || '—')}</div><div class="o-sub">${esc(owner.r || '')}</div></div>
           <span class="grow"></span>
           <span class="agent-chip">${agentTile(agent, 22)}<span>${esc(agent)}</span></span>
         </div>
@@ -361,7 +366,7 @@ function detailCard(p) {
       <div>
         <h5>涉及软件</h5>
         <div class="row" style="flex-wrap:wrap;gap:6px">
-          ${p.tools.map(t => `<span class="chip gray">${appTile(t, 13)}${esc(t)}</span>`).join('')}
+          ${tools.map(t => `<span class="chip gray">${appTile(t, 13)}${esc(t)}</span>`).join('')}
         </div>
         <div class="row mt-10"><span class="mono muted" style="font-size:9.5px">${esc(p.git)}</span></div>
       </div>
@@ -636,7 +641,169 @@ function homeView() {
       primary: { act: 'new-project', label: '新建项目', ico: 'plus' },
       secondary: { act: 'open-root-folder', label: '打开工作区', ico: 'folderOpen' }
     })}
+    ${homeProjectPreview(P(state.project) || list[0] || DB.projects[0])}
   </div>`;
+}
+
+/* 首页选中项目后，内容直接铺在卡片下面，不另开一页。 */
+function showProjectOnHome(id) {
+  const p = P(id);
+  if (!p) return false;
+  state.project = p.id;
+  if (DB.workspace) DB.workspace.project = projName(p);
+  state.projectTab = 'overview';
+  state.route = 'home';
+  return true;
+}
+
+/* 首页预览只放项目级事实。阶段在右侧流程里，这里不重复。 */
+function previewFactsHTML(p) {
+  const tags = Array.isArray(p.tags) ? p.tags : [];
+  const goal = String(p.goal || '').trim();
+  const intro = String(p.subtitle || p.intro || '').trim();
+  const period = String(p.period || '').trim();
+  const showPeriod = period && period !== '—';
+  const showIntro = intro && intro !== goal;
+  const progress = Number(p.progress) || 0;
+  return `<div class="card panel" id="preview-facts">
+    <div class="panel-head">
+      <h3>${icon('grid')}项目详情</h3>
+      <span class="head-sub">${esc(projName(p))}</span>
+      <span class="grow"></span>
+      <button class="btn sm" data-act="edit-project" data-id="${p.id}">${icon('pencil')}编辑</button>
+      <button class="btn sm primary" data-act="project-open" data-id="${p.id}">${icon('grid')}项目页</button>
+    </div>
+    <p class="detail-sub">${goal ? esc(goal) : '还没填写项目目标'}</p>
+    <div class="detail-meta">
+      ${showIntro ? `<span class="meta-pill">${icon('file')}${esc(intro)}</span>` : ''}
+      ${showPeriod ? `<span class="meta-pill">${icon('calendar')}<b>${esc(period)}</b></span>` : ''}
+      <span class="meta-pill">${icon('pulse')}进度 <b>${progress}%</b></span>
+      ${tags.map(t => `<span class="meta-pill">${icon('target')}${esc(t)}</span>`).join('')}
+    </div>
+    <div class="row mt-10" style="gap:9px">
+      <span class="bar" style="flex:1"><i style="width:${progress}%"></i></span>
+    </div>
+    <div class="row mt-10" style="gap:5px">
+      ${icon('folder', 'color:var(--text-4);width:11px;height:11px')}
+      <span class="mono muted" style="font-size:9.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(projectDir(p))}</span>
+    </div>
+  </div>`;
+}
+
+function outputKindOf(d) {
+  const blob = `${d && d.type || ''} ${d && d.kind || ''}`;
+  if (/专利|patent/i.test(blob)) return '专利';
+  if (/综述|review/i.test(blob)) return '综述';
+  if (/论文|paper/i.test(blob)) return '论文';
+  return '';
+}
+
+function projectOutputDocs(p) {
+  const roots = [p.folder || p.name, p.name].filter((v, i, arr) => v && arr.indexOf(v) === i);
+  return (DB.kbDocs || []).filter(d => {
+    if (!outputKindOf(d)) return false;
+    const file = String(d.file || '');
+    if (!file) return false;
+    if (d.p === p.id || d.projectId === p.id) return true;
+    return roots.some(r => file.startsWith(r + '/') || file.includes('/' + r + '/'));
+  });
+}
+
+function projectFeed(p) {
+  const items = [];
+  const seen = new Set();
+  const push = (key, item) => { if (!seen.has(key)) { seen.add(key); items.push(item); } };
+  const jobs = (DB.agentJobs || []).filter(j => j && j.projectId === p.id);
+  jobs.filter(j => j.status === 'running' || j.status === 'queued').forEach(j => {
+    push('job:' + j.id, {
+      kind: j.status === 'running' ? '执行中' : '排队中',
+      text: `${j.agent || 'Agent'} · ${j.task || '未填写任务'}`,
+      act: 'job-view', id: j.id, at: j.startedAt || j.createdAt || 0
+    });
+  });
+  (DB.tasks || []).filter(t => t && t.p === p.id && (t.st === 'doing' || t.st === 'review')).forEach(t => {
+    const idx = DB.tasks.indexOf(t);
+    push('task:' + (t.id || idx), {
+      kind: t.st === 'review' ? '待复核' : '进行中',
+      text: `${t.agent ? t.agent + ' · ' : ''}${t.t || '未命名任务'}`,
+      act: 'open-task', idx, time: t.due || '', at: 0
+    });
+  });
+  jobs.filter(j => j.status === 'done' || j.status === 'failed').forEach(j => {
+    push('jobdone:' + j.id, {
+      kind: j.status === 'done' ? 'Agent 完成' : 'Agent 未完成',
+      text: `${j.agent || 'Agent'} · ${j.task || '未填写任务'}`,
+      act: 'job-view', id: j.id, at: j.finishedAt || j.createdAt || 0
+    });
+  });
+  const names = [projName(p), p.name, p.displayName, p.folder].filter((v, i, arr) => v && arr.indexOf(v) === i);
+  const titles = (DB.tasks || []).filter(t => t && t.p === p.id).map(t => String(t.t || '')).filter(t => t.length >= 4);
+  (DB.activities || []).forEach((a, idx) => {
+    if (!a || ACTIVITY_NOISE_KIND.has(a.kind)) return;
+    const plain = String(a.t || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    if (!plain || ACTIVITY_NOISE_TEXT.test(plain)) return;
+    const hit = names.some(n => plain.includes(n)) || titles.some(title => plain.includes(title));
+    if (!hit) return;
+    if (a.kind === 'agent' && jobs.some(j => j.agent && plain.includes(j.agent) && j.task && plain.includes(String(j.task).slice(0, 12)))) return;
+    push('act:' + idx, { kind: '变更', text: plain, act: 'activity-view', idx, time: a.time || '', at: a.at || 0 });
+  });
+  const activeKind = new Set(['执行中', '排队中', '进行中', '待复核']);
+  const byRecent = (a, b) => (b.at || 0) - (a.at || 0);
+  const active = items.filter(i => activeKind.has(i.kind)).sort(byRecent).slice(0, 3);
+  const rest = items.filter(i => !activeKind.has(i.kind)).sort(byRecent).slice(0, 3);
+  return active.concat(rest);
+}
+
+function previewFeedHTML(p) {
+  const rows = projectFeed(p).map(it => {
+    const data = it.act === 'job-view'
+      ? ` data-id="${esc(it.id || '')}"`
+      : ` data-idx="${it.idx}"`;
+    return `<button class="activity-row activity-btn" data-act="${it.act}"${data}>
+      <span class="chip gray">${esc(it.kind)}</span>
+      <span class="a-txt">${esc(it.text)}</span>
+      <span class="a-time">${esc(it.time || '')}</span>
+    </button>`;
+  }).join('');
+  return `<div class="card panel" id="preview-feed">
+    <div class="panel-head"><h3>${icon('pulse')}最近动态</h3>
+      <span class="head-sub">谁改了什么、谁在跑、卡在哪</span></div>
+    ${rows ? `<div class="activity-list">${rows}</div>` : emptyState({
+      icon: 'pulse',
+      title: '还没有这个项目的动态',
+      sub: '改任务、流程或文稿，以及 Agent 开始跑、跑完或卡住时，会记在这里。',
+      primary: { act: 'new-task', label: '新建任务', ico: 'plus', data: { p: p.id } },
+      secondary: { act: 'ai-open-project', label: '让助手推进', ico: 'sparkles', data: { id: p.id } }
+    })}
+  </div>`;
+}
+
+function previewOutputsHTML(p) {
+  const rows = projectOutputDocs(p).slice(0, 6).map(d => `<button class="activity-row activity-btn" data-act="proj-open-doc" data-file="${esc(d.file)}">
+      <span class="chip gray">${esc(outputKindOf(d))}</span>
+      <span class="a-txt">${esc(d.n || d.file)}</span>
+      <span class="a-time">${esc(d.date || '')}</span>
+    </button>`).join('');
+  return `<div class="card panel" id="preview-outputs">
+    <div class="panel-head"><h3>${icon('pencil')}产出物快览</h3>
+      <span class="head-sub">论文 / 综述 / 专利，点开即打开</span></div>
+    ${rows ? `<div class="activity-list">${rows}</div>` : emptyState({
+      icon: 'pencil',
+      title: '还没有论文、综述或专利',
+      sub: '写作任务把成稿存进项目的写作目录后，点一条就能打开文件。',
+      primary: { act: 'ai-mode', label: '去派写作', ico: 'send', data: { v: 'assign' } },
+      secondary: { act: 'open-project-folder', label: '打开项目目录', ico: 'folderOpen', data: { id: p.id } }
+    })}
+  </div>`;
+}
+
+function homeProjectPreview(p) {
+  if (!p) return '';
+  return `<div class="detail-grid" id="project-preview" style="margin-top:var(--gap)">
+      <div class="detail-main">${previewFactsHTML(p)}</div>
+      <div class="detail-side">${flowCard(p)}</div>
+    </div>
+    <div class="bottom-grid bottom-grid-2">${previewFeedHTML(p)}${previewOutputsHTML(p)}</div>`;
 }
 
 /* ==========================================================================
@@ -1917,7 +2084,7 @@ function settingsView() {
       ['版本', '当前软件版本', (() => {
         const u = state.update || {};
         const chip = u.portable ? '<span class="chip gray" style="font-size:9px;padding:1px 5px">便携版</span>' : '';
-        return `<span class="row" style="gap:6px"><span class="set-path" style="max-width:150px">v${esc(u.version || '3.0.0')} Desktop</span>${chip}</span>`;
+        return `<span class="row" style="gap:6px"><span class="set-path" style="max-width:150px">v${esc(u.version || '3.1.0')} Desktop</span>${chip}</span>`;
       })()],
       ['检查更新', '从更新源拉取版本清单，只下载约 1MB 的应用资源增量包；替换在软件关闭后自动完成并重启', (() => {
         const u = state.update || {};

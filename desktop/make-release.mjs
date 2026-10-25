@@ -22,7 +22,7 @@ if (!fs.existsSync(path.join(appDir, 'package.json'))) {
   process.exit(1);
 }
 
-const pkg = JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8'));
+const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const v = pkg.version;
 const updateName = `app-update-${v}.zip`;
 /* 完整包用固定文件名：latest/download/<固定名> 永远指向最新版，安装脚本不用改 */

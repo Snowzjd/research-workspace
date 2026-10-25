@@ -884,15 +884,12 @@ document.addEventListener('click', async e => {
   /* 路由 */
   if (t.dataset.route && !t.dataset.act) { go(t.dataset.route); return; }
 
-  /* 项目卡片的主路径是进入项目。次要操作在卡片上的「⋯」里。 */
+  /* 项目卡片：就地选中，内容预览留在首页。次要操作在「⋯」里，完整项目页走「项目页」。 */
   if (t.dataset.project && !t.dataset.act) {
-    const p = P(t.dataset.project);
-    if (!p) return;
-    state.project = p.id;
-    DB.workspace.project = projName(p);
-    state.projectTab = 'overview';
-    persist();
-    go('project');
+    if (!showProjectOnHome(t.dataset.project)) return;
+    go('home');
+    const preview = document.getElementById('project-preview');
+    if (preview && preview.scrollIntoView) preview.scrollIntoView({ block: 'nearest' });
     return;
   }
 
