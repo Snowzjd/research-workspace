@@ -272,6 +272,11 @@ const Bridge = {
     if (!this.desktop) return { ok: false, error: '外部 RAG 需要桌面端运行。' };
     return await window.workspace.ragSearch(cfg);
   },
+  async ragAsk(cfg) {
+    if (!this.desktop) return { ok: false, error: '外部 RAG 需要桌面端运行（问答由主进程转发，页面不直接请求知识库端口）。' };
+    if (typeof window.workspace.ragAsk !== 'function') return { ok: false, error: '当前桌面桥没有 ragAsk' };
+    return await window.workspace.ragAsk(cfg);
+  },
   async ragReindex(cfg) {
     if (!this.desktop) return { ok: false, error: '外部 RAG 需要桌面端运行。' };
     return await window.workspace.ragReindex(cfg);

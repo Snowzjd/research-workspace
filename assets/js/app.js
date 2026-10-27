@@ -19,8 +19,8 @@ const state = {
   kbCat: 'all', setTab: 'general',
   search: '', q: '',
   /* 外部 RAG 检索的运行时状态（不入库，只反映本次会话的最新探测/检索结果） */
-  rag: { status: 'unknown', indexed: 0, model: '', error: '' },
-  ragResults: null, ragMeta: null, ragBusy: false,
+  rag: { status: 'unknown', indexed: 0, docs: 0, chunks: 0, model: '', askMode: '', error: '' },
+  ragResults: null, ragMeta: null, ragAnswer: null, ragBusy: false, ragOp: '',
   ragToken: { stored: false, encrypted: false },
   /* 备份状态（仅本会话，来自主进程的实际文件列表） */
   backup: { count: 0, latest: null, items: [], dir: '', keep: 7 },
@@ -994,24 +994,40 @@ function timelineView() {
 /* ==========================================================================
    视图：知识库
    ========================================================================== */
+function ragScoreText(score, snowz) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return '';
+  if (snowz) {
+    const s = n.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    return s || '0';
+  }
+  if (n >= 0 && n <= 1) return Math.round(n * 100) + '%';
+  return n.toFixed(2);
+}
+
 function knowledgeView() {
   const cats = [['all', '全部'], ['论文', '论文'], ['报告', '报告'], ['专利', '专利'], ['数据', '数据'], ['代码', '代码']];
   const S = DB.settings;
-  const ragOn = !!S.ragEnabled;
+  const cfg = (typeof ragClientConfig === 'function') ? ragClientConfig(S) : { engine: S.kbEngine || 'builtin', endpoint: S.ragEndpoint || '', snowz: false, external: !!S.ragEnabled };
+  const ragOn = !!S.ragEnabled || cfg.snowz;
   const rs = state.rag || {};
   const q = state.q;
   const hits = state.ragResults;
+  const engine = cfg.engine;
+  const snowz = !!cfg.snowz;
 
   /* 两种数据来源：外部 RAG 返回的原文片段，或本地资料清单。
-     mode 决定界面上显示的通道说明，避免把"名称匹配"说成语义检索。 */
+     mode 决定界面上显示的通道说明，避免把名称匹配或全文检索说成向量检索。 */
   let docs, mode;
   if (Array.isArray(hits)) {
     mode = 'rag';
     docs = hits.map((h, i) => ({
-      n: h.title, type: h.docType || '资料', ext: h.ext || 'pdf',
-      score: h.score, snippet: h.snippet, path: h.path, page: h.page, _i: i
+      n: h.title, type: h.docType || '资料', docType: h.docType || '', ext: h.ext || 'txt',
+      score: h.score, snippet: h.snippet || h.text || '',
+      path: h.source_relative_path || h.path || '',
+      page: h.page, blockIds: h.block_ids || [], _i: i
     }));
-    if (state.kbCat !== 'all') docs = docs.filter(d => !d.docType || d.type === state.kbCat);
+    if (state.kbCat !== 'all') docs = docs.filter(d => !d.docType || d.docType === state.kbCat);
   } else {
     mode = q ? 'name' : 'list';
     docs = DB.kbDocs.filter(d => state.kbCat === 'all' || d.type === state.kbCat);
@@ -1024,26 +1040,34 @@ function knowledgeView() {
   DB.kbDocs.forEach(d => { byType[d.type] = (byType[d.type] || 0) + 1; });
   const recent = DB.kbDocs.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 3);
 
+  const connected = ragOn && rs.status === 'ok';
   const ragChip = !Bridge.desktop
     ? `<span class="chip gray">需桌面端</span>`
     : !ragOn
       ? `<span class="chip gray">未启用</span>`
       : rs.status === 'ok'
-        ? `<span class="chip emerald">已连接${rs.indexed ? ' · 向量索引 ' + rs.indexed + ' 条' : ' · 向量索引 0 条'}</span>`
+        ? (snowz
+          ? `<span class="chip emerald">已连接 · 文档 ${rs.docs || 0} · 片段 ${rs.chunks || 0}</span>`
+          : `<span class="chip emerald">已连接${rs.indexed ? ' · 向量索引 ' + rs.indexed + ' 条' : ' · 向量索引 0 条'}</span>`)
         : rs.status === 'fail'
           ? `<span class="chip rose">连接失败</span>`
           : `<span class="chip amber">未检测</span>`;
 
-  const modeLabel = { rag: '语义检索', name: '名称匹配', list: '资料清单' }[mode];
-  /* 引擎徽章：builtin 只做名称匹配，indexed 保持 0，避免把登记条数说成向量索引 */
-  const engine = (DB.settings.kbEngine) || (ragOn ? 'http' : 'builtin');
-  const vectorOn = (engine === 'http' || engine === 'rag_snowz') && ragOn && rs.status === 'ok';
+  const modeLabel = mode !== 'rag'
+    ? { name: '名称匹配', list: '资料清单' }[mode]
+    : (state.ragAnswer ? '抽取式问答' : (snowz ? '全文检索' : '语义检索'));
+  /* builtin 的向量索引保持 0。RAG_Snowz 展示文档数与片段数，不叫向量索引。 */
+  const vectorOn = engine === 'http' && ragOn && rs.status === 'ok';
   const indexedN = vectorOn ? (rs.indexed || 0) : 0;
-  const sub = vectorOn
-    ? `外部检索 · 向量索引 ${indexedN} 条`
-    : `登记 ${total} 条 · 按名称匹配 · 没有向量索引`;
+  const sub = snowz
+    ? (connected
+      ? `RAG_Snowz · 文档 ${rs.docs || 0} · 片段 ${rs.chunks || 0}`
+      : `RAG_Snowz · ${esc(S.ragEndpoint || 'http://127.0.0.1:8765')}`)
+    : vectorOn
+      ? `外部检索 · 向量索引 ${indexedN} 条`
+      : `登记 ${total} 条 · 按名称匹配 · 没有向量索引`;
   const ENGINE_LABEL = { builtin: '内置引擎', http: 'HTTP 引擎', rag_snowz: 'RAG_Snowz', none: '未启用引擎' };
-  const engineChip = `<span class="chip ${engine === 'none' ? 'gray' : (ragOn && rs.status === 'ok' ? 'emerald' : 'sky')}">
+  const engineChip = `<span class="chip ${engine === 'none' ? 'gray' : (connected ? 'emerald' : 'sky')}">
     ${esc(ENGINE_LABEL[engine] || engine)}</span>`;
 
   return `<div class="fade-in">
@@ -1052,13 +1076,15 @@ function knowledgeView() {
       <span class="page-sub">${engineChip} ${sub}</span>
       <span class="ph-right">
         <button class="btn sm" data-act="kb-import">${icon('inbox')}导入资料</button>
-        ${vectorOn
-          ? `<button class="btn sm primary" data-act="kb-reindex">${icon('refresh')}重建索引</button>`
-          : `<button class="btn sm" disabled title="内置登记只按名称匹配，没有向量索引可重建">没有向量索引</button>`}
+        ${snowz
+          ? `<button class="btn sm" data-act="rag-test">${icon('pulse')}测试连接</button>`
+          : vectorOn
+            ? `<button class="btn sm primary" data-act="kb-reindex">${icon('refresh')}重建索引</button>`
+            : `<button class="btn sm" disabled title="内置登记只按名称匹配，没有向量索引可重建">没有向量索引</button>`}
       </span>
     </div>
 
-    ${(total === 0 && !q) ? `<div class="today-bar" style="border-left-color:var(--accent-500,#3E63DD)">
+    ${(total === 0 && !q && !snowz) ? `<div class="today-bar" style="border-left-color:var(--accent-500,#3E63DD)">
       <span class="tb-ico">${icon('folder')}</span>
       <b>知识库还是空的</b>
       <span class="tb-list">把论文 / 报告 / 数据说明放进「知识库材料」文件夹，再点「重建索引」即可被检索</span>
@@ -1066,13 +1092,29 @@ function knowledgeView() {
       <button class="btn sm primary" data-act="kb-import">${icon('inbox')}导入资料</button>
       <button class="btn sm" data-act="kb-open-materials">${icon('folderOpen')}打开材料夹</button>
     </div>` : ''}
+    ${(snowz && !q && !Array.isArray(hits)) ? `<div class="today-bar" style="border-left-color:var(--accent-500,#3E63DD)">
+      <span class="tb-ico">${icon('sparkles')}</span>
+      <b>检索走本机 RAG_Snowz</b>
+      <span class="tb-list">主进程转发到 ${esc(cfg.endpoint || 'http://127.0.0.1:8765')} 的 /v1/search 与 /v1/ask。语料留在本机。</span>
+    </div>` : ''}
 
     <div class="kb-query">
       <span class="kq-ico">${icon('sparkles')}</span>
-      <input id="kb-input" value="${esc(state.q)}" placeholder="${ragOn ? '用自然语言检索你的科研知识库…（回车检索）' : '按资料名称检索…（未接入 RAG 时只能匹配名称）'}">
+      <input id="kb-input" value="${esc(state.q)}" placeholder="${snowz ? '检索或提问…（回车检索；提问走抽取式回答）' : (ragOn ? '用自然语言检索你的科研知识库…（回车检索）' : '按资料名称检索…（未接入 RAG 时只能匹配名称）')}">
       <span class="chip ${mode === 'rag' ? 'emerald' : 'gray'}">${modeLabel}</span>
-      <button class="btn primary sm" data-act="kb-search">${state.ragBusy ? '检索中…' : '检索'}</button>
+      <button class="btn primary sm" data-act="kb-search">${state.ragBusy && state.ragOp === 'search' ? '检索中…' : '检索'}</button>
+      ${snowz ? `<button class="btn sm" data-act="kb-ask">${state.ragBusy && state.ragOp === 'ask' ? '提问中…' : '提问'}</button>` : ''}
     </div>
+
+    ${state.ragAnswer ? `<div class="card panel kb-extract">
+      <div class="panel-head"><h3>${icon('sparkles')}抽取式回答</h3><span class="chip sky">不调用大模型</span></div>
+      <div class="kx-text">${esc(state.ragAnswer.text || '服务没有返回回答正文，下面是引用片段。')}</div>
+      ${(state.ragAnswer.citations || []).map((c, i) => `<div class="kb-cite" data-act="kb-open-hit" data-i="${i}">
+        <div class="kc-path">${esc(c.source_relative_path || c.path || '（无路径）')}</div>
+        <div class="kc-meta">${(c.block_ids && c.block_ids.length) ? '块 ' + esc(c.block_ids.slice(0, 6).join(', ')) : '无 block_ids'}${c.chunk_id ? ' · ' + esc(c.chunk_id) : ''}</div>
+        ${c.snippet || c.text ? `<div class="kc-meta">${esc(c.snippet || c.text)}</div>` : ''}
+      </div>`).join('')}
+    </div>` : ''}
 
     <div class="detail-grid">
       <div class="card panel">
@@ -1088,16 +1130,19 @@ function knowledgeView() {
               <span class="chip gray">${esc(d.type)}</span>
               <span class="grow"></span>
               ${mode === 'rag'
-                ? `<span class="chip accent">${Math.round((d.score || 0) * 100)}%</span>`
+                ? `<span class="chip accent">${esc(ragScoreText(d.score, snowz))}</span>`
                 : mode === 'name' ? `<span class="chip gray">名称命中</span>` : ''}
             </div>
             <h5>${esc(d.n)}</h5>
             ${d.snippet ? `<p class="dc-snippet">${esc(d.snippet)}</p>` : ''}
             <div class="dc-meta">
               ${mode === 'rag'
-                ? `<span>${d.page ? '第 ' + esc(String(d.page)) + ' 页' : '片段'}</span><span title="${esc(d.path)}">${esc(baseName(d.path) || '—')}</span>`
+                ? `<span class="dc-path" title="${esc(d.path)}">${esc(d.path || '无 source_relative_path')}</span>`
                 : `<span>${esc(d.size)}</span><span>${esc(d.date)}</span>`}
             </div>
+            ${mode === 'rag' && d.blockIds && d.blockIds.length
+              ? `<div class="dc-meta"><span>块 ${esc(d.blockIds.slice(0, 4).join(', '))}</span></div>`
+              : ''}
           </div>`).join('') || emptyState({
             icon: mode === 'name' ? 'search' : 'file',
             title: mode === 'name' ? '没有名称匹配的资料' : '还没有资料',
@@ -1115,14 +1160,18 @@ function knowledgeView() {
           <div class="panel-head"><h3>${icon('link')}检索通道</h3>${ragChip}</div>
           <div class="kb-answer">
             <div class="ka-step"><span class="num">1</span>${q ? `检索内容「${esc(q)}」` : '等待输入检索内容'}</div>
-            <div class="ka-step"><span class="num">2</span>${ragOn
-              ? `调用外部 RAG：<b>${esc(S.ragEndpoint)}</b>`
-              : '本地按资料名称匹配（本软件不做向量化）'}</div>
-            <div class="ka-step"><span class="num">3</span>${ragOn
-              ? `取回 Top ${esc(String(S.ragTopK || 8))} 片段，附原文路径与页码`
-              : `返回名称命中的 ${docs.length} 条资料`}</div>
+            <div class="ka-step"><span class="num">2</span>${snowz
+              ? `主进程转发 <b>${esc(cfg.endpoint)}</b> · /v1/${state.ragAnswer ? 'ask' : 'search'}`
+              : ragOn
+                ? `调用外部 RAG：<b>${esc(S.ragEndpoint)}</b>`
+                : '本地按资料名称匹配（本软件不做向量化）'}</div>
+            <div class="ka-step"><span class="num">3</span>${snowz
+              ? `返回 source_relative_path、block_ids、source_spans`
+              : ragOn
+                ? `取回 Top ${esc(String(S.ragTopK || 8))} 片段，附原文路径与页码`
+                : `返回名称命中的 ${docs.length} 条资料`}</div>
           </div>
-          ${mode === 'rag' && state.ragMeta ? `<div class="row mt-10" style="gap:6px">
+          ${mode === 'rag' && state.ragMeta ? `<div class="row mt-10" style="gap:6px;flex-wrap:wrap">
             ${state.ragMeta.tookMs ? `<span class="chip emerald">耗时 ${state.ragMeta.tookMs}ms</span>` : ''}
             <span class="chip sky">命中 ${docs.length}</span>
             ${state.ragMeta.model ? `<span class="chip violet">${esc(state.ragMeta.model)}</span>` : ''}
@@ -1140,9 +1189,11 @@ function knowledgeView() {
             ${Object.entries(byType).map(([k, v]) => `<div class="kbs-row"><span>${esc(k)}</span><b>${v}</b></div>`).join('')}
           </div>
           <div class="mt-10" style="font-size:10.5px;color:var(--text-3);line-height:1.7">
-            向量索引：${vectorOn
-              ? `<b>${indexedN}</b> 条（外部服务${rs.model ? ' · ' + esc(rs.model) : ''}）`
-              : '<b>0</b> 条（内置登记不做向量化）'}
+            ${snowz
+              ? `全文片段：<b>${connected ? (rs.chunks || 0) : 0}</b>${connected && rs.model ? ' · ' + esc(rs.model) : ''}。向量索引：<b>0</b>（RAG_Snowz 不做向量化）`
+              : `向量索引：${vectorOn
+                ? `<b>${indexedN}</b> 条（外部服务${rs.model ? ' · ' + esc(rs.model) : ''}）`
+                : '<b>0</b> 条（内置登记不做向量化）'}`}
           </div>
         </div>
 
@@ -1986,13 +2037,13 @@ function settingsView() {
         ${[['builtin', '内置（本地登记 + 名称检索）'], ['http', 'HTTP 引擎（外部服务）'], ['rag_snowz', 'RAG_Snowz（协同 @Snowsz）'], ['none', '关闭（仅文件名匹配）']]
           .map(([v, l]) => `<option value="${v}"${(DB.settings.kbEngine || 'builtin') === v ? ' selected' : ''}>${l}</option>`).join('')}
       </select>`],
-      ['引擎地址', 'HTTP 引擎的接口前缀（例如 http://127.0.0.1:8000），只填到前缀', (() => {
+      ['引擎地址', '只填基地址。RAG_Snowz 默认 http://127.0.0.1:8765，由主进程转发 /health、/v1/search、/v1/ask', (() => {
         const ep = DB.settings.ragEndpoint || '';
         const st = (state.rag && state.rag.status) || '';
         return `<span class="row" style="gap:6px">
           <span class="set-path" style="max-width:200px" title="${esc(ep)}">${esc(ep || '未配置')}</span>
           <button class="btn sm" data-act="rag-config">${icon('pencil')}${ep ? '修改' : '配置'}</button>
-          ${ep ? `<button class="btn sm" data-act="rag-reindex">${icon('refresh')}重建索引</button>` : ''}
+          ${ep && DB.settings.kbEngine !== 'rag_snowz' ? `<button class="btn sm" data-act="rag-reindex">${icon('refresh')}重建索引</button>` : ''}
           ${st === 'ok' ? `<span class="chip green">已连接</span>` : (st === 'fail' ? `<span class="chip red">连接失败</span>` : '')}
         </span>`;
       })()]
@@ -2059,9 +2110,14 @@ function settingsView() {
       })()],
       ['交接单（Markdown）', '把项目阶段、正在做的任务、下一步计划整理成一份文档，交给别人看或喂给 AI', `<button class="btn sm" data-act="handoff-doc">${icon('md')}导出交接单</button>`],
       ['从备份恢复', '用历史副本覆盖当前数据（会二次确认）', `<span class="row" style="gap:6px"><button class="btn sm" data-act="backup-list">${icon('refresh')}查看备份</button><button class="btn sm" data-act="backup-dir">${icon('folderOpen')}备份目录</button></span>`],
-      ['外部 RAG 检索', '启用后知识库检索走你自建的 RAG 服务；未启用时只按资料名称匹配', sw('ragEnabled', S.ragEnabled)],
-      ['RAG 服务地址', '接口基地址，软件按 /health、/search、/reindex 三个端点调用', `<span class="row" style="gap:6px"><span class="set-path" title="${esc(S.ragEndpoint || '')}">${esc(S.ragEndpoint || '未设置')}</span><button class="btn sm" data-act="rag-config">${icon('pencil')}编辑</button></span>`],
-      ['RAG 访问令牌', '服务需要鉴权时填 Bearer 令牌；加密保存在本地，不写入数据文件', (() => {
+      ['外部 RAG 检索', '启用后知识库检索走本机或自建 RAG；未启用时只按资料名称匹配', sw('ragEnabled', S.ragEnabled)],
+      ['RAG 服务地址', (S.kbEngine === 'rag_snowz')
+        ? 'RAG_Snowz 基地址。主进程调用 /health、/v1/search、/v1/ask，页面不直接请求该端口'
+        : '通用 HTTP 引擎基地址，软件按 /health、/search、/reindex 调用', `<span class="row" style="gap:6px"><span class="set-path" title="${esc(S.ragEndpoint || '')}">${esc(S.ragEndpoint || '未设置')}</span><button class="btn sm" data-act="rag-config">${icon('pencil')}编辑</button></span>`],
+      ['RAG 访问令牌', (S.kbEngine === 'rag_snowz')
+        ? 'RAG_Snowz 无鉴权，主进程不会发送 Authorization'
+        : '通用 HTTP 引擎需要鉴权时才填。令牌加密保存在本地，不写入数据文件', (() => {
+        if (S.kbEngine === 'rag_snowz') return `<span class="chip gray">不需要令牌</span>`;
         const st = state.ragToken || { stored: false, encrypted: false };
         const chip = st.stored
           ? `<span class="chip emerald">${st.encrypted ? '已加密保存' : '已保存（未加密）'}</span>`
@@ -2069,7 +2125,7 @@ function settingsView() {
         return `<span class="row" style="gap:6px">${chip}<button class="btn sm" data-act="rag-token">${icon('settings')}${st.stored ? '更换' : '设置'}</button>${st.stored ? `<button class="btn sm danger" data-act="rag-token-clear" title="清除令牌">${icon('trash')}</button>` : ''}</span>`;
       })()],
       ['检索返回条数', '请求时传给服务的 top_k', `<select class="select" data-act="set-select" data-key="ragTopK">${['4', '8', '12', '20'].map(v => `<option value="${v}"${String(S.ragTopK) === v ? ' selected' : ''}>${v}</option>`).join('')}</select>`],
-      ['RAG 连接测试', '调用 /health，确认服务可用并读取索引规模', `<button class="btn sm" data-act="rag-test">${icon('pulse')}测试连接</button>`],
+      ['RAG 连接测试', (S.kbEngine === 'rag_snowz') ? '调用 /health，读取文档数与片段数' : '调用 /health，确认服务可用并读取索引规模', `<button class="btn sm" data-act="rag-test">${icon('pulse')}测试连接</button>`],
       ['重建工作区目录', '重新创建缺失的项目材料目录结构', `<button class="btn sm" data-act="rebuild-structure">${icon('refresh')}重建</button>`],
       ['导出全部数据', '把当前工作台数据导出为 JSON 文件', `<button class="btn sm" data-act="export-data">${icon('download')}导出</button>`],
       ['重置所有数据', '清除本地数据，恢复到初始示例内容', `<button class="btn sm danger" data-act="reset-data">${icon('trash')}重置</button>`]

@@ -90,11 +90,12 @@ contextBridge.exposeInMainWorld('workspace', {
   aiChat:      (cfg) => ipcRenderer.invoke('ai:chat', cfg),
   aiTest:      (cfg) => ipcRenderer.invoke('ai:test', cfg),
 
-  /* 外部 RAG 检索（令牌只在主进程，渲染层拿不到明文） */
+  /* 外部 RAG（主进程转发。渲染层不要自己 fetch RAG：对方没有 CORS） */
   ragState:    () => ipcRenderer.invoke('rag:state'),
   ragSetToken: (plain) => ipcRenderer.invoke('rag:setToken', plain),
   ragHealth:   (cfg) => ipcRenderer.invoke('rag:health', cfg),
   ragSearch:   (cfg) => ipcRenderer.invoke('rag:search', cfg),
+  ragAsk:      (cfg) => ipcRenderer.invoke('rag:ask', cfg),
   ragReindex:  (cfg) => ipcRenderer.invoke('rag:reindex', cfg),
 
   /* 外部 Agent 接入（本地 API + MCP） */

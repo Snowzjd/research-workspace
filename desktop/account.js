@@ -66,7 +66,7 @@ function ensureDataFile() {
       defaultWorkspace: '', resumeLast: true, motion: true, notifyDot: true,
       agentAuto: true, agentConcurrency: '4', agentConfirm: true, localLLM: true,
       autoBackup: true, cloudSync: false,
-      ragEnabled: false, ragEndpoint: 'http://127.0.0.1:8000', ragTopK: '8',
+      ragEnabled: true, ragEndpoint: 'http://127.0.0.1:8765', ragTopK: '8', kbEngine: 'rag_snowz',
       rootDir: '', structureCreated: false, onboarded: false, year: y
     }
   };
