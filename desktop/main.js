@@ -929,6 +929,7 @@ ipcMain.handle('rag:state', () => rag.state());
 ipcMain.handle('rag:setToken', (_e, plain) => rag.saveToken(plain));
 ipcMain.handle('rag:health', (_e, cfg = {}) => rag.health(cfg));
 ipcMain.handle('rag:search', (_e, cfg = {}) => rag.search(cfg));
+ipcMain.handle('rag:ask', (_e, cfg = {}) => rag.ask(cfg));
 ipcMain.handle('rag:reindex', (_e, cfg = {}) => rag.reindex(cfg));
 
 /* ==========================================================================
@@ -1125,7 +1126,8 @@ async function runSmoke() {
         aiBridgeReady: !!(window.workspace && typeof window.workspace.aiChat === 'function'),
         launchBridgeReady: !!(window.workspace && typeof window.workspace.resolveLaunchTarget === 'function'),
         ragBridgeReady: !!(window.workspace && typeof window.workspace.ragSearch === 'function'
-          && typeof window.workspace.ragHealth === 'function' && typeof window.workspace.ragReindex === 'function'),
+          && typeof window.workspace.ragHealth === 'function' && typeof window.workspace.ragAsk === 'function'
+          && typeof window.workspace.ragReindex === 'function'),
         webviewReady: !!(window.workspace && window.workspace.webview === true
           && document.createElement('webview') && 'getWebContentsId' in document.createElement('webview')),
         undoReady: (typeof undoLast === 'function') && (typeof undoStack !== 'undefined'),

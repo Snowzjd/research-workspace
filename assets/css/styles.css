@@ -634,6 +634,12 @@ ul { margin: 0; padding: 0; list-style: none; }
 .doc-card .dc-ico .icon { width: 13px; height: 13px; }
 .doc-card h5 { font-size: 11px; font-weight: 580; line-height: 1.45; margin-bottom: 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .doc-card .dc-meta { display: flex; align-items: center; gap: 8px; font-size: 9.5px; color: var(--text-4); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.doc-card .dc-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.kb-extract { margin-bottom: var(--gap); }
+.kb-extract .kx-text { font-size: 12.5px; line-height: 1.75; color: var(--text-1); white-space: pre-wrap; }
+.kb-cite { display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; border-radius: var(--r-xs); background: var(--surface-sunken); margin-top: 6px; cursor: pointer; }
+.kb-cite .kc-path { font-family: var(--font-mono); font-size: 10px; color: var(--text-2); word-break: break-all; }
+.kb-cite .kc-meta { font-size: 10px; color: var(--text-4); line-height: 1.55; }
 /* 外部 RAG 返回的原文片段：这是「可溯源」的关键，给足行数 */
 .doc-card .dc-snippet {
   font-size: 10px; color: var(--text-3); line-height: 1.65; margin-bottom: 6px;

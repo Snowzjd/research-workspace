@@ -233,7 +233,7 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'search_knowledge',
-      description: '在个人科研知识库中检索资料（论文、报告、数据、代码）。',
+      description: '在个人科研知识库中检索或抽取式问答。RAG_Snowz 优先返回 answer 与 citations（含 source_relative_path、block_ids、source_spans）；否则返回检索片段。引用必须使用返回的路径，不要编造。',
       parameters: {
         type: 'object',
         properties: { query: { type: 'string', description: '检索关键词' } },
@@ -774,32 +774,78 @@ const AI_TOOL_IMPL_RAW = {
     if (!q) return { ok: false, error: 'query 不能为空' };
     const S = DB.settings;
 
-    /* 知识库引擎（插件宿主）：builtin=内置, rag_snowz/http=外部服务, none=只用文件名匹配
-       宿主只负责按配置分流与降级，具体检索实现由引擎提供（见方案 4.4 契约） */
-    const engine = S.kbEngine || (S.ragEnabled ? 'http' : 'builtin');
+    /* 知识库引擎（插件宿主）：builtin=内置, rag_snowz/http=外部服务, none=只用文件名匹配。
+       检索在主进程转发，渲染层不直接请求 RAG 端口。 */
+    const cfg = (typeof ragClientConfig === 'function')
+      ? ragClientConfig(S)
+      : { engine: S.kbEngine || (S.ragEnabled ? 'http' : 'builtin'), endpoint: S.ragEndpoint || '', topK: Number(S.ragTopK) || 8, snowz: S.kbEngine === 'rag_snowz', external: S.kbEngine === 'http' || S.kbEngine === 'rag_snowz' };
+    const engine = cfg.engine;
 
     if (engine === 'none') {
       return Object.assign(kbNameMatch(q), {
         channel: 'name_fallback', code: 'engine_none',
-        warning: '未启用知识库引擎，已按资料名称匹配。可在「设置 → AI 接入 → 知识库引擎」配置。'
+        warning: '未启用知识库引擎，已按资料名称匹配。可在「设置 → AI 与知识库引擎」配置。'
       });
     }
 
-    if (engine === 'http' || engine === 'rag_snowz') {
-      if (!S.ragEndpoint) {
+    if (cfg.external) {
+      if (!cfg.endpoint) {
         return Object.assign(kbNameMatch(q), {
           channel: 'name_fallback', code: 'engine_missing',
           warning: '知识库引擎未配置服务地址，已按资料名称匹配。'
         });
       }
-      const r = await Bridge.ragSearch({ endpoint: S.ragEndpoint, query: q, topK: Number(S.ragTopK) || 8 });
-      if (r && r.ok) {
-        const results = (r.results || []).map(x => ({
-          title: x.title, path: x.path, snippet: x.snippet,
-          score: x.score, page: x.page, type: x.docType
-        }));
+      const payload = { endpoint: cfg.endpoint, query: q, topK: cfg.topK, engine };
+      const cite = (x) => {
+        const rel = (x && (x.source_relative_path || x.path)) || '';
         return {
-          ok: true, query: q, channel: 'rag', engine, code: results.length ? 'ok' : 'empty_corpus',
+          title: x.title, path: rel, source_relative_path: rel,
+          snippet: x.snippet || x.text || '',
+          score: x.score, page: x.page, type: x.docType || x.type || '',
+          block_ids: x.block_ids || [],
+          source_spans: x.source_spans || [],
+          source_hash: x.source_hash || '',
+          chunk_id: x.chunk_id || '',
+          document_id: x.document_id || ''
+        };
+      };
+      /* RAG_Snowz：优先抽取式问答（带 citations），失败再退回检索。 */
+      if (cfg.snowz && Bridge.ragAsk) {
+        let asked = null;
+        try { asked = await Bridge.ragAsk(payload); } catch (err) {
+          asked = { ok: false, error: String((err && err.message) || err) };
+        }
+        if (asked && asked.ok) {
+          const citations = (asked.citations || []).map(cite);
+          return {
+            ok: true, query: q, channel: 'rag', engine, mode: 'ask',
+            code: citations.length || asked.answer ? 'ok' : 'empty_corpus',
+            answer: asked.answer || '',
+            citations, count: citations.length,
+            results: citations
+          };
+        }
+        const searched = await Bridge.ragSearch(payload);
+        if (searched && searched.ok) {
+          const results = (searched.results || []).map(cite);
+          return {
+            ok: true, query: q, channel: 'rag', engine, mode: 'search',
+            code: results.length ? 'ok' : 'empty_corpus',
+            count: results.length, results,
+            ask_error: (asked && asked.error) || ''
+          };
+        }
+        return Object.assign(kbNameMatch(q), {
+          channel: 'name_fallback', code: 'engine_down',
+          warning: 'RAG 服务不可用，已退回资料名称匹配：' + ((searched && searched.error) || (asked && asked.error) || '未知错误')
+        });
+      }
+      const r = await Bridge.ragSearch(payload);
+      if (r && r.ok) {
+        const results = (r.results || []).map(cite);
+        return {
+          ok: true, query: q, channel: 'rag', engine, mode: 'search',
+          code: results.length ? 'ok' : 'empty_corpus',
           count: results.length, results
         };
       }

@@ -679,7 +679,8 @@ function buildApiMessages(p, chat, agent) {
 4. 删除类操作先向用户确认，除非用户已明确要求删除。
 5. 不要编造项目里不存在的数据；查不到就如实说明。
 6. 本项目已有的材料目录：${dirs.join('、') || '（暂无）'} —— create_task 的 material_dir 只能取其中之一。
-7. 工作台共有 ${DB.projects.length} 个项目：${DB.projects.map(x => x.name).join('、')}。需要新建项目用 create_project（默认套用「标准科研项目」模板，含材料目录与起始任务）；删除项目必须先征得用户明确同意，再带 confirm=true 调用。`;
+7. 工作台共有 ${DB.projects.length} 个项目：${DB.projects.map(x => x.name).join('、')}。需要新建项目用 create_project（默认套用「标准科研项目」模板，含材料目录与起始任务）；删除项目必须先征得用户明确同意，再带 confirm=true 调用。
+8. 用户询问资料、文献或报告内容时调用 search_knowledge。若返回 answer 与 citations，回答里必须写出每条 citation 的 source_relative_path（以及 block_ids，如果有），不要编造路径或引用不存在的片段。检索由本机主进程转发，你看不到知识库服务本身。`;
 
   /* 指定了执行身份：把该 Agent 的职责注入系统提示，工具与接入配置完全不变 */
   if (agent) {
@@ -730,7 +731,13 @@ function summarizeResult(name, res) {
     case 'list_materials':      return res.dirs ? `${res.dirs.length} 个目录` : `${(res.files || []).length} 个文件`;
     case 'open_project_folder': return '已打开：' + res.opened;
     case 'save_document':       return res.ok ? `已保存：${res.savedPath || res.title}` : (res.error || '保存失败');
-    case 'search_knowledge':    return `命中 ${res.count} 条`;
+    case 'search_knowledge': {
+      const cites = res.citations || res.results || [];
+      const paths = cites.map(x => x && (x.source_relative_path || x.path)).filter(Boolean).slice(0, 3);
+      const tail = paths.length ? ' · ' + paths.join('；') : '';
+      if (res.mode === 'ask') return `抽取式回答 · 引用 ${cites.length} 条${tail}`;
+      return `命中 ${res.count == null ? cites.length : res.count} 条${tail}`;
+    }
     case 'list_software':       return `${res.apps.length} 个软件 · 左侧固定 ${res.sidebar_quick_launch.length} 个`;
     case 'launch_software':     return res.launched ? `已启动 ${res.launched}${res.pid ? ' (PID ' + res.pid + ')' : ''}` : (res.message || '完成');
     default: return '完成';
@@ -872,6 +879,126 @@ async function aiSend(presetText) {
     persist(true);
     render(); scrollAi();
   }
+}
+
+function applyRagHealth(h) {
+  if (h && h.ok) {
+    state.rag = {
+      status: 'ok',
+      indexed: h.indexed || 0,
+      docs: h.docs || 0,
+      chunks: h.chunks || 0,
+      model: h.model || '',
+      askMode: h.askMode || '',
+      llmRequired: h.llmRequired,
+      error: ''
+    };
+    return true;
+  }
+  state.rag = {
+    status: 'fail', indexed: 0, docs: 0, chunks: 0, model: '', askMode: '',
+    error: (h && h.error) || '连接失败'
+  };
+  return false;
+}
+
+function ragHealthHtml(h, snowz) {
+  if (!h) return '';
+  if (!snowz) {
+    return `<div class="kb-stat-list">
+      <div class="kbs-row"><span>索引条数</span><b>${h.indexed || 0}</b></div>
+      <div class="kbs-row"><span>嵌入模型</span><b style="font-family:var(--font-mono);font-size:10.5px">${esc(h.model || '服务未上报')}</b></div>
+      <div class="kbs-row"><span>最近更新</span><b style="font-family:var(--font-mono);font-size:10.5px">${esc(h.updatedAt || '服务未上报')}</b></div>
+    </div>`;
+  }
+  return `<div class="kb-stat-list">
+    <div class="kbs-row"><span>文档</span><b>${h.docs || 0}</b></div>
+    <div class="kbs-row"><span>片段</span><b>${h.chunks || 0}</b></div>
+    <div class="kbs-row"><span>候选上限</span><b>${h.candidates || 0}</b></div>
+    <div class="kbs-row"><span>问答</span><b>${esc(h.askMode || 'extractive')}</b></div>
+    <div class="kbs-row"><span>需要大模型</span><b>${h.llmRequired ? '是' : '否'}</b></div>
+    <div class="kbs-row"><span>检索方法</span><b style="font-family:var(--font-mono);font-size:10.5px">${esc(h.model || 'pg_fts:bm25_rerank')}</b></div>
+  </div>
+  <p style="font-size:11px;color:var(--text-3);line-height:1.7;margin-top:8px">这是全文检索，不是向量索引。向量条数仍为 0。</p>`;
+}
+
+function showCitation(h) {
+  if (!h) return;
+  const rel = h.source_relative_path || h.path || '';
+  const abs = /^[a-zA-Z]:[\\/]/.test(rel) || rel.startsWith('\\\\') || rel.startsWith('/');
+  const blocks = Array.isArray(h.block_ids) ? h.block_ids.join(', ') : '';
+  let spans = '';
+  try { spans = h.source_spans == null ? '' : (typeof h.source_spans === 'string' ? h.source_spans : JSON.stringify(h.source_spans)); } catch (_) { spans = ''; }
+  if (spans.length > 400) spans = spans.slice(0, 400) + '…';
+  openModal({
+    title: h.title || '引用片段',
+    sub: rel ? 'source_relative_path' : '服务未返回路径',
+    body: `<div class="kb-stat-list">
+      <div class="kbs-row"><span>路径</span><b style="font-family:var(--font-mono);font-size:10px;font-weight:500;max-width:70%;text-align:right;word-break:break-all">${esc(rel || '—')}</b></div>
+      <div class="kbs-row"><span>block_ids</span><b style="font-family:var(--font-mono);font-size:10px;font-weight:500">${esc(blocks || '—')}</b></div>
+      <div class="kbs-row"><span>chunk_id</span><b style="font-family:var(--font-mono);font-size:10px;font-weight:500">${esc(h.chunk_id || h.id || '—')}</b></div>
+      <div class="kbs-row"><span>document_id</span><b style="font-family:var(--font-mono);font-size:10px;font-weight:500">${esc(h.document_id || '—')}</b></div>
+      ${h.source_hash ? `<div class="kbs-row"><span>source_hash</span><b style="font-family:var(--font-mono);font-size:10px;font-weight:500">${esc(String(h.source_hash).slice(0, 16))}</b></div>` : ''}
+    </div>
+    ${spans ? `<p style="font-size:10.5px;color:var(--text-3);line-height:1.6;margin-top:8px;word-break:break-all">source_spans：${esc(spans)}</p>` : ''}
+    ${h.snippet || h.text ? `<p class="dc-snippet" style="margin-top:8px;-webkit-line-clamp:8">${esc(h.snippet || h.text)}</p>` : ''}`,
+    footer: `<span class="grow"></span>
+      <button class="btn" data-act="modal-close">关闭</button>
+      ${abs ? `<button class="btn primary" data-act="kb-open-abs" data-path="${esc(rel)}">${icon('folderOpen')}打开文件</button>` : ''}`
+  });
+}
+
+async function runKnowledgeQuery(kind) {
+  const inp = document.getElementById('kb-input');
+  state.q = inp ? inp.value.trim() : state.q;
+  const S = DB.settings;
+  const cfg = ragClientConfig(S);
+  const plugin = Bridge.desktop && cfg.external && (cfg.snowz || S.ragEnabled);
+  if (!plugin) {
+    state.ragResults = null; state.ragMeta = null; state.ragAnswer = null;
+    logActivity(`按名称检索知识库：<b>${esc(state.q || '全部')}</b>`, 'search', '#0D7485');
+    persist(); render();
+    toast(state.q ? `已按资料名称匹配「${esc(state.q)}」` : '已列出全部资料', 'ok');
+    return;
+  }
+  if (!state.q) {
+    state.ragResults = null; state.ragMeta = null; state.ragAnswer = null; render();
+    toast(kind === 'ask' ? '请输入提问内容' : '请输入检索内容', 'err');
+    return;
+  }
+  if (kind === 'ask' && !cfg.snowz) {
+    toast('提问需要 RAG_Snowz 引擎。请在「设置 → AI 与知识库引擎」切换。', 'err');
+    return;
+  }
+  if (!cfg.endpoint) return toast('先配置知识库服务地址', 'err');
+
+  state.ragBusy = true; state.ragOp = kind; render();
+  const payload = { endpoint: cfg.endpoint, query: state.q, topK: cfg.topK, engine: cfg.engine };
+  if (!cfg.snowz && state.kbCat && state.kbCat !== 'all') payload.filters = { doc_type: state.kbCat };
+  const r = kind === 'ask' ? await Bridge.ragAsk(payload) : await Bridge.ragSearch(payload);
+  state.ragBusy = false;
+
+  if (r && r.ok) {
+    const hits = kind === 'ask' ? (r.citations || []) : (r.results || []);
+    state.ragResults = hits;
+    state.ragMeta = { tookMs: r.tookMs, model: r.model || '', mode: kind };
+    state.ragAnswer = kind === 'ask' ? { text: r.answer || '', citations: hits, extractive: true } : null;
+    state.rag = Object.assign({}, state.rag, { status: 'ok', error: '' });
+    const n = hits.length;
+    logActivity(kind === 'ask'
+      ? `知识库提问「<b>${esc(state.q)}</b>」引用 ${n} 条`
+      : `RAG 检索「<b>${esc(state.q)}</b>」命中 ${n} 段`, 'search', '#0D7485');
+    toast(kind === 'ask'
+      ? `已回答 · 引用 ${n} 条`
+      : `命中 ${n} 段原文`, n ? 'ok' : 'amber');
+  } else {
+    const err = (r && r.error) || (kind === 'ask' ? '提问失败' : '检索失败');
+    state.ragResults = null; state.ragMeta = null; state.ragAnswer = null;
+    state.rag = Object.assign({}, state.rag, { status: 'fail', error: err });
+    logActivity(`RAG ${kind === 'ask' ? '提问' : '检索'}失败：${esc(err)}`, 'search', '#CE2C31');
+    toast(`${kind === 'ask' ? '提问' : '检索'}失败：${esc(err)}`, 'err');
+  }
+  render();
 }
 
 /* ==========================================================================
@@ -2442,48 +2569,8 @@ document.addEventListener('click', async e => {
     }
 
     /* ---------- 知识库 ---------- */
-    case 'kb-search': {
-      const inp = document.getElementById('kb-input');
-      state.q = inp ? inp.value.trim() : state.q;
-      const S = DB.settings;
-
-      /* 未启用外部 RAG：只做资料名称匹配，界面上必须如实说明 */
-      if (!Bridge.desktop || !S.ragEnabled) {
-        state.ragResults = null; state.ragMeta = null;
-        logActivity(`按名称检索知识库：<b>${esc(state.q || '全部')}</b>`, 'search', '#0D7485');
-        persist(); render();
-        toast(state.q ? `已按资料名称匹配「${esc(state.q)}」` : '已列出全部资料', 'ok');
-        return;
-      }
-      if (!state.q) {
-        state.ragResults = null; state.ragMeta = null; render();
-        return toast('请输入检索内容', 'err');
-      }
-
-      state.ragBusy = true; render();
-      const r = await Bridge.ragSearch({
-        endpoint: S.ragEndpoint,
-        query: state.q,
-        topK: Number(S.ragTopK) || 8,
-        filters: state.kbCat !== 'all' ? { doc_type: state.kbCat } : {}
-      });
-      state.ragBusy = false;
-
-      if (r && r.ok) {
-        state.ragResults = r.results || [];
-        state.ragMeta = { tookMs: r.tookMs, model: r.model };
-        state.rag = { status: 'ok', indexed: state.rag.indexed, model: r.model || state.rag.model, error: '' };
-        logActivity(`RAG 检索「<b>${esc(state.q)}</b>」命中 ${state.ragResults.length} 段`, 'search', '#0D7485');
-        toast(`命中 ${state.ragResults.length} 段原文`, state.ragResults.length ? 'ok' : 'amber');
-      } else {
-        const err = (r && r.error) || '检索失败';
-        state.ragResults = null; state.ragMeta = null;
-        state.rag = { ...state.rag, status: 'fail', error: err };
-        logActivity(`RAG 检索失败：${esc(err)}`, 'search', '#CE2C31');
-        toast(`RAG 检索失败：${esc(err)}`, 'err');
-      }
-      render(); return;
-    }
+    case 'kb-search': return runKnowledgeQuery('search');
+    case 'kb-ask': return runKnowledgeQuery('ask');
     case 'kb-open': {
       /* kbDocs 只是资料登记，没有绑定磁盘路径 —— 不再谎称"已打开" */
       const d = DB.kbDocs.find(x => x.n === t.dataset.name);
@@ -2508,10 +2595,15 @@ document.addEventListener('click', async e => {
     case 'kb-open-hit': {
       const h = state.ragResults && state.ragResults[Number(t.dataset.i)];
       if (!h) return;
-      if (!h.path) return toast('该片段未返回原文路径，无法打开文件', 'err');
-      const r = await Bridge.openFolder(h.path);
-      if (r && r.ok) { logActivity(`打开检索原文 <b>${esc(h.title)}</b>`, 'open', '#218358'); persist(); toast(`已打开 ${esc(h.title)}`, 'ok'); }
-      else toast(`无法打开：${esc((r && r.error) || h.path)}`, 'err');
+      showCitation(h);
+      return;
+    }
+    case 'kb-open-abs': {
+      const p = t.dataset.path || '';
+      if (!p) return;
+      const r = await Bridge.openFolder(p);
+      if (r && r.ok) toast('已打开文件', 'ok');
+      else toast(`无法打开：${esc((r && r.error) || p)}`, 'err');
       return;
     }
     case 'kb-open-root': {
@@ -2521,14 +2613,16 @@ document.addEventListener('click', async e => {
     case 'kb-reindex': {
       const S = DB.settings;
       if (!Bridge.desktop) return toast('重建索引需要桌面端运行', 'err');
-      if (!S.ragEnabled) {
+      if (!S.ragEnabled || (S.kbEngine === 'rag_snowz')) {
         openModal({
-          title: '尚未接入外部 RAG',
-          sub: '本软件不做向量化，索引由你的 RAG 服务维护',
+          title: S.kbEngine === 'rag_snowz' ? '索引由 RAG_Snowz 维护' : '尚未接入外部 RAG',
+          sub: '本软件不做向量化',
           body: `<div class="col" style="gap:9px;font-size:12px;line-height:1.85;color:var(--text-2)">
-            <p>当前知识库只能按<b>资料名称</b>匹配，没有向量索引可重建 —— 所以这里不会再假装"重建成功"。</p>
-            <p>接入你自己的 RAG 服务后，这个按钮会直接调用它的 <code class="ai-code">POST /reindex</code>，并把新增/更新/移除的条数如实显示出来。</p>
-            <p class="muted" style="font-size:11px">接口契约：<code class="ai-code">GET /health</code> · <code class="ai-code">POST /search</code> · <code class="ai-code">POST /reindex</code></p>
+            ${S.kbEngine === 'rag_snowz'
+              ? '<p>RAG_Snowz 的文档和片段由本机服务自己维护。工作台只调用 <code class="ai-code">/health</code>、<code class="ai-code">/v1/search</code> 和 <code class="ai-code">/v1/ask</code>，不会发送重建索引请求。</p>'
+              : `<p>当前知识库只能按<b>资料名称</b>匹配，没有向量索引可重建 —— 所以这里不会再假装"重建成功"。</p>
+            <p>接入通用 HTTP 引擎后，这个按钮会调用它的 <code class="ai-code">POST /reindex</code>。</p>
+            <p class="muted" style="font-size:11px">RAG_Snowz 契约：<code class="ai-code">GET /health</code> · <code class="ai-code">POST /v1/search</code> · <code class="ai-code">POST /v1/ask</code></p>`}
           </div>`,
           footer: `<span class="grow"></span>
             <button class="btn" data-act="modal-close">知道了</button>
@@ -2537,13 +2631,13 @@ document.addEventListener('click', async e => {
         return;
       }
       toast('正在请求 RAG 服务重建索引…', 'ok');
-      const r = await Bridge.ragReindex({ endpoint: S.ragEndpoint });
+      const r = await Bridge.ragReindex({ endpoint: S.ragEndpoint, engine: S.kbEngine });
       if (!r || !r.ok) {
         const err = (r && r.error) || '重建失败';
         state.rag = { ...state.rag, status: 'fail', error: err };
         render(); return toast(`重建失败：${esc(err)}`, 'err');
       }
-      state.rag = { status: 'ok', indexed: r.indexed || state.rag.indexed, model: state.rag.model, error: '' };
+      state.rag = { ...state.rag, status: 'ok', indexed: r.indexed || state.rag.indexed, error: '' };
       mutate(() => {}, { activity: { text: `重建知识库索引：新增 ${r.added} · 更新 ${r.updated} · 移除 ${r.removed}`, kind: 'refresh', color: '#6E56CF' } });
       render();
       toast(`索引已重建 · 新增 ${r.added} / 更新 ${r.updated} / 移除 ${r.removed}`, 'ok');
@@ -2580,10 +2674,11 @@ document.addEventListener('click', async e => {
     }
     case 'rag-reindex': {
       if (!Bridge.desktop) return toast('重建索引需要桌面端运行', 'err');
+      if (DB.settings.kbEngine === 'rag_snowz') return toast('RAG_Snowz 的索引由本机服务维护，这里不重建', 'err');
       const ep = DB.settings.ragEndpoint;
       if (!ep) return toast('先配置引擎地址', 'err');
       toast('正在重建索引…', 'ok');
-      const r = await Bridge.ragReindex({ endpoint: ep });
+      const r = await Bridge.ragReindex({ endpoint: ep, engine: DB.settings.kbEngine });
       if (r && r.ok) {
         state.rag = { status: 'ok', indexed: r.indexed || 0, model: r.model || '', error: '' };
         mutate(() => { DB.settings.ragLastIndexAt = Date.now(); },
@@ -2598,23 +2693,19 @@ document.addEventListener('click', async e => {
       if (!Bridge.desktop) return toast('外部 RAG 需要桌面端运行', 'err');
       const S = DB.settings;
       toast('正在连接 RAG 服务…', 'ok');
-      const r = await Bridge.ragHealth({ endpoint: S.ragEndpoint });
-      if (r && r.ok) {
-        state.rag = { status: 'ok', indexed: r.indexed || 0, model: r.model || '', error: '' };
+      const cfg = ragClientConfig(S);
+      const r = await Bridge.ragHealth({ endpoint: cfg.endpoint, engine: cfg.engine });
+      if (applyRagHealth(r)) {
         render();
         openModal({
-          title: 'RAG 服务连接正常',
-          sub: esc(S.ragEndpoint),
-          body: `<div class="kb-stat-list">
-            <div class="kbs-row"><span>索引条数</span><b>${r.indexed || 0}</b></div>
-            <div class="kbs-row"><span>嵌入模型</span><b style="font-family:var(--font-mono);font-size:10.5px">${esc(r.model || '服务未上报')}</b></div>
-            <div class="kbs-row"><span>最近更新</span><b style="font-family:var(--font-mono);font-size:10.5px">${esc(r.updatedAt || '服务未上报')}</b></div>
-          </div>`,
+          title: cfg.snowz ? 'RAG_Snowz 连接正常' : 'RAG 服务连接正常',
+          sub: esc(cfg.endpoint),
+          body: ragHealthHtml(r, cfg.snowz),
           footer: `<span class="grow"></span><button class="btn primary" data-act="modal-close">好</button>`
         });
       } else {
         const err = (r && r.error) || '连接失败';
-        state.rag = { status: 'fail', indexed: 0, model: '', error: err };
+        state.rag = { status: 'fail', indexed: 0, docs: 0, chunks: 0, model: '', error: err };
         render();
         openModal({
           title: 'RAG 服务连接失败',
@@ -2635,6 +2726,10 @@ document.addEventListener('click', async e => {
         DB.settings.kbEngine = v;
         /* 引擎与老的 ragEnabled 开关保持一致，避免两套开关互相打架 */
         DB.settings.ragEnabled = (v === 'http' || v === 'rag_snowz');
+        if (v === 'rag_snowz') {
+          const ep = String(DB.settings.ragEndpoint || '');
+          if (!ep || ep === 'http://127.0.0.1:8000') DB.settings.ragEndpoint = 'http://127.0.0.1:8765';
+        }
       }, { activity: { text: `知识库引擎切换为 <b>${esc(v)}</b>`, kind: 'edit', color: '#3E63DD' } });
       toast(v === 'none' ? '知识库引擎已关闭（只按文件名匹配）' : `知识库引擎：${esc(v)}`, 'ok');
       render();
@@ -2644,7 +2739,7 @@ document.addEventListener('click', async e => {
       openModal({
         title: 'RAG 服务地址',
         sub: '只填到接口前缀，不要带 /search 之类的路径后缀',
-        body: fText('endpoint', '接口基地址', DB.settings.ragEndpoint || '', { req: true, ph: 'http://127.0.0.1:8000' }),
+        body: fText('endpoint', '接口基地址', DB.settings.ragEndpoint || '', { req: true, ph: 'http://127.0.0.1:8765' }),
         footer: `<span class="grow"></span>
           <button class="btn" data-act="modal-close">取消</button>
           <button class="btn primary" data-submit data-act="rag-config-save">保存并测试</button>`
@@ -2654,20 +2749,28 @@ document.addEventListener('click', async e => {
     case 'rag-config-save': {
       const m = document.querySelector('.modal'); if (!m || !validate(m, ['endpoint'])) return;
       const ep = String(formValues(m).endpoint || '').trim().replace(/\/+$/, '');
-      const r = await Bridge.ragHealth({ endpoint: ep });
+      const snowzPort = /:8765(\/|$)/.test(ep);
+      const engineForProbe = (DB.settings.kbEngine === 'rag_snowz' || DB.settings.kbEngine === 'http')
+        ? DB.settings.kbEngine
+        : (snowzPort ? 'rag_snowz' : 'http');
+      const r = await Bridge.ragHealth({ endpoint: ep, engine: engineForProbe });
       const ok = !!(r && r.ok);
       mutate(() => {
         DB.settings.ragEndpoint = ep;
         if (ok) {
           DB.settings.ragEnabled = true;         /* 只有连得上才自动启用，避免一搜就报错 */
-          if (!DB.settings.kbEngine || DB.settings.kbEngine === 'builtin') DB.settings.kbEngine = 'http';
+          if (!DB.settings.kbEngine || DB.settings.kbEngine === 'builtin' || DB.settings.kbEngine === 'none') {
+            DB.settings.kbEngine = engineForProbe;
+          }
         }
       }, { activity: { text: `设置 RAG 服务地址 <b>${esc(ep)}</b>${ok ? '（连接正常，已启用）' : '（未连接）'}`, kind: 'edit', color: '#AD5700' } });
-      state.rag = ok
-        ? { status: 'ok', indexed: r.indexed || 0, model: r.model || '', error: '' }
-        : { status: 'fail', indexed: 0, model: '', error: (r && r.error) || '连接失败' };
+      applyRagHealth(ok ? r : { ok: false, error: (r && r.error) || '连接失败' });
       closeModal();
-      toast(ok ? `已连接 · 索引 ${r.indexed || 0} 条` : `地址已保存，但连接失败：${esc((r && r.error) || '')}`, ok ? 'ok' : 'err');
+      toast(ok
+        ? (r.engine === 'rag_snowz'
+          ? `已连接 · 文档 ${r.docs || 0} · 片段 ${r.chunks || 0}`
+          : `已连接 · 索引 ${r.indexed || 0} 条`)
+        : `地址已保存，但连接失败：${esc((r && r.error) || '')}`, ok ? 'ok' : 'err');
       return;
     }
     case 'rag-token': {
@@ -2968,7 +3071,22 @@ document.addEventListener('click', async e => {
     /* ---------- 设置 ---------- */
     case 'set-toggle': {
       const key = t.dataset.key;
-      mutate(() => { DB.settings[key] = !DB.settings[key]; });
+      mutate(() => {
+        DB.settings[key] = !DB.settings[key];
+        if (key === 'ragEnabled') {
+          if (DB.settings.ragEnabled) {
+            const ep = String(DB.settings.ragEndpoint || '');
+            if (!DB.settings.kbEngine || DB.settings.kbEngine === 'builtin' || DB.settings.kbEngine === 'none') {
+              DB.settings.kbEngine = (!ep || ep === 'http://127.0.0.1:8000' || /:8765(\/|$)/.test(ep)) ? 'rag_snowz' : 'http';
+            }
+            if (DB.settings.kbEngine === 'rag_snowz' && (!ep || ep === 'http://127.0.0.1:8000')) {
+              DB.settings.ragEndpoint = 'http://127.0.0.1:8765';
+            }
+          } else if (DB.settings.kbEngine === 'http' || DB.settings.kbEngine === 'rag_snowz') {
+            DB.settings.kbEngine = 'builtin';
+          }
+        }
+      });
       return;
     }
     case 'export-data': {
@@ -3282,7 +3400,7 @@ document.addEventListener('input', e => {
     });
     return;
   }
-  if (el.id === 'kb-input') { state.q = el.value; state.ragResults = null; state.ragMeta = null; return; }
+  if (el.id === 'kb-input') { state.q = el.value; state.ragResults = null; state.ragMeta = null; state.ragAnswer = null; return; }
   if (el.id === 'ai-input') { state.aiDraft = el.value; return; }
 });
 
@@ -3477,7 +3595,10 @@ window.__RW_API__ = async function (req) {
         projects_count: DB.projects.length,
         tasks_count: DB.tasks.length,
         knowledge_registered: (DB.kbDocs || []).length,
-        knowledge_indexed: (eng === 'http' || eng === 'rag_snowz') && state.rag && state.rag.status === 'ok' ? (state.rag.indexed || 0) : 0,
+        /* 向量条数只认通用 HTTP 引擎的上报。RAG_Snowz 是全文检索，文档/片段另计，避免再把 0 当成“没接上”。 */
+        knowledge_indexed: eng === 'http' && state.rag && state.rag.status === 'ok' ? (state.rag.indexed || 0) : 0,
+        knowledge_docs: eng === 'rag_snowz' && state.rag && state.rag.status === 'ok' ? (state.rag.docs || 0) : 0,
+        knowledge_chunks: eng === 'rag_snowz' && state.rag && state.rag.status === 'ok' ? (state.rag.chunks || 0) : 0,
         knowledge_engine: eng,
         last_error: state.lastApiError || '',
         version: (state.update && state.update.version) || ''
@@ -3771,12 +3892,11 @@ async function boot() {
     /* 外部 RAG：读令牌状态；已启用则后台探测一次（不阻塞启动） */
     try {
       state.ragToken = await Bridge.ragState();
-      if (DB.settings.ragEnabled) {
-        Bridge.ragHealth({ endpoint: DB.settings.ragEndpoint }).then(h => {
-          state.rag = h && h.ok
-            ? { status: 'ok', indexed: h.indexed || 0, model: h.model || '', error: '' }
-            : { status: 'fail', indexed: 0, model: '', error: (h && h.error) || '连接失败' };
-          if (state.route === 'knowledge') render();
+      if (DB.settings.ragEnabled || DB.settings.kbEngine === 'rag_snowz') {
+        const bootCfg = ragClientConfig(DB.settings);
+        Bridge.ragHealth({ endpoint: bootCfg.endpoint, engine: bootCfg.engine }).then(h => {
+          applyRagHealth(h);
+          if (state.route === 'knowledge' || state.route === 'settings') render();
         }).catch(() => {});
       }
     } catch (_) {}

@@ -424,6 +424,8 @@ async function handle(req, res) {
       projects_count: diag.projects_count || 0,
       tasks_count: diag.tasks_count || 0,
       knowledge_indexed: diag.knowledge_indexed || 0,
+      knowledge_docs: diag.knowledge_docs || 0,
+      knowledge_chunks: diag.knowledge_chunks || 0,
       knowledge_engine: diag.knowledge_engine || 'builtin',
       last_error: diag.last_error || '',
       time: new Date().toISOString()

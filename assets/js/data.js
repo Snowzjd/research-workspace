@@ -874,9 +874,32 @@ const SETTINGS_DEFAULT = {
   /* agentAuto 已从设置页移除，仅由 Agent 中心的「编排策略」弹窗写入，当前无消费方 */
   agentAuto: true, agentConcurrency: '4', agentConfirm: true, localLLM: true,
   autoBackup: true, cloudSync: false,
-  /* 外部 RAG：本软件不做向量化，检索能力来自用户自建服务 */
-  ragEnabled: false, ragEndpoint: 'http://127.0.0.1:8000', ragTopK: '8'
+  /* 外部 RAG：本软件不做向量化。默认接本机 RAG_Snowz（回环、无鉴权）。 */
+  ragEnabled: true,
+  ragEndpoint: 'http://127.0.0.1:8765',
+  ragTopK: '8',
+  kbEngine: 'rag_snowz'
 };
+
+/* RAG_Snowz 默认基地址。渲染层只把它交给主进程，自己不发跨域请求。 */
+const RAG_SNOWZ_DEFAULT = 'http://127.0.0.1:8765';
+
+function ragClientConfig(settings) {
+  const S = settings || {};
+  const engine = S.kbEngine || (S.ragEnabled ? 'http' : 'builtin');
+  let endpoint = String(S.ragEndpoint || '').trim().replace(/\/+$/, '');
+  if (engine === 'rag_snowz' && (!endpoint || endpoint === 'http://127.0.0.1:8000')) {
+    endpoint = RAG_SNOWZ_DEFAULT;
+  }
+  const topK = Math.min(Math.max(Number(S.ragTopK) || 8, 1), 50);
+  return {
+    engine,
+    endpoint,
+    topK,
+    snowz: engine === 'rag_snowz',
+    external: engine === 'rag_snowz' || engine === 'http'
+  };
+}
 
 /* 记录最近一次迁移补了多少 id，供启动时决定是否需要立刻落盘 */
 let _lastMigrateInfo = { idsAdded: 0 };
@@ -980,9 +1003,20 @@ function migrate(d) {
     if (t && !t.id) t.id = 'tk' + (Date.now().toString(36)) + (idSeq++).toString(36) + Math.random().toString(36).slice(2, 4);
   });
 
-  /* 知识库引擎（Sprint D）：老数据的 ragEnabled 映射成 http 引擎 */
+  /* 知识库引擎：没人改过的内置空壳（旧默认 8000、未启用）升到本机 RAG_Snowz。
+     已经选过 HTTP 引擎或填过别的地址的配置保持不动。 */
   if (d.settings) {
-    if (!d.settings.kbEngine) d.settings.kbEngine = d.settings.ragEnabled ? 'http' : 'builtin';
+    const ep = String(d.settings.ragEndpoint || '');
+    const untouched = !d.settings.ragEnabled && (ep === '' || ep === 'http://127.0.0.1:8000');
+    if (!d.settings.kbEngine) {
+      d.settings.kbEngine = d.settings.ragEnabled ? 'http' : (untouched ? 'rag_snowz' : 'builtin');
+    } else if (d.settings.kbEngine === 'builtin' && untouched) {
+      d.settings.kbEngine = 'rag_snowz';
+    }
+    if (d.settings.kbEngine === 'rag_snowz') {
+      d.settings.ragEnabled = true;
+      if (!ep || ep === 'http://127.0.0.1:8000') d.settings.ragEndpoint = 'http://127.0.0.1:8765';
+    }
     if (typeof d.settings.kbExtraRoots === 'undefined') d.settings.kbExtraRoots = [];
   }
 
