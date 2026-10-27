@@ -174,6 +174,14 @@ const Bridge = {
     if (!this.desktop) return { ok: false, error: '账户功能需要桌面端运行' };
     return await window.workspace.accountResetLocal();
   },
+  /* 写作存档：preload 的 saveWritingDoc → doc:save-writing。缺了这一层，save_document 会抛 TypeError。 */
+  async saveWritingDoc(payload) {
+    if (!this.desktop) return { ok: false, error: '保存写作文档需要桌面端运行。' };
+    if (typeof window.workspace.saveWritingDoc !== 'function') {
+      return { ok: false, error: '当前桌面桥没有 saveWritingDoc，无法调用 doc:save-writing。' };
+    }
+    return await window.workspace.saveWritingDoc(payload || {});
+  },
   async cloudProbe() {
     if (!this.desktop) return { ok: false, error: '账户功能需要桌面端运行' };
     return await window.workspace.cloudProbe();

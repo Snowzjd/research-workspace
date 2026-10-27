@@ -148,6 +148,7 @@ test('update_project display_name does not rename the folder', async () => {
 test('save_document writes under the folder name, not the display name', async () => {
   const ctx = loadTools();
   seedProject(ctx);
+  runInContext(`DB.settings.rootDir = 'C:\\\\ResearchWorkspace'`, ctx);
   const res = await tool(ctx, 'save_document', {
     title: '草稿标题',
     kind: 'paper',

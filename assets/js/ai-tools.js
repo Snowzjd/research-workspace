@@ -233,10 +233,17 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'search_knowledge',
-      description: '在个人科研知识库中检索或抽取式问答。RAG_Snowz 优先返回 answer 与 citations（含 source_relative_path、block_ids、source_spans）；否则返回检索片段。引用必须使用返回的路径，不要编造。',
+      description: '在个人科研知识库中检索或抽取式问答。综述和论文必须用 mode=search，并换中文、英文多次查询，目标是多个 document_id；问答再用 mode=ask。search 返回检索片段，ask 返回 answer 与 citations（含 source_relative_path、block_ids、source_spans、document_id）。引用必须使用返回的路径，不要编造。若 unique_docs 少于 3，先换英文术语或放宽检索，不要只根据一篇文献展开。',
       parameters: {
         type: 'object',
-        properties: { query: { type: 'string', description: '检索关键词' } },
+        properties: {
+          query: { type: 'string', description: '检索关键词。综述请分别用中文和英文术语各查一次。' },
+          mode: {
+            type: 'string',
+            enum: ['search', 'ask'],
+            description: 'search=多文档检索，综述和论文优先用它；ask=抽取式问答。省略时，综述 Agent 走 search，其余 RAG_Snowz 仍走 ask。'
+          }
+        },
         required: ['query']
       }
     }
@@ -375,6 +382,60 @@ function kbNameMatch(q) {
   return { ok: true, query: q, count: hits.length, results: hits };
 }
 
+/* 同一 document_id（没有 id 时用路径）只算一篇。少于 3 篇时提醒换英文词、放宽检索。 */
+function withUniqueDocs(payload) {
+  const rows = (payload && (payload.citations || payload.results)) || [];
+  const byId = new Map();
+  const coveredPaths = new Set();
+  rows.forEach(x => {
+    const id = String((x && x.document_id) || '').trim();
+    const rel = String((x && (x.source_relative_path || x.path)) || '').trim().replace(/\\/g, '/');
+    if (!id) return;
+    coveredPaths.add(rel.toLowerCase());
+    if (!byId.has(id)) byId.set(id, id);
+  });
+  const ids = [...byId.keys()];
+  const seenPaths = new Set(coveredPaths);
+  rows.forEach(x => {
+    const id = String((x && x.document_id) || '').trim();
+    if (id) return;
+    const rel = String((x && (x.source_relative_path || x.path)) || '').trim().replace(/\\/g, '/');
+    const key = rel.toLowerCase();
+    if (!key || seenPaths.has(key)) return;
+    seenPaths.add(key);
+    ids.push(rel);
+  });
+  const out = Object.assign({}, payload, { unique_docs: ids.length, document_ids: ids });
+  if (ids.length < 3) {
+    const tip = `unique_docs=${ids.length}（少于 3）。请换英文术语或放宽检索范围，并用 mode=search 再查几次，凑齐多个 document_id。不要只根据同一篇文献展开。`;
+    out.warning = out.warning ? (out.warning + ' ' + tip) : tip;
+  }
+  return out;
+}
+
+/* 显式 search，或当前是综述 Agent 且没指定 ask：走多文档检索。显式 ask 仍是问答。 */
+function knowledgeWantsSearch(mode) {
+  const requested = String(mode || '').trim().toLowerCase();
+  if (requested === 'search') return true;
+  if (requested === 'ask') return false;
+  const name = (typeof state !== 'undefined' && state && state.aiAgent) || '';
+  if (!name || typeof writingReviewAgent !== 'function') return false;
+  const review = writingReviewAgent();
+  return !!(review && review.name === name);
+}
+
+/* 项目只有文件夹名。根目录为空时说明怎么设置，不拼盘符。 */
+function workspaceRootMissingError(project) {
+  const name = (project && (project.displayName || project.name)) || '';
+  const folder = (project && (project.folder || project.name)) || '';
+  const who = name
+    ? `当前项目「${name}」只记录了文件夹名「${folder || '未命名'}」，没有可用的绝对路径。`
+    : '项目记录里没有可用的绝对路径。';
+  return '尚未设置工作区根目录，文档没有写入磁盘。请打开「设置 → 数据与同步」，点「工作区根目录」右侧的「更改」，选择本机已经存放项目材料的文件夹；也可以在新建项目时指定根目录。'
+    + who
+    + '不会猜测盘符，也不会写到别的位置。';
+}
+
 const AI_TOOL_IMPL_RAW = {
   async save_document({ title, kind, content } = {}) {
     const p = P(state.project);
@@ -387,7 +448,20 @@ const AI_TOOL_IMPL_RAW = {
     const safe = title.replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
     const folder = p.folder || p.name;
     const rel = [folder, '写作', `${safe}.md`].join('/');
-    const r = await Bridge.saveWritingDoc({ relPath: rel, content: body, meta: { title, kind: catName } });
+    if (!rootDir()) return { ok: false, error: workspaceRootMissingError(p), code: 'root_missing' };
+    if (!Bridge || typeof Bridge.saveWritingDoc !== 'function') {
+      return { ok: false, error: 'Bridge.saveWritingDoc 不可用，桌面桥没有转发 doc:save-writing。' };
+    }
+    let r;
+    try {
+      r = await Bridge.saveWritingDoc({
+        relPath: rel, content: body,
+        projectName: p.displayName || p.name, projectFolder: folder,
+        meta: { title, kind: catName }
+      });
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
     if (!r || !r.ok) return { ok: false, error: (r && r.error) || '保存失败' };
     let kbId = '';
     const exist = DB.kbDocs.find(d => d.file === r.relPath);
@@ -769,9 +843,10 @@ const AI_TOOL_IMPL_RAW = {
     return { ok: false, error: r.error };
   },
 
-  async search_knowledge({ query } = {}) {
+  async search_knowledge({ query, mode } = {}) {
     const q = String(query || '').trim();
     if (!q) return { ok: false, error: 'query 不能为空' };
+    const wantSearch = knowledgeWantsSearch(mode);
     const S = DB.settings;
 
     /* 知识库引擎（插件宿主）：builtin=内置, rag_snowz/http=外部服务, none=只用文件名匹配。
@@ -809,31 +884,31 @@ const AI_TOOL_IMPL_RAW = {
           document_id: x.document_id || ''
         };
       };
-      /* RAG_Snowz：优先抽取式问答（带 citations），失败再退回检索。 */
-      if (cfg.snowz && Bridge.ragAsk) {
+      /* RAG_Snowz：问答走 ask；综述写作和显式 mode=search 直接检索。ask 失败再退回检索。 */
+      if (cfg.snowz && Bridge.ragAsk && !wantSearch) {
         let asked = null;
         try { asked = await Bridge.ragAsk(payload); } catch (err) {
           asked = { ok: false, error: String((err && err.message) || err) };
         }
         if (asked && asked.ok) {
           const citations = (asked.citations || []).map(cite);
-          return {
+          return withUniqueDocs({
             ok: true, query: q, channel: 'rag', engine, mode: 'ask',
             code: citations.length || asked.answer ? 'ok' : 'empty_corpus',
             answer: asked.answer || '',
             citations, count: citations.length,
             results: citations
-          };
+          });
         }
         const searched = await Bridge.ragSearch(payload);
         if (searched && searched.ok) {
           const results = (searched.results || []).map(cite);
-          return {
+          return withUniqueDocs({
             ok: true, query: q, channel: 'rag', engine, mode: 'search',
             code: results.length ? 'ok' : 'empty_corpus',
             count: results.length, results,
             ask_error: (asked && asked.error) || ''
-          };
+          });
         }
         return Object.assign(kbNameMatch(q), {
           channel: 'name_fallback', code: 'engine_down',
@@ -843,11 +918,11 @@ const AI_TOOL_IMPL_RAW = {
       const r = await Bridge.ragSearch(payload);
       if (r && r.ok) {
         const results = (r.results || []).map(cite);
-        return {
+        return withUniqueDocs({
           ok: true, query: q, channel: 'rag', engine, mode: 'search',
           code: results.length ? 'ok' : 'empty_corpus',
           count: results.length, results
-        };
+        });
       }
       /* 不可用时如实告知，并退回名称匹配，不编造结果 */
       return Object.assign(kbNameMatch(q), {
@@ -980,7 +1055,7 @@ function describeToolCall(name, args = {}) {
     case 'update_project':     if (args.progress != null) bits.push(`进度 → ${args.progress}%`); pick('stage', '阶段'); break;
     case 'list_materials':     pick('dir', '目录'); break;
     case 'open_project_folder':pick('dir', '目录'); break;
-    case 'search_knowledge':   pick('query', '关键词'); break;
+    case 'search_knowledge':   pick('query', '关键词'); pick('mode', '模式'); break;
     case 'launch_software':    pick('name'); break;
     case 'list_tasks':         pick('status', '状态'); break;
     case 'switch_project':     pick('project', '目标项目'); break;

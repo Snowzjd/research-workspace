@@ -218,10 +218,10 @@ function staffPanelHTML() {
       : (st.last
         ? `上次${JOB_STATUS_TEXT[st.last.status] || ''} · ${esc(String(st.last.task).slice(0, 18))}`
         : '空闲');
-    return `<div class="staff-row">
+    return `<div class="staff-row${(typeof state !== 'undefined' && state && state.aiAgent === a.name) ? ' is-current' : ''}">
       ${agentTile(a.name, 30)}
       <div class="grow" style="min-width:0">
-        <div class="staff-name">${esc(a.name)}</div>
+        <div class="staff-name">${esc(a.name)}${(typeof state !== 'undefined' && state && state.aiAgent === a.name) ? '<span class="ai-id-tag">当前</span>' : ''}</div>
         <div class="staff-sub">${sub}</div>
       </div>
       <button class="btn sm" data-act="agent-edit" data-a="${esc(a.name)}" title="编辑职责、标签和提示词">编辑</button>

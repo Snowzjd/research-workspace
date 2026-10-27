@@ -35,6 +35,8 @@ const state = {
   update: { portable: false, source: '', version: '' },
   /* AI 助手模式：聊天 / 派任务 */
   aiMode: 'chat',
+  /* 当前对话的执行身份。空字符串 = 通用助手。说「综述」或 @Agent 会写入这里。 */
+  aiAgent: '',
   /* 项目页当前 Tab */
   projectTab: 'overview',
   /* 内置浏览器：多标签 + 真实 webview 的运行时状态 */
@@ -1536,6 +1538,28 @@ function aiSetupCard() {
   </div>`;
 }
 
+function currentAiAgent() {
+  const name = (state && state.aiAgent) || '';
+  return (DB.agents || []).find(a => a && a.name === name) || null;
+}
+
+function aiIdentityHTML() {
+  const agent = currentAiAgent();
+  const agents = DB.agents || [];
+  const label = agent ? agent.name : '通用助手';
+  const hint = agent
+    ? (agent.role || '已指定执行身份')
+    : '说「综述」、writing-review，或 @科研写作·综述 会自动切换';
+  return `<div class="ai-identity">
+    <span class="ai-id-label">${icon('bot')}当前身份 · ${esc(label)}</span>
+    <select class="select" data-act="ai-pick-agent" title="切换当前执行身份">
+      <option value=""${agent ? '' : ' selected'}>通用助手</option>
+      ${agents.map(a => `<option value="${esc(a.name)}"${agent && agent.name === a.name ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}
+    </select>
+    <span class="ai-id-hint">${esc(hint)}</span>
+  </div>`;
+}
+
 function aiView() {
   /* Sprint A：AI 助手单入口 = 聊天 | 派任务 | 浏览（原浏览器入口并入这里） */
   if (state.aiMode === 'assign') return aiAssignView();
@@ -1547,11 +1571,12 @@ function aiView() {
   const keyState = state.aiKey || { stored: false };
   const ready = Bridge.desktop && keyState.stored;
   const busy = !!state.aiBusy;
+  const agentNow = currentAiAgent();
 
   return `<div class="fade-in">
     <div class="page-head">
       <h2>AI 助手</h2>
-      <span class="page-sub">聊天 · ${esc(projName(p))}</span>
+      <span class="page-sub">聊天 · ${esc(projName(p))} · ${esc(agentNow ? agentNow.name : '通用助手')}</span>
       <span class="ph-right">
         <select class="select" data-act="ai-switch-project" title="切换 AI 操作的项目">
           ${DB.projects.map(x => `<option value="${x.id}"${x.id === p.id ? ' selected' : ''}>${esc(projName(x))}</option>`).join('')}
@@ -1561,6 +1586,8 @@ function aiView() {
         <button class="btn sm" data-act="ai-clear">${icon('trash')}清空会话</button>
       </span>
     </div>
+
+    ${aiIdentityHTML()}
 
     <div class="ai-grid">
       <div class="card ai-panel">
