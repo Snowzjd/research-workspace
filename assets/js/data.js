@@ -764,9 +764,10 @@ const WRITING_AGENTS = [
           WRITING_TONE_CLEANUP,
           '',
           '【工作流】',
-          '1. 先用 search_knowledge 检索工作台已登记的文献与资料；',
-          '2. 输出"文献清单 + 分类框架"请用户补充遗漏后，再逐节成文；',
-          '3. 每节成文后、调用 save_document 之前，按【成稿清理】通读一遍，再存档（kind=review）。'
+          '1. 写综述前先检索，不要直接成文。调用 search_knowledge 时必须带 mode=search（问答才用 mode=ask）。至少用中文、英文各查一次，并换同义术语再查，目标是多个 document_id，不要停在同一篇 PDF。',
+          '2. 先输出文献清单（每条写出 document_id 与 source_relative_path）和大纲，请用户确认后再写正文。',
+          '3. 禁止只根据一篇综述二手扩写。若 unique_docs 少于 3，先说明材料不够并继续检索，不要把这一篇展开成全文。',
+          '4. 每节成文后、调用 save_document 之前，按【成稿清理】通读一遍，再存档（kind=review）。'
         ].join('\n')
       },
       {
@@ -795,6 +796,13 @@ const WRITING_AGENTS = [
       }
 ];
 const AGENTS_PRESET_VERSION = 'writing-3@2026-10';
+/* 只用于认出「还没被人改过」的旧综述工作流。改过的提示词不回写。 */
+const WRITING_REVIEW_WORKFLOW_BEFORE = [
+  '【工作流】',
+  '1. 先用 search_knowledge 检索工作台已登记的文献与资料；',
+  '2. 输出"文献清单 + 分类框架"请用户补充遗漏后，再逐节成文；',
+  '3. 每节成文后、调用 save_document 之前，按【成稿清理】通读一遍，再存档（kind=review）。'
+].join('\n');
 
 function freshData() {
   const y = new Date().getFullYear();
@@ -1214,6 +1222,56 @@ function ensureWritingPresets(d) {
     }
     d.agentsPresetVersion = AGENTS_PRESET_VERSION;
   }
+  upgradeStockWritingReview(d);
+}
+
+/* 旧的综述工作流原样还在时，换成多查询检索。人设或工作流被改过则不动。 */
+function upgradeStockWritingReview(d) {
+  const next = WRITING_AGENTS.find(a => a && a.presetKey === 'writing-review');
+  if (!next || !Array.isArray(d.agents)) return;
+  const freshTail = next.prompt.slice(next.prompt.indexOf('【工作流】'));
+  d.agents.forEach(a => {
+    if (!a || typeof a.prompt !== 'string') return;
+    const isReview = a.presetKey === 'writing-review' || (!a.presetKey && a.name === '科研写作·综述');
+    if (!isReview) return;
+    const idx = a.prompt.indexOf('【工作流】');
+    if (idx < 0) return;
+    const tail = a.prompt.slice(idx).replace(/\s+$/, '');
+    if (tail !== WRITING_REVIEW_WORKFLOW_BEFORE) return;
+    a.prompt = a.prompt.slice(0, idx) + freshTail;
+  });
+}
+
+function agentByMention(token) {
+  const q = String(token || '').trim().replace(/^[「"'']+|[」"'']+$/g, '');
+  if (!q || !Array.isArray(DB.agents)) return null;
+  const low = q.toLowerCase();
+  return DB.agents.find(a => a && (
+    a.name === q || a.presetKey === q
+    || String(a.name || '').toLowerCase() === low
+    || String(a.presetKey || '').toLowerCase() === low
+  )) || null;
+}
+
+function writingReviewAgent() {
+  const list = (DB && DB.agents) || [];
+  return list.find(a => a && a.presetKey === 'writing-review')
+    || list.find(a => a && a.name === '科研写作·综述')
+    || null;
+}
+
+/* 用户点名综述 / writing-review / 科研写作·综述，或用 @名字 指定任意 Agent。 */
+function agentNamedInText(text) {
+  const raw = String(text || '');
+  const mentions = raw.match(/@([^\s@，,。；;：:、]+)/g) || [];
+  for (const m of mentions) {
+    const hit = agentByMention(m.slice(1));
+    if (hit) return hit;
+  }
+  if (/writing-review/i.test(raw) || raw.includes('科研写作·综述') || raw.includes('综述')) {
+    return writingReviewAgent();
+  }
+  return null;
 }
 
 /* 改名时把仍指向旧名字的引用一起改掉，避免任务、项目关联和派单历史变成孤儿。

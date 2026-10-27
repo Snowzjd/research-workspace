@@ -680,7 +680,7 @@ function buildApiMessages(p, chat, agent) {
 5. 不要编造项目里不存在的数据；查不到就如实说明。
 6. 本项目已有的材料目录：${dirs.join('、') || '（暂无）'} —— create_task 的 material_dir 只能取其中之一。
 7. 工作台共有 ${DB.projects.length} 个项目：${DB.projects.map(x => x.name).join('、')}。需要新建项目用 create_project（默认套用「标准科研项目」模板，含材料目录与起始任务）；删除项目必须先征得用户明确同意，再带 confirm=true 调用。
-8. 用户询问资料、文献或报告内容时调用 search_knowledge。若返回 answer 与 citations，回答里必须写出每条 citation 的 source_relative_path（以及 block_ids，如果有），不要编造路径或引用不存在的片段。检索由本机主进程转发，你看不到知识库服务本身。`;
+8. 用户询问资料、文献或报告内容时调用 search_knowledge。问答用 mode=ask；写综述或论文用 mode=search，并换中英文多次查询，看 unique_docs 是否凑齐多个 document_id。若返回 answer 与 citations，回答里必须写出每条 citation 的 source_relative_path（以及 block_ids，如果有），不要编造路径或引用不存在的片段。检索由本机主进程转发，你看不到知识库服务本身。`;
 
   /* 指定了执行身份：把该 Agent 的职责注入系统提示，工具与接入配置完全不变 */
   if (agent) {
@@ -735,8 +735,10 @@ function summarizeResult(name, res) {
       const cites = res.citations || res.results || [];
       const paths = cites.map(x => x && (x.source_relative_path || x.path)).filter(Boolean).slice(0, 3);
       const tail = paths.length ? ' · ' + paths.join('；') : '';
-      if (res.mode === 'ask') return `抽取式回答 · 引用 ${cites.length} 条${tail}`;
-      return `命中 ${res.count == null ? cites.length : res.count} 条${tail}`;
+      const uniq = res.unique_docs == null ? '' : ` · ${res.unique_docs} 篇文档`;
+      const thin = res.unique_docs != null && res.unique_docs < 3 ? ' · 文档偏少' : '';
+      if (res.mode === 'ask') return `抽取式回答 · 引用 ${cites.length} 条${uniq}${tail}${thin}`;
+      return `命中 ${res.count == null ? cites.length : res.count} 条${uniq}${tail}${thin}`;
     }
     case 'list_software':       return `${res.apps.length} 个软件 · 左侧固定 ${res.sidebar_quick_launch.length} 个`;
     case 'launch_software':     return res.launched ? `已启动 ${res.launched}${res.pid ? ' (PID ' + res.pid + ')' : ''}` : (res.message || '完成');
@@ -793,7 +795,12 @@ async function aiSend(presetText) {
   const content = String(presetText != null ? presetText : (state.aiDraft || '')).trim();
   if (!content) return;
 
-  /* 当前执行身份：Agent 与 AI 助手共用同一个接入配置，只是换了人设 */
+  /* 点名综述 / writing-review / @Agent 时切到对应身份，再按该人设调用工具 */
+  const named = (typeof agentNamedInText === 'function') ? agentNamedInText(content) : null;
+  if (named && named.name && named.name !== state.aiAgent) {
+    state.aiAgent = named.name;
+    toast(`已切换到 <b>${esc(named.name)}</b>`, 'ok');
+  }
   const agent = (DB.agents || []).find(a => a.name === state.aiAgent) || null;
 
   if (!DB.chats[p.id]) DB.chats[p.id] = [];
@@ -3492,6 +3499,13 @@ document.addEventListener('change', e => {
     state.project = id;
     DB.workspace.project = P(id).name;
     persist();
+    render();
+    return;
+  }
+
+  if (act === 'ai-pick-agent') {
+    const name = el.value;
+    state.aiAgent = (DB.agents || []).some(a => a && a.name === name) ? name : '';
     render();
     return;
   }

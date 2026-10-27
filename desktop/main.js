@@ -441,10 +441,22 @@ ipcMain.handle('account:resetLocal', () => {
    ========================================================================== */
 /* 保存写作产出（Agent/aiChat 的 save_document 工具）：
    路径相对工作区根目录，逐段过滤非法段，禁止目录逃逸 */
+/* 项目只存相对文件夹名，绝对位置只在 device.json 的 rootDir。
+   没有根目录时不借用 suggestedRoot，也不把文件夹名拼到当前盘。 */
+function writingRootMissingError(payload) {
+  const name = String((payload && payload.projectName) || '').trim();
+  const folder = String((payload && payload.projectFolder) || '').trim();
+  const who = name
+    ? `当前项目「${name}」只记录了文件夹名「${folder || '未命名'}」，没有可用的绝对路径。`
+    : '项目记录里没有可用的绝对路径。';
+  return '尚未设置工作区根目录，文档没有写入磁盘。请打开「设置 → 数据与同步」，点「工作区根目录」右侧的「更改」，选择本机已经存放项目材料的文件夹；也可以在新建项目时指定根目录。'
+    + who
+    + '不会猜测盘符，也不会写到别的位置。';
+}
 ipcMain.handle('doc:save-writing', (_e, payload) => {
   try {
-    const root = String(device.info().rootDir || '');
-    if (!root) return { ok: false, error: '尚未设置工作区根目录（设置 → 数据与同步 → 工作区根目录）' };
+    const root = String(device.info().rootDir || '').trim();
+    if (!root) return { ok: false, error: writingRootMissingError(payload), code: 'root_missing' };
     const rel = String((payload && payload.relPath) || '');
     const segs = rel.replace(/\\/g, '/').split('/')
       .map(x => x.trim()).filter(x => x && x !== '.' && x !== '..' && !/[<>:"|?*]/.test(x));
@@ -1128,6 +1140,7 @@ async function runSmoke() {
         ragBridgeReady: !!(window.workspace && typeof window.workspace.ragSearch === 'function'
           && typeof window.workspace.ragHealth === 'function' && typeof window.workspace.ragAsk === 'function'
           && typeof window.workspace.ragReindex === 'function'),
+        writingBridgeReady: typeof Bridge !== 'undefined' && typeof Bridge.saveWritingDoc === 'function',
         webviewReady: !!(window.workspace && window.workspace.webview === true
           && document.createElement('webview') && 'getWebContentsId' in document.createElement('webview')),
         undoReady: (typeof undoLast === 'function') && (typeof undoStack !== 'undefined'),
@@ -1152,7 +1165,7 @@ async function runSmoke() {
     out.ok = out.errors.length === 0 && c.routeFails.length === 0 &&
              c.navItems === 11 && c.projCards === c.projects && c.svgThumbs === c.projCards &&
              c.desktop && c.bridgeReady && c.aiBridgeReady && c.launchBridgeReady &&
-             c.ragBridgeReady && c.webviewReady && c.undoReady && c.auditReady &&
+             c.ragBridgeReady && c.writingBridgeReady && c.webviewReady && c.undoReady && c.auditReady &&
              c.aiTools >= 17 && c.aiToolImpls >= 17;
 
     /* ---------- 能力自检：逐个真实调用 IPC 与本地 API，确认「功能真能用」 ---------- */
@@ -1247,6 +1260,8 @@ async function runSmoke() {
       rec('RAG 不可达时给出可读错误而非崩溃',
         rgb && rgb.ok === false && typeof rgb.error === 'string' && rgb.error.length > 8,
         String((rgb && rgb.error) || '无返回').slice(0, 110));
+      rec('写作保存桥接就绪', typeof Bridge !== 'undefined' && typeof Bridge.saveWritingDoc === 'function',
+        typeof Bridge !== 'undefined' && typeof Bridge.saveWritingDoc);
 
       /* HTTP 通道真请求 */
       if (info && info.running) {
