@@ -909,6 +909,53 @@ function ragClientConfig(settings) {
   };
 }
 
+/* /api/health 的 knowledge_indexed。
+   外部引擎已经拿到 /health 时，和文档数对齐（RAG_Snowz 的 docs，例如 266；HTTP 引擎用它上报的 indexed）。
+   这不是把全文检索说成向量索引：kind=docs 时只表示语料规模。
+   还没探测到、或探测失败时不要报 0，改记 external / unknown。 */
+function resolveKnowledgeIndex(engine, rag) {
+  const eng = String(engine || 'builtin');
+  const external = eng === 'http' || eng === 'rag_snowz';
+  const status = rag && rag.status;
+  if (!external) {
+    return {
+      knowledge_indexed: 0,
+      knowledge_index_status: eng === 'none' ? 'none' : 'builtin',
+      knowledge_docs: 0,
+      knowledge_chunks: 0,
+      knowledge_index_kind: 'none'
+    };
+  }
+  if (status !== 'ok') {
+    return {
+      knowledge_indexed: null,
+      knowledge_index_status: status === 'fail' ? 'unknown' : 'external',
+      knowledge_docs: null,
+      knowledge_chunks: null,
+      knowledge_index_kind: eng === 'rag_snowz' ? 'docs' : 'vectors'
+    };
+  }
+  const docs = Number(rag.docs) || 0;
+  const chunks = Number(rag.chunks) || 0;
+  const indexed = Number(rag.indexed) || 0;
+  if (eng === 'rag_snowz') {
+    return {
+      knowledge_indexed: docs,
+      knowledge_index_status: 'ok',
+      knowledge_docs: docs,
+      knowledge_chunks: chunks,
+      knowledge_index_kind: 'docs'
+    };
+  }
+  return {
+    knowledge_indexed: indexed || docs,
+    knowledge_index_status: 'ok',
+    knowledge_docs: docs,
+    knowledge_chunks: chunks,
+    knowledge_index_kind: indexed ? 'vectors' : 'docs'
+  };
+}
+
 /* 记录最近一次迁移补了多少 id，供启动时决定是否需要立刻落盘 */
 let _lastMigrateInfo = { idsAdded: 0 };
 
@@ -1260,7 +1307,77 @@ function writingReviewAgent() {
     || null;
 }
 
-/* 用户点名综述 / writing-review / 科研写作·综述，或用 @名字 指定任意 Agent。 */
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function agentList() {
+  return (DB && Array.isArray(DB.agents)) ? DB.agents : [];
+}
+
+/* ASCII 短名字（如 AI）不参与裸文本匹配，避免一句话里的普通词误切换。@名字 仍精确命中。 */
+function displayNameAt(raw, name) {
+  const n = String(name || '');
+  if (!n) return -1;
+  const ascii = /^[\x00-\x7F]+$/.test(n);
+  if (ascii) {
+    if (n.length < 4) return -1;
+    const re = new RegExp('(?:^|[^A-Za-z0-9_])' + escapeRegExp(n) + '(?:$|[^A-Za-z0-9_])', 'i');
+    const m = re.exec(raw);
+    return m ? m.index : -1;
+  }
+  if (n.length < 4) return -1;
+  return raw.indexOf(n);
+}
+
+function presetKeyAt(raw, key) {
+  const k = String(key || '');
+  if (!k) return -1;
+  const re = new RegExp('(?:^|[^A-Za-z0-9_-])' + escapeRegExp(k) + '(?:$|[^A-Za-z0-9_-])', 'i');
+  const m = re.exec(raw);
+  return m ? m.index : -1;
+}
+
+function earliestAgent(raw, scoreFn) {
+  let best = null;
+  let bestAt = Infinity;
+  let bestLen = -1;
+  agentList().forEach(a => {
+    if (!a) return;
+    const scored = scoreFn(a);
+    if (!scored || scored.at < 0) return;
+    if (scored.at < bestAt || (scored.at === bestAt && scored.len > bestLen)) {
+      best = a;
+      bestAt = scored.at;
+      bestLen = scored.len;
+    }
+  });
+  return best;
+}
+
+/* 「用综述 agent」「让综述 agent」。单独的「综述」不算。 */
+function reviewAgentAddressed(raw) {
+  return /(?:用|让|叫|请|切换到|换成|交给)[^，。；;\n]{0,8}综述\s*agent/i.test(raw);
+}
+
+/* 「写个综述」这类写作请求可以切到综述 Agent。评价、翻译、课程、否定句不切。 */
+function reviewWritingRequested(raw) {
+  if (/(?:不要|别|不用|无需|勿)(?:把|将|要)?(?:写成|写作|写)(?:了)?(?:一篇|一份|一个|个)?(?:文献)?综述/.test(raw)) return false;
+  if (/(?:写|撰写)了?(?:一个|一篇|一份|个)(?:文献)?综述(?!课)/.test(raw)) return true;
+  if (/(?<![不别勿])(?:写|撰写)综述(?!课)/.test(raw)) return true;
+  const m = raw.match(/(?:写|撰写)([^，。！？\n]{0,20})综述(?!课)/);
+  if (!m) return false;
+  const mid = String(m[1] || '').trim();
+  if (!mid) return true;
+  if (/课|看|读|参考|翻译|下载|打开|找到|这篇|那篇|学习/.test(mid)) return false;
+  /* 「写作…综述」是名词，不是「写个综述」。 */
+  if (/^(?:得|了|过|成|作)/.test(mid)) return false;
+  return /[\u4e00-\u9fffA-Za-z0-9]/.test(mid);
+}
+
+/* @名字、presetKey、Agent 显示名优先。
+   综述只在「用/让综述 agent」、writing-review、显示名，或「写个综述」这类写作请求时切换。
+   文中仅仅出现「综述」两个字不会切换。 */
 function agentNamedInText(text) {
   const raw = String(text || '');
   const mentions = raw.match(/@([^\s@，,。；;：:、]+)/g) || [];
@@ -1268,10 +1385,134 @@ function agentNamedInText(text) {
     const hit = agentByMention(m.slice(1));
     if (hit) return hit;
   }
-  if (/writing-review/i.test(raw) || raw.includes('科研写作·综述') || raw.includes('综述')) {
-    return writingReviewAgent();
-  }
+  const byPreset = earliestAgent(raw, a => {
+    const at = presetKeyAt(raw, a.presetKey);
+    return at < 0 ? null : { at, len: String(a.presetKey || '').length };
+  });
+  if (byPreset) return byPreset;
+  const byName = earliestAgent(raw, a => {
+    const at = displayNameAt(raw, a.name);
+    return at < 0 ? null : { at, len: String(a.name || '').length };
+  });
+  if (byName) return byName;
+  if (reviewAgentAddressed(raw) || reviewWritingRequested(raw)) return writingReviewAgent();
   return null;
+}
+
+/** 与界面 aiSend 相同的系统提示和历史消息。探测接口复用这一份，避免另写一套人设。 */
+function buildApiMessages(p, chat, agent) {
+  const dirs = Object.keys(MATERIALS[p.id] || {});
+  let sys = `你是「个人 AI 科研工程工作台」的科研助理，当前协助用户管理项目「${p.name}」（项目 ID：${p.id}）。
+
+你可以调用工具读取并修改项目数据，修改会立即写入本地数据文件并在界面上生效。
+
+工作准则：
+1. 涉及项目现状（任务、待办、进度、材料目录）时，先调用 get_project_context 或相应的查询工具，不要凭猜测回答。
+2. 需要修改数据时直接调用工具完成，不要只给建议让用户自己做。
+3. 完成后用简洁中文说明「改了什么」，不要罗列原始 JSON。
+4. 删除类操作先向用户确认，除非用户已明确要求删除。
+5. 不要编造项目里不存在的数据；查不到就如实说明。
+6. 本项目已有的材料目录：${dirs.join('、') || '（暂无）'} —— create_task 的 material_dir 只能取其中之一。
+7. 工作台共有 ${DB.projects.length} 个项目：${DB.projects.map(x => x.name).join('、')}。需要新建项目用 create_project（默认套用「标准科研项目」模板，含材料目录与起始任务）；删除项目必须先征得用户明确同意，再带 confirm=true 调用。
+8. 用户询问资料、文献或报告内容时调用 search_knowledge。问答用 mode=ask；写综述或论文用 mode=search，并换中英文多次查询，看 unique_docs 是否凑齐多个 document_id。若返回 answer 与 citations，回答里必须写出每条 citation 的 source_relative_path（以及 block_ids，如果有），不要编造路径或引用不存在的片段。检索由本机主进程转发，你看不到知识库服务本身。调用 search_knowledge 时必须显式传入 mode。`;
+
+  if (agent) {
+    const tags = (agent.tags || []).filter(Boolean).join('、');
+    sys += `
+
+【本轮执行身份】你现在以工作台里的科研 Agent「${agent.name}」身份工作，但仍使用同一套工具与同一个 AI 接入配置。
+职责：${agent.role || '（未填写）'}
+擅长：${tags || '（未填写）'}
+${agent.task ? '手上的任务：' + agent.task : ''}
+回答时先一句话说明你以该身份打算怎么处理，然后直接调用工具完成；不要假装自己拥有额外能力。`;
+    if (agent.prompt) sys += `
+
+【该 Agent 的专属写作规范（优先级高于上文的一般准则，冲突时以这里为准）】
+${agent.prompt}`;
+  }
+
+  const out = [{ role: 'system', content: sys }];
+  for (const m of chat) {
+    if (m.role === 'user') out.push({ role: 'user', content: m.content });
+    else if (m.role === 'assistant') {
+      const msg = { role: 'assistant', content: m.content || '' };
+      if (m.toolCalls && m.toolCalls.length) {
+        msg.tool_calls = m.toolCalls.map(tc => ({
+          id: tc.id, type: 'function',
+          function: { name: tc.name, arguments: JSON.stringify(tc.args || {}) }
+        }));
+      }
+      out.push(msg);
+    } else if (m.role === 'tool') {
+      out.push({ role: 'tool', tool_call_id: m.tool_call_id, content: m.content || '{}' });
+    }
+  }
+  return out;
+}
+
+/* POST /api/ai/chat 的准备步骤：解析项目与身份，拼出和界面相同的消息。
+   不往 DB.chats 追加。调用方在工具跑完后用 finishAiProbe 把项目和身份改回去。 */
+function prepareAiProbe(rawArgs) {
+  const args = rawArgs || {};
+  const message = String(args.message || '').trim();
+  if (!message) return { ok: false, error: 'message 不能为空' };
+  const projectId = String(args.projectId || '').trim();
+  if (!projectId) return { ok: false, error: 'projectId 不能为空' };
+  const p = (DB.projects || []).find(x => x && (x.id === projectId || x.name === projectId || x.displayName === projectId));
+  if (!p) return { ok: false, error: `未找到项目「${projectId}」` };
+
+  const presetKey = String(args.presetKey || '').trim();
+  const agentName = String(args.agentName || '').trim();
+  let agent = null;
+  let switchReason = '';
+  if (presetKey) {
+    agent = agentList().find(a => a && a.presetKey === presetKey) || null;
+    if (!agent) return { ok: false, error: `未知 presetKey「${presetKey}」` };
+    switchReason = 'presetKey';
+  } else if (agentName) {
+    agent = agentList().find(a => a && a.name === agentName) || null;
+    if (!agent) return { ok: false, error: `未知 agentName「${agentName}」` };
+    switchReason = 'agentName';
+  } else {
+    agent = agentNamedInText(message);
+    if (agent) switchReason = 'message';
+  }
+
+  const previousAgent = (typeof state !== 'undefined' && state && state.aiAgent) || '';
+  const previousProject = (typeof state !== 'undefined' && state && state.project) || '';
+  const switched = !!(agent && agent.name && agent.name !== previousAgent);
+  if (typeof state !== 'undefined' && state) {
+    if (agent && agent.name) state.aiAgent = agent.name;
+    state.project = p.id;
+  }
+  const messages = buildApiMessages(p, [{ role: 'user', content: message, agent: agent ? agent.name : '' }], agent);
+  const ai = DB.ai || {};
+  return {
+    ok: true,
+    projectId: p.id,
+    previousProject,
+    previousAgent,
+    switched,
+    switchReason,
+    agent: agent ? { name: agent.name, presetKey: agent.presetKey || '', role: agent.role || '' } : null,
+    messages,
+    tools: (typeof AI_TOOLS !== 'undefined') ? AI_TOOLS : [],
+    cfg: {
+      provider: ai.provider,
+      baseUrl: ai.baseUrl,
+      model: ai.model,
+      temperature: ai.temperature,
+      maxTokens: ai.maxTokens
+    }
+  };
+}
+
+function finishAiProbe(rawArgs) {
+  const args = rawArgs || {};
+  if (typeof state === 'undefined' || !state) return { ok: true };
+  if (Object.prototype.hasOwnProperty.call(args, 'projectId')) state.project = args.projectId || '';
+  if (Object.prototype.hasOwnProperty.call(args, 'aiAgent')) state.aiAgent = args.aiAgent || '';
+  return { ok: true };
 }
 
 /* 改名时把仍指向旧名字的引用一起改掉，避免任务、项目关联和派单历史变成孤儿。

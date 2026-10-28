@@ -233,7 +233,7 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'search_knowledge',
-      description: '在个人科研知识库中检索或抽取式问答。综述和论文必须用 mode=search，并换中文、英文多次查询，目标是多个 document_id；问答再用 mode=ask。search 返回检索片段，ask 返回 answer 与 citations（含 source_relative_path、block_ids、source_spans、document_id）。引用必须使用返回的路径，不要编造。若 unique_docs 少于 3，先换英文术语或放宽检索，不要只根据一篇文献展开。',
+      description: '在个人科研知识库中检索或抽取式问答。调用时必须显式传入 mode。综述和论文必须用 mode=search，并换中文、英文多次查询，目标是多个 document_id；短问答再用 mode=ask。search 返回检索片段，ask 返回 answer 与 citations（含 source_relative_path、block_ids、source_spans、document_id）。引用必须使用返回的路径，不要编造。若 unique_docs 少于 3，先换英文术语或放宽检索，不要只根据一篇文献展开。',
       parameters: {
         type: 'object',
         properties: {
@@ -241,7 +241,7 @@ const AI_TOOLS = [
           mode: {
             type: 'string',
             enum: ['search', 'ask'],
-            description: 'search=多文档检索，综述和论文优先用它；ask=抽取式问答。省略时，综述 Agent 走 search，其余 RAG_Snowz 仍走 ask。'
+            description: '必须显式传入。search=多文档检索，写综述、列文献、写论文用它；ask=短问答。省略时：写作 Agent，或 query 像文献清单/综述/论文，默认 search；短问答默认 ask。'
           }
         },
         required: ['query']
@@ -413,15 +413,39 @@ function withUniqueDocs(payload) {
   return out;
 }
 
-/* 显式 search，或当前是综述 Agent 且没指定 ask：走多文档检索。显式 ask 仍是问答。 */
-function knowledgeWantsSearch(mode) {
+function callerLooksLikeWriting() {
+  const name = (typeof state !== 'undefined' && state && state.aiAgent) || '';
+  if (!name || typeof DB === 'undefined' || !Array.isArray(DB.agents)) return false;
+  const agent = DB.agents.find(a => a && a.name === name);
+  if (!agent) return false;
+  if (String(agent.presetKey || '').indexOf('writing-') === 0) return true;
+  if (typeof writingReviewAgent === 'function') {
+    const review = writingReviewAgent();
+    if (review && review.name === name) return true;
+  }
+  return false;
+}
+
+/* 列文献、写综述、写论文。短问句（什么是、结论、这篇）仍走问答。 */
+function queryLooksLikeLiterature(query) {
+  const q = String(query || '').trim();
+  if (!q) return false;
+  if (/(文献清单|分类框架|literature review|\bliterature\b)/i.test(q)) return true;
+  if (/(这篇|那篇|什么是|是什么|为什么|怎么|如何|是否|结论)/.test(q) && !/文献清单|分类框架/.test(q)) return false;
+  if (/(?:写|撰写).{0,16}(?:综述|论文)/.test(q)) return true;
+  if (/文献/.test(q)) return true;
+  if (/(综述|论文)/.test(q)) return true;
+  return false;
+}
+
+/* 显式 search / ask 优先。省略时：写作身份或文献类 query 走检索，短问答仍走 ask。 */
+function knowledgeWantsSearch(mode, query) {
   const requested = String(mode || '').trim().toLowerCase();
   if (requested === 'search') return true;
   if (requested === 'ask') return false;
-  const name = (typeof state !== 'undefined' && state && state.aiAgent) || '';
-  if (!name || typeof writingReviewAgent !== 'function') return false;
-  const review = writingReviewAgent();
-  return !!(review && review.name === name);
+  if (callerLooksLikeWriting()) return true;
+  if (queryLooksLikeLiterature(query)) return true;
+  return false;
 }
 
 /* 项目只有文件夹名。根目录为空时说明怎么设置，不拼盘符。 */
@@ -846,7 +870,7 @@ const AI_TOOL_IMPL_RAW = {
   async search_knowledge({ query, mode } = {}) {
     const q = String(query || '').trim();
     if (!q) return { ok: false, error: 'query 不能为空' };
-    const wantSearch = knowledgeWantsSearch(mode);
+    const wantSearch = knowledgeWantsSearch(mode, q);
     const S = DB.settings;
 
     /* 知识库引擎（插件宿主）：builtin=内置, rag_snowz/http=外部服务, none=只用文件名匹配。
@@ -884,7 +908,7 @@ const AI_TOOL_IMPL_RAW = {
           document_id: x.document_id || ''
         };
       };
-      /* RAG_Snowz：问答走 ask；综述写作和显式 mode=search 直接检索。ask 失败再退回检索。 */
+      /* RAG_Snowz：短问答走 ask；写作、列文献和显式 mode=search 直接检索。ask 失败再退回检索。 */
       if (cfg.snowz && Bridge.ragAsk && !wantSearch) {
         let asked = null;
         try { asked = await Bridge.ragAsk(payload); } catch (err) {

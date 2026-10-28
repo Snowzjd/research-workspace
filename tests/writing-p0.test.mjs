@@ -185,6 +185,36 @@ test('omitted mode still asks, and the review agent prefers search', async () =>
 
   const stillAsk = await tool(ctx, 'search_knowledge', { query: 'TPMS', mode: 'ask' });
   assert.equal(stillAsk.mode, 'ask');
+
+  runInContext(`state.aiAgent = ''`, ctx);
+  ctx.__asks = 0;
+  ctx.__searches = 0;
+  ctx.Bridge.ragAsk = async () => { throw new Error('列文献不应走问答'); };
+  ctx.Bridge.ragSearch = async () => {
+    ctx.__searches += 1;
+    return { ok: true, results: [{ document_id: 'd9', source_relative_path: 'lit/z.pdf', text: 'z' }] };
+  };
+  const listed = await tool(ctx, 'search_knowledge', { query: 'TPMS 换热器文献清单' });
+  assert.equal(listed.mode, 'search');
+  assert.equal(ctx.__asks, 0);
+  assert.equal(ctx.__searches, 1);
+
+  ctx.Bridge.ragAsk = async () => {
+    ctx.__asks += 1;
+    return { ok: true, answer: '短问答', citations: [] };
+  };
+  ctx.Bridge.ragSearch = async () => { throw new Error('短问答不应检索'); };
+  const qa = await tool(ctx, 'search_knowledge', { query: '什么是 TPMS' });
+  assert.equal(qa.mode, 'ask');
+  assert.equal(ctx.__asks, 1);
+
+  runInContext(`state.aiAgent = '科研写作·论文'`, ctx);
+  ctx.Bridge.ragSearch = async () => {
+    ctx.__searches += 1;
+    return { ok: true, results: [{ document_id: 'd2', source_relative_path: 'm.pdf', text: 'm' }] };
+  };
+  const paperish = await tool(ctx, 'search_knowledge', { query: '方法' });
+  assert.equal(paperish.mode, 'search');
 });
 
 test('writing-review prompt requires multi-query search before a draft', () => {
@@ -221,11 +251,31 @@ test('writing-review prompt requires multi-query search before a draft', () => {
 test('review wording and @agent switch the current identity', () => {
   const ctx = loadTools();
   runInContext('setDB(freshData())', ctx);
-  assert.equal(ctx.agentNamedInText('让综述 agent 写约 1000 字的 TPMS 换热器综述').presetKey, 'writing-review');
-  assert.equal(ctx.agentNamedInText('请用 writing-review 来写').name, '科研写作·综述');
-  assert.equal(ctx.agentNamedInText('@科研写作·综述 开始').name, '科研写作·综述');
-  assert.equal(ctx.agentNamedInText('@科研写作·论文 写方法，不要写成综述').presetKey, 'writing-paper');
-  assert.equal(ctx.agentNamedInText('今天把任务勾掉'), null);
+  const review = (text) => ctx.agentNamedInText(text);
+  assert.equal(review('让综述 agent 写约 1000 字的 TPMS 换热器综述').presetKey, 'writing-review');
+  assert.equal(review('用综述 agent 整理文献').presetKey, 'writing-review');
+  assert.equal(review('让综述 agent 基于知识库写 TPMS 换热器综述，先给文献清单和分类框架，先不要成文').presetKey, 'writing-review');
+  assert.equal(review('请用 writing-review 来写').name, '科研写作·综述');
+  assert.equal(review('@科研写作·综述 开始').name, '科研写作·综述');
+  assert.equal(review('科研写作·综述 先给提纲').presetKey, 'writing-review');
+  assert.equal(review('写个综述，主题是 TPMS 换热器').presetKey, 'writing-review');
+  assert.equal(review('写一篇 TPMS 换热器综述').presetKey, 'writing-review');
+  assert.equal(review('@科研写作·论文 写方法，不要写成综述').presetKey, 'writing-paper');
+  assert.equal(review('请用 writing-paper 写个综述').presetKey, 'writing-paper');
+  assert.equal(review('今天把任务勾掉'), null);
+  assert.equal(review('综述'), null);
+  assert.equal(review('这篇综述的结论是什么'), null);
+  assert.equal(review('不要写成综述'), null);
+  assert.equal(review('今天综述课取消了'), null);
+  assert.equal(review('帮我翻译这篇综述的摘要'), null);
+  assert.equal(review('写得像综述'), null);
+  assert.equal(review('我在读一篇综述'), null);
+  assert.equal(review('科研写作课上提到了综述这两个字'), null);
+
+  runInContext(`DB.agents.find(a => a.presetKey === 'writing-review').name = '我的综述助手'`, ctx);
+  assert.equal(review('让综述 agent 写一下').name, '我的综述助手');
+  assert.equal(review('请 我的综述助手 列文献').presetKey, 'writing-review');
+  assert.equal(review('科研写作·综述'), null);
 
   const dom = createContext({
     console,
@@ -251,6 +301,12 @@ test('review wording and @agent switch the current identity', () => {
   assert.match(html, /当前身份 · 科研写作·综述/);
   assert.match(html, /data-act="ai-pick-agent"/);
   assert.match(html, /科研写作·综述/);
+  runInContext(`state.aiAgent = ''`, dom);
+  const idle = dom.aiIdentityHTML();
+  assert.match(idle, /综述 agent/);
+  assert.match(idle, /写个综述/);
+  assert.equal(idle.includes('说「综述」、writing-review'), false);
+  runInContext(`state.aiAgent = '科研写作·综述'`, dom);
   const staff = dom.staffPanelHTML();
   assert.match(staff, /staff-row is-current/);
   assert.match(staff, /ai-id-tag">当前/);
