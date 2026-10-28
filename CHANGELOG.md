@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.2.0
+
+相对 v3.1.0。接入本机 RAG_Snowz 知识库，打通 AI 助手检索与写作 Agent，并修身份切换、字数/语言、保存与空结果文案。
+
+- 知识库主进程对接本机 RAG_Snowz（`http://127.0.0.1:8765` 的 `/health`、`/v1/search`、`/v1/ask`，提问为抽取式）。知识库页与助手 `search_knowledge` 共用该通道，引用保留路径和块号。（#6，`ce821651`）
+- `Bridge.saveWritingDoc` 对齐。工作区根目录为空时明确引导，不猜盘符。`search_knowledge` 支持 `mode=search|ask`。综述可多路检索，并提示 unique_docs。「用/让综述 agent」等可切到写作身份，并在界面显示。（#7，`c5a8d894`）
+- 新增 `POST /api/ai/chat`（Bearer 完整权限；写操作需要 autoApprove）。综述切换收紧：不再见到「综述」就切，要「写个综述」、点名、preset 或 @ 才切。省略 mode 时，写作向默认 search，短问答默认 ask。`/api/health` 读取嵌套 `pg.documents`，`knowledge_indexed` 与文档数对齐。（#8，`a09cbc1e`）
+- 用户给出「N 字」时，中文按约 80%–120% 的硬区间，超标先压缩再保存。纯英文用户句的最终回复默认英文。`mode=ask` 且 unique_docs 少于 3 时，强制再以 `mode=search` 检索，中英各扩一次。（#9，`1793314c`）
+- `writingAgentAddressed` 对综述、论文、专利点名对称（用/让 X agent、@名称、preset、显示名）。同名保存返回 `overwritten: true`，并说明已覆盖。材料目录为空，或检索乱码、为空时，用一句人话说明；乱码不再催换英文术语。（#10，`a7980191`）
+- 完整 chat `sessionId`（跨轮上下文）仍是 backlog，不在本版。
+
 ## 3.0.0
 
 首页只做项目总览。任务留在项目里。侧栏不再放时间线、自动化流程、独立任务页和 Agent 中心；知识库保留。「AI 助手」是唯一入口，顶栏聊天 / 派任务 / 浏览三个模式同权。软件启动台按当前项目过滤。

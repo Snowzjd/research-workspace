@@ -104,7 +104,7 @@ test('knowledge health keeps a real zero and does not coerce unknown to 0', () =
 
   const src = readFileSync(new URL('./desktop/api-server.js', root), 'utf8');
   assert.equal(src.includes('diag.knowledge_indexed || 0'), false);
-  assert.match(src, /version: '3\.1\.0'/);
+  assert.match(src, /version: '3\.2\.0'/);
   const actions = readFileSync(new URL('./assets/js/actions.js', root), 'utf8');
   assert.match(actions, /resolveKnowledgeIndex/);
   assert.match(actions, /__ai_prepare__/);
@@ -246,7 +246,7 @@ describe('POST /api/ai/chat', { concurrency: false }, () => {
     vm = loadWorkspace();
     diag = {
       ok: true,
-      version: '3.1.0',
+      version: '3.2.0',
       tools_count: 1,
       projects_count: 1,
       tasks_count: 0,
