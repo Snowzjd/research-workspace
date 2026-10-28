@@ -387,6 +387,54 @@ function thinAskRetryWarning(n) {
   return `unique_docs=${n}（少于 3）。文档不足。请立刻再次调用 search_knowledge，改用 mode=search，并用更宽的中文 query 和英文 query 各查一次。不要只重复当前问句，也不要根据这一次 ask 的结果展开成文。`;
 }
 
+const KEY_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+
+/* 键盘连打：相邻字母大多落在同一行。正常英文词几乎不会整段贴着键位走。 */
+function keyboardMash(word) {
+  const w = String(word || '').toLowerCase();
+  if (w.length < 6 || !/^[a-z]+$/.test(w)) return false;
+  if (KEY_ROWS.some(row => row.includes(w) || row.split('').reverse().join('').includes(w))) return true;
+  let adjacent = 0;
+  for (let i = 1; i < w.length; i++) {
+    const prev = w[i - 1];
+    const cur = w[i];
+    const hit = KEY_ROWS.some(row => {
+      const a = row.indexOf(prev);
+      const b = row.indexOf(cur);
+      return a >= 0 && b >= 0 && Math.abs(a - b) === 1;
+    });
+    if (hit) adjacent += 1;
+  }
+  return adjacent / (w.length - 1) >= 0.6;
+}
+
+/* 乱码、纯符号、键盘连打，或没有元音的长串字母。正常中文、英文词和缩写（TPMS）不算。 */
+function queryLooksGarbled(query) {
+  const q = String(query || '').trim();
+  if (!q) return false;
+  if (/\uFFFD|ï¿½|Ã.|Â.|â€/.test(q)) return true;
+  if (/^(.)\1{5,}$/.test(q)) return true;
+  const letters = (q.match(/[\u4e00-\u9fffA-Za-z0-9]/g) || []).length;
+  if (!letters) return true;
+  if (letters / q.length < 0.45) return true;
+  const words = q.split(/\s+/).filter(Boolean);
+  const mash = words.filter(w => {
+    if (/[\u4e00-\u9fff]/.test(w)) return false;
+    if (/^[A-Z0-9][A-Z0-9+\-./]{0,15}$/.test(w)) return false;
+    if (keyboardMash(w)) return true;
+    return w.length >= 6 && /^[A-Za-z]+$/.test(w) && !/[aeiouAEIOU]/.test(w);
+  });
+  return words.length > 0 && mash.length === words.length;
+}
+
+/* 空结果或乱码查询：一句人话。不要只说「换英文术语」。 */
+function plainSearchMissWarning(query) {
+  if (queryLooksGarbled(query)) {
+    return '这次查询不像正常检索词，没有查到文献，请换成清楚的中文或英文关键词。';
+  }
+  return '这次没有检索到文献，知识库返回的是空结果。';
+}
+
 /* 同一 document_id（没有 id 时用路径）只算一篇。少于 3 篇时提醒换英文词、放宽检索。 */
 function withUniqueDocs(payload) {
   const rows = (payload && (payload.citations || payload.results)) || [];
@@ -413,11 +461,19 @@ function withUniqueDocs(payload) {
   const out = Object.assign({}, payload, { unique_docs: ids.length, document_ids: ids });
   if (ids.length < 3) {
     const mode = String((payload && payload.mode) || '').trim().toLowerCase();
-    const tip = mode === 'ask'
-      ? thinAskRetryWarning(ids.length)
-      : `unique_docs=${ids.length}（少于 3）。请换英文术语或放宽检索范围，并用 mode=search 再查几次，凑齐多个 document_id。不要只根据同一篇文献展开。`;
+    const query = payload && payload.query;
+    const empty = ids.length === 0 || (payload && payload.code) === 'empty_corpus';
+    const garbled = queryLooksGarbled(query);
+    let tip;
+    if (garbled || (empty && mode !== 'ask')) {
+      tip = plainSearchMissWarning(query);
+    } else if (mode === 'ask') {
+      tip = thinAskRetryWarning(ids.length);
+    } else {
+      tip = `unique_docs=${ids.length}（少于 3）。请换英文术语或放宽检索范围，并用 mode=search 再查几次，凑齐多个 document_id。不要只根据同一篇文献展开。`;
+    }
     out.warning = out.warning ? (out.warning + ' ' + tip) : tip;
-    if (mode === 'ask') {
+    if (mode === 'ask' && !garbled) {
       out.next_step = '立刻再次调用 search_knowledge，mode=search，并用更宽的中文 query 和英文 query 各查一次。';
     }
   }
@@ -500,6 +556,7 @@ const AI_TOOL_IMPL_RAW = {
     if (!r || !r.ok) return { ok: false, error: (r && r.error) || '保存失败' };
     let kbId = '';
     const exist = DB.kbDocs.find(d => d.file === r.relPath);
+    const overwritten = !!(r && r.overwritten) || !!exist;
     if (exist) {
       kbId = exist.id || '';
     } else {
@@ -509,8 +566,13 @@ const AI_TOOL_IMPL_RAW = {
         date: new Date().toISOString().slice(0, 10), score: 0.9, file: r.relPath
       });
     }
-    logActivity(`<b>AI</b> 保存写作草稿 <b>${esc(title)}</b>`, 'save', '#218358');
-    return { ok: true, title, savedPath: r.absPath, kbId, kb: !!kbId };
+    logActivity(`<b>AI</b> ${overwritten ? '覆盖' : '保存'}写作草稿 <b>${esc(title)}</b>`, 'save', '#218358');
+    const note = overwritten ? '同名文稿已存在，这次保存覆盖了原文件。' : '';
+    return {
+      ok: true, title, savedPath: r.absPath, relPath: r.relPath || rel,
+      kbId, kb: !!kbId, overwritten,
+      note: note || undefined
+    };
   },
   async get_project_context() {
     const p = P(state.project);
@@ -523,7 +585,8 @@ const AI_TOOL_IMPL_RAW = {
         projects: DB.projects.map(x => x.name)
       };
     }
-    return {
+    const materialDirs = dirsOf(p.id);
+    const out = {
       ok: true,
       project: {
         id: p.id, name: p.name, display_name: p.displayName || p.name,
@@ -532,7 +595,7 @@ const AI_TOOL_IMPL_RAW = {
         stage: p.stage, next_stage: p.next, progress: p.progress,
         period: p.period, tools: p.tools, agents: p.agents, owner: p.owner.n
       },
-      material_dirs: dirsOf(p.id),
+      material_dirs: materialDirs,
       project_folder: projectDir(p),
       tasks: DB.tasks.filter(t => t.p === p.id).map(t => ({
         task_id: t.id || '', id: t.id || '',
@@ -544,6 +607,8 @@ const AI_TOOL_IMPL_RAW = {
         priority: PRI_OUT[t.pri], due: t.due, done: t.done
       }))
     };
+    if (!materialDirs.length) out.materials_note = '当前项目没有材料子目录。';
+    return out;
   },
 
   async list_tasks({ status, project } = {}) {
@@ -851,8 +916,15 @@ const AI_TOOL_IMPL_RAW = {
     const p = P(state.project);
     if (!p) return { ok: false, error: '当前没有选中项目' };
     const all = MATERIALS[p.id] || {};
+    const names = dirsOf(p.id);
+    if (!names.length) {
+      const note = (dir ? `目录「${dir}」不存在。` : '') + '当前项目没有材料子目录。';
+      const out = { ok: !dir, empty: true, project_folder: projectDir(p), dirs: [], note };
+      if (dir) out.error = note;
+      return out;
+    }
     if (dir) {
-      if (!all[dir]) return { ok: false, error: `目录「${dir}」不存在。可用目录：${dirsOf(p.id).join('、')}` };
+      if (!all[dir]) return { ok: false, error: `目录「${dir}」不存在。可用目录：${names.join('、')}` };
       return { ok: true, dir, full_path: projectDir(p) + '\\' + dir, files: all[dir].map(f => ({ name: f[0], size: f[1] })) };
     }
     return {
@@ -866,7 +938,11 @@ const AI_TOOL_IMPL_RAW = {
     const p = P(state.project);
     if (!p) return { ok: false, error: '当前没有选中项目' };
     if (dir && !dirsOf(p.id).includes(dir)) {
-      return { ok: false, error: `目录「${dir}」不存在。可用目录：${dirsOf(p.id).join('、')}` };
+      const names = dirsOf(p.id);
+      if (!names.length) {
+        return { ok: false, empty: true, dirs: [], error: `目录「${dir}」不存在。当前项目没有材料子目录。` };
+      }
+      return { ok: false, error: `目录「${dir}」不存在。可用目录：${names.join('、')}` };
     }
     const target = projectDir(p) + (dir ? '\\' + dir : '');
     const r = await Bridge.openFolder(target);

@@ -1367,9 +1367,37 @@ function earliestAgent(raw, scoreFn) {
   return best;
 }
 
-/* 「用综述 agent」「让综述 agent」。单独的「综述」不算。 */
-function reviewAgentAddressed(raw) {
-  return /(?:用|让|叫|请|切换到|换成|交给)[^，。；;\n]{0,8}综述\s*agent/i.test(raw);
+/* 综述 / 论文 / 专利共用。「用专利 agent」「让论文 agent」算点名；单独的「专利」「论文」不算。 */
+const WRITING_AGENT_TOPICS = [
+  { topic: '综述', presetKey: 'writing-review', name: '科研写作·综述' },
+  { topic: '论文', presetKey: 'writing-paper', name: '科研写作·论文' },
+  { topic: '专利', presetKey: 'writing-patent', name: '科研写作·专利' }
+];
+
+function writingAgentByTopic(topic) {
+  const spec = WRITING_AGENT_TOPICS.find(x => x.topic === topic);
+  if (!spec) return null;
+  const list = agentList();
+  return list.find(a => a && a.presetKey === spec.presetKey)
+    || list.find(a => a && a.name === spec.name)
+    || null;
+}
+
+/* 取最早一处「用/让 X agent」。同一句里论文和专利都出现时，先出现的那个生效。 */
+function writingAgentAddressed(raw) {
+  const text = String(raw || '');
+  let best = null;
+  let bestAt = Infinity;
+  WRITING_AGENT_TOPICS.forEach(spec => {
+    const re = new RegExp('(?:^|[^不别勿])(?:用|让|叫|请|切换到|换成|交给)[^，。；;\\n]{0,8}' + spec.topic + '\\s*agent', 'ig');
+    const m = re.exec(text);
+    if (!m || m.index >= bestAt) return;
+    const agent = writingAgentByTopic(spec.topic);
+    if (!agent) return;
+    best = agent;
+    bestAt = m.index;
+  });
+  return best;
 }
 
 /* 「写个综述」这类写作请求可以切到综述 Agent。评价、翻译、课程、否定句不切。 */
@@ -1388,8 +1416,8 @@ function reviewWritingRequested(raw) {
 }
 
 /* @名字、presetKey、Agent 显示名优先。
-   综述只在「用/让综述 agent」、writing-review、显示名，或「写个综述」这类写作请求时切换。
-   文中仅仅出现「综述」两个字不会切换。 */
+   综述 / 论文 / 专利在「用/让 X agent」、presetKey、显示名或 @名称 时对称切换。
+   「写个综述」仍只切综述。文中仅仅出现「综述」「论文」「专利」不会切换。 */
 function agentNamedInText(text) {
   const raw = String(text || '');
   const mentions = raw.match(/@([^\s@，,。；;：:、]+)/g) || [];
@@ -1407,7 +1435,9 @@ function agentNamedInText(text) {
     return at < 0 ? null : { at, len: String(a.name || '').length };
   });
   if (byName) return byName;
-  if (reviewAgentAddressed(raw) || reviewWritingRequested(raw)) return writingReviewAgent();
+  const addressed = writingAgentAddressed(raw);
+  if (addressed) return addressed;
+  if (reviewWritingRequested(raw)) return writingReviewAgent();
   return null;
 }
 

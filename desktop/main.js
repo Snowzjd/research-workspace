@@ -463,9 +463,11 @@ ipcMain.handle('doc:save-writing', (_e, payload) => {
       .map(x => x.trim()).filter(x => x && x !== '.' && x !== '..' && !/[<>:"|?*]/.test(x));
     if (!segs.length) return { ok: false, error: '路径不合法：' + rel };
     const abs = path.join(root, ...segs);
+    let overwritten = false;
+    try { overwritten = fs.existsSync(abs) && fs.statSync(abs).isFile(); } catch (_) { overwritten = false; }
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, String((payload && payload.content) || ''), 'utf8');
-    return { ok: true, absPath: abs, relPath: segs.join('/') };
+    return { ok: true, absPath: abs, relPath: segs.join('/'), overwritten };
   } catch (err) {
     return { ok: false, error: String((err && err.message) || err) };
   }
@@ -767,7 +769,11 @@ ipcMain.handle('materials:scan', (_e, payload) => {
       }
       out.push({ dir: ent.name, files });
     }
-    return { ok: true, root: dir, dirs: out, count: out.reduce((n, d) => n + d.files.length, 0) };
+    const count = out.reduce((n, d) => n + d.files.length, 0);
+    return {
+      ok: true, root: dir, dirs: out, count,
+      note: out.length ? undefined : '项目目录下没有材料子目录。'
+    };
   } catch (err) {
     return { ok: false, error: String((err && err.message) || err) };
   }

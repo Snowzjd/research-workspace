@@ -95,6 +95,8 @@ test('save_document refuses an empty root and does not invent a path', async () 
   const main = readFileSync(new URL('./desktop/main.js', root), 'utf8');
   assert.match(main, /writingRootMissingError/);
   assert.match(main, /不会猜测盘符/);
+  assert.match(main, /overwritten/);
+  assert.match(main, /没有材料子目录/);
   assert.equal(main.includes('suggestedRoot'), true);
   assert.match(main, /不借用 suggestedRoot/);
 });
@@ -105,9 +107,35 @@ test('save_document reaches Bridge.saveWritingDoc once a root is set', async () 
   runInContext(`DB.settings.rootDir = 'D:\\\\ResearchWorkspace'`, ctx);
   const res = await tool(ctx, 'save_document', { title: 'TPMS 综述', kind: 'review', content: BODY });
   assert.equal(res.ok, true);
+  assert.equal(res.overwritten, false);
+  assert.equal(res.note, undefined);
   assert.equal(ctx.__saved.relPath, 'TPMS换热器/写作/TPMS 综述.md');
   assert.equal(ctx.__saved.projectFolder, 'TPMS换热器');
   assert.equal(ctx.__saved.projectName, 'TPMS 换热器');
+
+  const again = await tool(ctx, 'save_document', { title: 'TPMS 综述', kind: 'review', content: BODY + '再写一句覆盖。' });
+  assert.equal(again.ok, true);
+  assert.equal(again.overwritten, true);
+  assert.match(again.note, /覆盖了原文件/);
+  assert.equal(again.savedPath, res.savedPath);
+
+  const other = await tool(ctx, 'save_document', { title: '另一篇', kind: 'paper', content: BODY });
+  assert.equal(other.ok, true);
+  assert.equal(other.overwritten, false);
+});
+
+test('save_document reports a disk overwrite even before the catalog knows the file', async () => {
+  const ctx = loadTools();
+  seedProject(ctx);
+  runInContext(`DB.settings.rootDir = 'D:\\\\ResearchWorkspace'`, ctx);
+  ctx.Bridge.saveWritingDoc = async (payload) => {
+    ctx.__saved = payload;
+    return { ok: true, relPath: payload.relPath, absPath: 'D:/ws/' + payload.relPath, overwritten: true };
+  };
+  const res = await tool(ctx, 'save_document', { title: 'TPMS 综述', kind: 'review', content: BODY });
+  assert.equal(res.ok, true);
+  assert.equal(res.overwritten, true);
+  assert.match(res.note, /同名文稿已存在/);
 });
 
 test('search_knowledge mode=search skips ask and warns when unique docs are under 3', async () => {
@@ -275,6 +303,21 @@ test('review wording and @agent switch the current identity', () => {
   assert.equal(review('写一篇 TPMS 换热器综述').presetKey, 'writing-review');
   assert.equal(review('@科研写作·论文 写方法，不要写成综述').presetKey, 'writing-paper');
   assert.equal(review('请用 writing-paper 写个综述').presetKey, 'writing-paper');
+  assert.equal(review('用论文 agent 写方法').presetKey, 'writing-paper');
+  assert.equal(review('让论文 agent 按 IMRaD 写').presetKey, 'writing-paper');
+  assert.equal(review('科研写作·论文 先给大纲').presetKey, 'writing-paper');
+  assert.equal(review('这篇论文的摘要先别改'), null);
+  assert.equal(review('申请个论文想法'), null);
+  assert.equal(review('用专利 agent 写权利要求').presetKey, 'writing-patent');
+  assert.equal(review('让专利 agent').presetKey, 'writing-patent');
+  assert.equal(review('@科研写作·专利 开始').presetKey, 'writing-patent');
+  assert.equal(review('科研写作·专利 先写独立权利要求').presetKey, 'writing-patent');
+  assert.equal(review('请用 writing-patent 写背景技术').presetKey, 'writing-patent');
+  assert.equal(review('申请个专利想法'), null);
+  assert.equal(review('这篇专利先放着'), null);
+  assert.equal(review('不用专利 agent'), null);
+  assert.equal(review('用论文 agent 写个综述，不要切到综述').presetKey, 'writing-paper');
+  assert.equal(review('用专利 agent，不要用论文 agent').presetKey, 'writing-patent');
   assert.equal(review('今天把任务勾掉'), null);
   assert.equal(review('综述'), null);
   assert.equal(review('这篇综述的结论是什么'), null);
@@ -317,6 +360,8 @@ test('review wording and @agent switch the current identity', () => {
   runInContext(`state.aiAgent = ''`, dom);
   const idle = dom.aiIdentityHTML();
   assert.match(idle, /综述 agent/);
+  assert.match(idle, /论文 agent/);
+  assert.match(idle, /专利 agent/);
   assert.match(idle, /写个综述/);
   assert.equal(idle.includes('说「综述」、writing-review'), false);
   runInContext(`state.aiAgent = '科研写作·综述'`, dom);
@@ -408,4 +453,56 @@ test('a 1000-字 target is a hard CJK band of 800–1200 and pure English replie
   assert.match(job, /【回复语言】/);
   assert.match(job, /【篇幅硬约束】/);
   assert.ok(job.lastIndexOf('【回复语言】') > job.indexOf('【专属工作规范】'));
+});
+
+test('empty materials dirs say there is no materials subdirectory', async () => {
+  const ctx = loadTools();
+  seedProject(ctx);
+  const listed = await tool(ctx, 'list_materials', {});
+  assert.equal(listed.ok, true);
+  assert.equal(listed.empty, true);
+  assert.equal(listed.dirs.length, 0);
+  assert.match(listed.note, /没有材料子目录/);
+
+  const asked = await tool(ctx, 'list_materials', { dir: '01_文献' });
+  assert.equal(asked.ok, false);
+  assert.match(asked.error, /没有材料子目录/);
+
+  const context = await tool(ctx, 'get_project_context', {});
+  assert.equal(context.material_dirs.length, 0);
+  assert.match(context.materials_note, /没有材料子目录/);
+
+  runInContext(`MATERIALS[state.project] = { '01_文献': [['a.pdf', '1 MB', 'pdf']] }`, ctx);
+  const filled = await tool(ctx, 'list_materials', {});
+  assert.equal(filled.dirs.length, 1);
+  assert.equal(filled.note, undefined);
+  assert.equal(filled.empty, undefined);
+  const again = await tool(ctx, 'get_project_context', {});
+  assert.equal(JSON.stringify(again.material_dirs), '["01_文献"]');
+  assert.equal(again.materials_note, undefined);
+});
+
+test('empty or garbled search warnings are one plain sentence', async () => {
+  const ctx = loadTools();
+  seedProject(ctx);
+  ctx.Bridge.ragSearch = async () => ({ ok: true, results: [] });
+
+  const garbled = await tool(ctx, 'search_knowledge', { query: 'asdfghjklzx', mode: 'search' });
+  assert.equal(garbled.code, 'empty_corpus');
+  assert.equal(garbled.unique_docs, 0);
+  assert.match(garbled.warning, /不像正常检索词/);
+  assert.equal((garbled.warning.match(/。/g) || []).length, 1);
+  assert.equal(/英文术语/.test(garbled.warning), false);
+  assert.equal(garbled.next_step, undefined);
+
+  const empty = await tool(ctx, 'search_knowledge', { query: 'TPMS heat exchanger', mode: 'search' });
+  assert.equal(empty.code, 'empty_corpus');
+  assert.match(empty.warning, /没有检索到文献/);
+  assert.match(empty.warning, /空结果/);
+  assert.equal((empty.warning.match(/。/g) || []).length, 1);
+  assert.equal(/英文术语/.test(empty.warning), false);
+
+  assert.equal(ctx.queryLooksGarbled('TPMS'), false);
+  assert.equal(ctx.queryLooksGarbled('TPMS 换热器'), false);
+  assert.equal(ctx.queryLooksGarbled('????'), true);
 });
