@@ -173,6 +173,13 @@ test('omitted mode still asks, and the review agent prefers search', async () =>
   assert.equal(asked.mode, 'ask');
   assert.equal(asked.unique_docs, 1);
   assert.match(asked.warning, /少于 3/);
+  assert.match(asked.warning, /立刻再次调用 search_knowledge/);
+  assert.match(asked.warning, /mode=search/);
+  assert.match(asked.warning, /中文 query/);
+  assert.match(asked.warning, /英文 query/);
+  assert.match(asked.next_step, /mode=search/);
+  assert.match(asked.next_step, /中文 query/);
+  assert.match(asked.next_step, /英文 query/);
 
   ctx.Bridge.ragSearch = async () => {
     ctx.__searches += 1;
@@ -185,6 +192,8 @@ test('omitted mode still asks, and the review agent prefers search', async () =>
 
   const stillAsk = await tool(ctx, 'search_knowledge', { query: 'TPMS', mode: 'ask' });
   assert.equal(stillAsk.mode, 'ask');
+  assert.match(stillAsk.warning, /立刻再次调用 search_knowledge/);
+  assert.match(stillAsk.next_step, /更宽的中文 query 和英文 query/);
 
   runInContext(`state.aiAgent = ''`, ctx);
   ctx.__asks = 0;
@@ -226,6 +235,10 @@ test('writing-review prompt requires multi-query search before a draft', () => {
   assert.match(review.prompt, /大纲/);
   assert.match(review.prompt, /请用户确认/);
   assert.match(review.prompt, /禁止只根据一篇综述二手扩写/);
+  assert.match(review.prompt, /立刻再次调用 search_knowledge/);
+  assert.match(review.prompt, /更宽的中文和英文 query/);
+  assert.match(review.prompt, /硬约束/);
+  assert.match(review.prompt, /800–1200/);
   assert.equal(runInContext('AGENTS_PRESET_VERSION', ctx), 'writing-3@2026-10');
 
   const saved = ctx.freshData();
@@ -310,4 +323,89 @@ test('review wording and @agent switch the current identity', () => {
   const staff = dom.staffPanelHTML();
   assert.match(staff, /staff-row is-current/);
   assert.match(staff, /ai-id-tag">当前/);
+});
+
+test('a 1000-字 target is a hard CJK band of 800–1200 and pure English replies in English', () => {
+  const ctx = loadTools();
+  runInContext(readFileSync(new URL('./assets/js/agent-jobs.js', root), 'utf8'), ctx, { filename: 'agent-jobs.js' });
+  runInContext(`
+    setDB(freshData());
+    const p = makeProject({ id: 'pmvgt6e8u1h7', name: 'TPMS换热器', folder: 'TPMS换热器', displayName: 'TPMS 换热器' });
+    DB.projects.push(p);
+    state.project = '';
+    state.aiAgent = '';
+  `, ctx);
+
+  assert.equal(ctx.parseLengthTarget('把下面改写成约 1000 字'), 1000);
+  assert.equal(ctx.parseLengthTarget('Rewrite this into about 1000 words.'), 1000);
+  assert.equal(ctx.parseLengthTarget('no length here'), 0);
+  const band = ctx.cjkLengthBand(1000);
+  assert.equal(band.min, 800);
+  assert.equal(band.max, 1200);
+
+  const around = '换'.repeat(1000);
+  const landed = ctx.assessCjkLength(around, 1000);
+  assert.equal(landed.count, 1000);
+  assert.equal(landed.within, true);
+  assert.equal(landed.over, false);
+  assert.equal(landed.count >= 800 && landed.count <= 1200, true);
+
+  const edge = ctx.assessCjkLength('换'.repeat(1200), 1000);
+  assert.equal(edge.within, true);
+  assert.equal(edge.over, false);
+  const tooLong = ctx.assessCjkLength('换'.repeat(1201) + ' TPMS heat exchanger', 1000);
+  assert.equal(tooLong.count, 1201);
+  assert.equal(tooLong.over, true);
+  assert.equal(tooLong.within, false);
+  assert.equal(ctx.assessCjkLength('换'.repeat(799), 1000).within, false);
+
+  assert.equal(ctx.messageIsPureEnglish('Summarize the open tasks.'), true);
+  assert.equal(ctx.messageIsPureEnglish('Rewrite this — briefly.'), true);
+  assert.equal(ctx.messageIsPureEnglish('Summarize the open tasks. 谢谢'), false);
+  assert.equal(ctx.messageIsPureEnglish('把笔记改写成约 1000 字'), false);
+  assert.equal(ctx.messageIsPureEnglish('12345'), false);
+  assert.equal(ctx.messageIsPureEnglish(''), false);
+
+  const en = ctx.prepareAiProbe({
+    projectId: 'pmvgt6e8u1h7',
+    presetKey: 'writing-review',
+    message: 'Rewrite the TPMS notes into about 1000 words.'
+  });
+  assert.equal(en.ok, true);
+  const sys = en.messages[0].content;
+  assert.ok(sys.lastIndexOf('【回复语言】') > sys.indexOf('专属写作规范'));
+  assert.match(sys, /最终回复默认用英文/);
+  assert.match(sys, /【篇幅硬约束】/);
+  assert.match(sys, /800–1200/);
+  assert.match(sys, /先压缩，再调用 save_document/);
+  assert.match(sys, /立刻再次调用 search_knowledge/);
+
+  const zh = ctx.prepareAiProbe({
+    projectId: 'pmvgt6e8u1h7',
+    message: '把笔记改写成约 1000 字的综述'
+  });
+  assert.equal(zh.messages[0].content.includes('【回复语言】'), false);
+  assert.match(zh.messages[0].content, /【篇幅硬约束】用户指定约 1000 字/);
+  assert.match(zh.messages[0].content, /落在 800–1200/);
+  assert.match(zh.messages[0].content, /超过 1200（约超过目标 20%）必须先压缩，再调用 save_document/);
+
+  const prompts = ['writing-paper', 'writing-review', 'writing-patent'].map(key => {
+    return ctx.freshData().agents.find(a => a.presetKey === key).prompt;
+  });
+  for (const prompt of prompts) {
+    assert.match(prompt, /【篇幅】/);
+    assert.match(prompt, /硬约束/);
+    assert.match(prompt, /800–1200/);
+    assert.match(prompt, /超过目标约 20%/);
+    assert.match(prompt, /先压缩，再调用 save_document/);
+  }
+
+  const job = ctx.buildAgentSystemPrompt(
+    { id: 'pmvgt6e8u1h7', name: 'TPMS换热器' },
+    ctx.freshData().agents.find(a => a.presetKey === 'writing-review'),
+    'Rewrite the notes into about 1000 words.'
+  );
+  assert.match(job, /【回复语言】/);
+  assert.match(job, /【篇幅硬约束】/);
+  assert.ok(job.lastIndexOf('【回复语言】') > job.indexOf('【专属工作规范】'));
 });
