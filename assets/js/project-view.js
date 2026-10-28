@@ -344,9 +344,9 @@ async function scanProjectMaterials(pid) {
     render();
     return toast(`扫描失败：${esc((r && r.error) || '未知错误')}`, 'err');
   }
-  state.matScan = { pid, count: r.count || 0, dirs: r.dirs || [], root: r.root || '', at: Date.now() };
+  state.matScan = { pid, count: r.count || 0, dirs: r.dirs || [], root: r.root || '', at: Date.now(), note: r.note || '' };
   render();
-  toast(`磁盘上扫到 ${r.count || 0} 个文件（尚未写入登记）`, 'ok');
+  toast(r.note || `磁盘上扫到 ${r.count || 0} 个文件（尚未写入登记）`, 'ok');
 }
 
 /* 确认后按磁盘重建登记表 */

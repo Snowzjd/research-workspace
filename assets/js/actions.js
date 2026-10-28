@@ -670,7 +670,11 @@ async function refreshConnClients() {
 function summarizeResult(name, res) {
   if (res && res.ok === false) return '失败：' + (res.error || '未知错误');
   switch (name) {
-    case 'get_project_context': return `读取完成 · ${res.tasks.length} 个任务 / ${res.todos.length} 条待办 / ${(res.material_dirs || []).length} 个材料目录`;
+    case 'get_project_context': {
+      const nDir = (res.material_dirs || []).length;
+      const mat = nDir ? `${nDir} 个材料目录` : '没有材料子目录';
+      return `读取完成 · ${res.tasks.length} 个任务 / ${res.todos.length} 条待办 / ${mat}`;
+    }
     case 'list_tasks':          return `共 ${res.count} 个任务`;
     case 'create_task':         return `已创建「${res.created}」· 材料目录 ${res.material_dir || '—'}`;
     case 'update_task':         return `已更新：${(res.changes || []).join('、')}`;
@@ -678,9 +682,15 @@ function summarizeResult(name, res) {
     case 'create_todo':         return `已新增待办「${res.created}」`;
     case 'update_todo':         return `已更新：${(res.changes || []).join('、')}`;
     case 'update_project':      return `已更新：${(res.changes || []).join('、')}`;
-    case 'list_materials':      return res.dirs ? `${res.dirs.length} 个目录` : `${(res.files || []).length} 个文件`;
+    case 'list_materials':
+      if (res && res.note && (!res.dirs || !res.dirs.length)) return res.note;
+      return res.dirs ? `${res.dirs.length} 个目录` : `${(res.files || []).length} 个文件`;
     case 'open_project_folder': return '已打开：' + res.opened;
-    case 'save_document':       return res.ok ? `已保存：${res.savedPath || res.title}` : (res.error || '保存失败');
+    case 'save_document':
+      if (!res.ok) return res.error || '保存失败';
+      return res.overwritten
+        ? `已覆盖同名文稿：${res.savedPath || res.title}`
+        : `已保存：${res.savedPath || res.title}`;
     case 'search_knowledge': {
       const cites = res.citations || res.results || [];
       const paths = cites.map(x => x && (x.source_relative_path || x.path)).filter(Boolean).slice(0, 3);
@@ -745,7 +755,7 @@ async function aiSend(presetText) {
   const content = String(presetText != null ? presetText : (state.aiDraft || '')).trim();
   if (!content) return;
 
-  /* 点名写作 Agent、presetKey、@名字，或「写个综述」时切身份。仅仅出现「综述」不切。 */
+  /* 点名写作 Agent（综述/论文/专利）、presetKey、@名字，或「写个综述」时切身份。仅仅出现这些词不切。 */
   const named = (typeof agentNamedInText === 'function') ? agentNamedInText(content) : null;
   if (named && named.name && named.name !== state.aiAgent) {
     state.aiAgent = named.name;
