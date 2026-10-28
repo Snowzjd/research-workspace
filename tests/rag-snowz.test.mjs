@@ -101,6 +101,57 @@ test('snowz health reads docs and chunks and does not call them a vector index',
   assert.equal(calls[0].body, undefined);
 });
 
+test('snowz health reads nested pg.documents and pg.chunks_fixed_length', async () => {
+  installFetch(() => jsonResponse({
+    ok: true,
+    pg: {
+      documents: 266,
+      chunks_fixed_length: 33383,
+      default_candidate_n: 14000
+    }
+  }));
+  const nested = await rag.health({ endpoint: 'http://127.0.0.1:8765', engine: 'rag_snowz' });
+  assert.equal(nested.ok, true);
+  assert.equal(nested.docs, 266);
+  assert.equal(nested.chunks, 33383);
+  assert.equal(nested.candidates, 14000);
+  assert.equal(nested.indexed, 0);
+  assert.equal(nested.engine, 'rag_snowz');
+
+  const ctx = loadTools();
+  const mapped = ctx.resolveKnowledgeIndex('rag_snowz', {
+    status: 'ok',
+    docs: nested.docs,
+    chunks: nested.chunks,
+    indexed: nested.indexed
+  });
+  assert.equal(mapped.knowledge_indexed, 266);
+  assert.equal(mapped.knowledge_docs, 266);
+  assert.equal(mapped.knowledge_chunks, 33383);
+  assert.equal(mapped.knowledge_index_status, 'ok');
+  assert.equal(mapped.knowledge_index_kind, 'docs');
+
+  installFetch(() => jsonResponse({
+    ok: true,
+    docs: 0,
+    chunks: 0,
+    pg: { documents: 266, chunks_fixed_length: 33383 }
+  }));
+  const filled = await rag.health({ endpoint: 'http://127.0.0.1:8765', engine: 'rag_snowz' });
+  assert.equal(filled.docs, 266);
+  assert.equal(filled.chunks, 33383);
+
+  installFetch(() => jsonResponse({
+    ok: true,
+    docs: 10,
+    chunks_fixed_length: 20,
+    pg: { documents: 266, chunks_fixed_length: 33383 }
+  }));
+  const top = await rag.health({ endpoint: 'http://127.0.0.1:8765', engine: 'rag_snowz' });
+  assert.equal(top.docs, 10);
+  assert.equal(top.chunks, 20);
+});
+
 test('snowz search posts /v1/search without a bearer token', async () => {
   tmp = mkdtempSync(join(tmpdir(), 'rag-snowz-'));
   rag.__setDir(tmp);

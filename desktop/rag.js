@@ -169,6 +169,21 @@ function asList(v) {
   return [v];
 }
 
+/* 顶层别名优先。顶层没有正数时再读 pg.documents / pg.chunks_fixed_length，避免健康检查把嵌套语料规模读成 0。 */
+function readCount(root, keys) {
+  const places = [root];
+  const pg = root && root.pg;
+  if (pg && typeof pg === 'object' && !Array.isArray(pg)) places.push(pg);
+  for (const place of places) {
+    const v = pick(place, keys);
+    if (v === undefined) continue;
+    const n = Number(v);
+    if (!Number.isFinite(n)) continue;
+    if (n > 0) return n;
+  }
+  return 0;
+}
+
 function readAskMeta(j) {
   const askDefault = j && j.ask_default;
   let askMode = '';
@@ -189,9 +204,9 @@ async function health(cfg = {}) {
   const r = await request(endpoint, '/health', { timeout: 8000, auth: !snowz });
   if (!r.ok) return r;
   const j = r.json || {};
-  const docs = Number(pick(j, ['docs', 'documents']) || 0);
-  const chunks = Number(pick(j, ['chunks_fixed_length', 'chunks', 'chunk_count']) || 0);
-  const candidates = Number(pick(j, ['default_candidate_n', 'candidate_n', 'candidates']) || 0);
+  const docs = readCount(j, ['docs', 'documents']);
+  const chunks = readCount(j, ['chunks_fixed_length', 'chunks', 'chunk_count']);
+  const candidates = readCount(j, ['default_candidate_n', 'candidate_n', 'candidates']);
   const indexedReported = Number(pick(j, ['indexed', 'indexed_count', 'count', 'total']) || 0);
   const ask = readAskMeta(j);
   return {
