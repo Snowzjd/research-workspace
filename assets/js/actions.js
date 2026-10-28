@@ -635,6 +635,7 @@ function openAiKeyDialog() {
 /* ==========================================================================
    7.7 AI 对话主循环
    ========================================================================== */
+/* 与 desktop/ai-chat-loop.js 的 AI_CHAT_MAX_ROUNDS 相同：界面和探测接口都到此为止。 */
 const AI_MAX_ROUNDS = 6;
 
 /** 与主进程一致的引号感知参数拆分 */
@@ -664,57 +665,6 @@ async function refreshConnClients() {
     if (r && r.clients) state.connClients = r.clients;
   } catch (_) {}
   render();
-}
-
-function buildApiMessages(p, chat, agent) {
-  const dirs = Object.keys(MATERIALS[p.id] || {});
-  let sys = `你是「个人 AI 科研工程工作台」的科研助理，当前协助用户管理项目「${p.name}」（项目 ID：${p.id}）。
-
-你可以调用工具读取并修改项目数据，修改会立即写入本地数据文件并在界面上生效。
-
-工作准则：
-1. 涉及项目现状（任务、待办、进度、材料目录）时，先调用 get_project_context 或相应的查询工具，不要凭猜测回答。
-2. 需要修改数据时直接调用工具完成，不要只给建议让用户自己做。
-3. 完成后用简洁中文说明「改了什么」，不要罗列原始 JSON。
-4. 删除类操作先向用户确认，除非用户已明确要求删除。
-5. 不要编造项目里不存在的数据；查不到就如实说明。
-6. 本项目已有的材料目录：${dirs.join('、') || '（暂无）'} —— create_task 的 material_dir 只能取其中之一。
-7. 工作台共有 ${DB.projects.length} 个项目：${DB.projects.map(x => x.name).join('、')}。需要新建项目用 create_project（默认套用「标准科研项目」模板，含材料目录与起始任务）；删除项目必须先征得用户明确同意，再带 confirm=true 调用。
-8. 用户询问资料、文献或报告内容时调用 search_knowledge。问答用 mode=ask；写综述或论文用 mode=search，并换中英文多次查询，看 unique_docs 是否凑齐多个 document_id。若返回 answer 与 citations，回答里必须写出每条 citation 的 source_relative_path（以及 block_ids，如果有），不要编造路径或引用不存在的片段。检索由本机主进程转发，你看不到知识库服务本身。`;
-
-  /* 指定了执行身份：把该 Agent 的职责注入系统提示，工具与接入配置完全不变 */
-  if (agent) {
-    const tags = (agent.tags || []).filter(Boolean).join('、');
-    sys += `
-
-【本轮执行身份】你现在以工作台里的科研 Agent「${agent.name}」身份工作，但仍使用同一套工具与同一个 AI 接入配置。
-职责：${agent.role || '（未填写）'}
-擅长：${tags || '（未填写）'}
-${agent.task ? '手上的任务：' + agent.task : ''}
-回答时先一句话说明你以该身份打算怎么处理，然后直接调用工具完成；不要假装自己拥有额外能力。`;
-    if (agent.prompt) sys += `
-
-【该 Agent 的专属写作规范（优先级高于上文的一般准则，冲突时以这里为准）】
-${agent.prompt}`;
-  }
-
-  const out = [{ role: 'system', content: sys }];
-  for (const m of chat) {
-    if (m.role === 'user') out.push({ role: 'user', content: m.content });
-    else if (m.role === 'assistant') {
-      const msg = { role: 'assistant', content: m.content || '' };
-      if (m.toolCalls && m.toolCalls.length) {
-        msg.tool_calls = m.toolCalls.map(tc => ({
-          id: tc.id, type: 'function',
-          function: { name: tc.name, arguments: JSON.stringify(tc.args || {}) }
-        }));
-      }
-      out.push(msg);
-    } else if (m.role === 'tool') {
-      out.push({ role: 'tool', tool_call_id: m.tool_call_id, content: m.content || '{}' });
-    }
-  }
-  return out;
 }
 
 function summarizeResult(name, res) {
@@ -795,7 +745,7 @@ async function aiSend(presetText) {
   const content = String(presetText != null ? presetText : (state.aiDraft || '')).trim();
   if (!content) return;
 
-  /* 点名综述 / writing-review / @Agent 时切到对应身份，再按该人设调用工具 */
+  /* 点名写作 Agent、presetKey、@名字，或「写个综述」时切身份。仅仅出现「综述」不切。 */
   const named = (typeof agentNamedInText === 'function') ? agentNamedInText(content) : null;
   if (named && named.name && named.name !== state.aiAgent) {
     state.aiAgent = named.name;
@@ -2419,7 +2369,8 @@ document.addEventListener('click', async e => {
                  ['GET', '/api/tools', '全部可用工具及其参数说明'],
                  ['GET', '/api/projects', '项目列表'],
                  ['GET', '/api/context?project=&lt;id&gt;', '某项目的全量现状'],
-                 ['POST', '/api/tools/&lt;名称&gt;', '调用工具，body 为参数对象']]
+                 ['POST', '/api/tools/&lt;名称&gt;', '调用工具，body 为参数对象'],
+                 ['POST', '/api/ai/chat', '探测对话（需完整令牌；删除仍要 confirm）']]
                 .map(([m, p, d]) => `<div class="mat-row" style="cursor:default">
                   <span class="m-ico" style="background:${m === 'GET' ? '#218358' : '#6E56CF'}">${m}</span>
                   <div class="m-body"><div class="m-name mono">${p}</div><div class="m-meta" style="font-family:var(--font);direction:ltr">${d}</div></div>
@@ -3600,23 +3551,55 @@ window.__RW_API__ = async function (req) {
       };
     }
 
-    /* 内部专用：给 /api/health 提供真实统计 */
+    /* 内部专用：给 /api/health 提供真实统计。外部引擎还没探测过时补一次 /health。 */
     if (tool === '__diag__') {
       const eng = (DB.settings && DB.settings.kbEngine) || 'builtin';
+      const external = eng === 'http' || eng === 'rag_snowz';
+      const ragStatus = state.rag && state.rag.status;
+      if (external && (!ragStatus || ragStatus === 'unknown') && Bridge && typeof Bridge.ragHealth === 'function') {
+        const cfg = (typeof ragClientConfig === 'function') ? ragClientConfig(DB.settings) : null;
+        if (cfg && cfg.endpoint) {
+          try {
+            const h = await Bridge.ragHealth({ endpoint: cfg.endpoint, engine: cfg.engine });
+            if (typeof applyRagHealth === 'function') applyRagHealth(h);
+          } catch (_) {
+            if (!state.rag || !state.rag.status || state.rag.status === 'unknown') {
+              state.rag = {
+                status: 'fail', indexed: 0, docs: 0, chunks: 0, model: '', askMode: '',
+                error: 'health 不可达'
+              };
+            }
+          }
+        }
+      }
+      const idx = (typeof resolveKnowledgeIndex === 'function')
+        ? resolveKnowledgeIndex(eng, state.rag)
+        : { knowledge_indexed: null, knowledge_index_status: 'unknown', knowledge_docs: null, knowledge_chunks: null, knowledge_index_kind: 'unknown' };
       return {
         ok: true,
         tools_count: AI_TOOLS.length,
         projects_count: DB.projects.length,
         tasks_count: DB.tasks.length,
         knowledge_registered: (DB.kbDocs || []).length,
-        /* 向量条数只认通用 HTTP 引擎的上报。RAG_Snowz 是全文检索，文档/片段另计，避免再把 0 当成“没接上”。 */
-        knowledge_indexed: eng === 'http' && state.rag && state.rag.status === 'ok' ? (state.rag.indexed || 0) : 0,
-        knowledge_docs: eng === 'rag_snowz' && state.rag && state.rag.status === 'ok' ? (state.rag.docs || 0) : 0,
-        knowledge_chunks: eng === 'rag_snowz' && state.rag && state.rag.status === 'ok' ? (state.rag.chunks || 0) : 0,
+        knowledge_indexed: idx.knowledge_indexed,
+        knowledge_index_status: idx.knowledge_index_status,
+        knowledge_docs: idx.knowledge_docs,
+        knowledge_chunks: idx.knowledge_chunks,
+        knowledge_index_kind: idx.knowledge_index_kind,
         knowledge_engine: eng,
         last_error: state.lastApiError || '',
         version: (state.update && state.update.version) || ''
       };
+    }
+
+    /* 内部专用：POST /api/ai/chat 准备一轮，和界面共用 buildApiMessages。不写入可见聊天记录。 */
+    if (tool === '__ai_prepare__') {
+      return (typeof prepareAiProbe === 'function')
+        ? prepareAiProbe(rawArgs)
+        : { ok: false, error: '对话准备函数不可用' };
+    }
+    if (tool === '__ai_finish__') {
+      return (typeof finishAiProbe === 'function') ? finishAiProbe(rawArgs) : { ok: true };
     }
 
     /* dry_run 统一网关：字符串 "true" 也算预览。写工具在这里返回，不进 executeTool。 */
@@ -3650,8 +3633,8 @@ window.__RW_API__ = async function (req) {
 
     if (restore) state.project = restore;
 
-    /* 外部写入后同步界面；纯查询也会刷新，代价很低 */
-    if (result && result.ok !== false) render();
+    /* 外部写入后同步界面。探测对话自己会改回项目和身份，中间不刷新，避免界面跳来跳去。 */
+    if (!(req && req.probe) && result && result.ok !== false) render();
 
     return result == null ? { ok: false, error: '工具无返回' } : result;
   } catch (err) {

@@ -21,6 +21,7 @@ const updater = require('./updater');
 const ai = require('./ai');
 const rag = require('./rag');
 const apiServer = require('./api-server');
+apiServer.setChat(cfg => ai.chat(cfg));
 const connectors = require('./connectors');
 
 /* 启动期异常落盘，便于在无控制台的桌面环境下定位问题 */

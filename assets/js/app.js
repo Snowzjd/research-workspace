@@ -35,7 +35,7 @@ const state = {
   update: { portable: false, source: '', version: '' },
   /* AI 助手模式：聊天 / 派任务 */
   aiMode: 'chat',
-  /* 当前对话的执行身份。空字符串 = 通用助手。说「综述」或 @Agent 会写入这里。 */
+  /* 当前对话的执行身份。空字符串 = 通用助手。点名 Agent、@名字或「写个综述」会写入这里。 */
   aiAgent: '',
   /* 项目页当前 Tab */
   projectTab: 'overview',
@@ -1549,7 +1549,7 @@ function aiIdentityHTML() {
   const label = agent ? agent.name : '通用助手';
   const hint = agent
     ? (agent.role || '已指定执行身份')
-    : '说「综述」、writing-review，或 @科研写作·综述 会自动切换';
+    : '用「综述 agent」、写个综述、writing-review，或 @科研写作·综述 会自动切换';
   return `<div class="ai-identity">
     <span class="ai-id-label">${icon('bot')}当前身份 · ${esc(label)}</span>
     <select class="select" data-act="ai-pick-agent" title="切换当前执行身份">

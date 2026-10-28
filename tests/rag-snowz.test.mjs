@@ -51,6 +51,32 @@ function installFetch(handler) {
   return calls;
 }
 
+test('health index aligns with snowz docs and does not pretend a failed probe is zero', () => {
+  const ctx = loadTools();
+  const ok = ctx.resolveKnowledgeIndex('rag_snowz', { status: 'ok', docs: 266, chunks: 33383, indexed: 0 });
+  assert.equal(ok.knowledge_indexed, 266);
+  assert.equal(ok.knowledge_docs, 266);
+  assert.equal(ok.knowledge_chunks, 33383);
+  assert.equal(ok.knowledge_index_status, 'ok');
+  assert.equal(ok.knowledge_index_kind, 'docs');
+
+  const pending = ctx.resolveKnowledgeIndex('rag_snowz', { status: 'unknown' });
+  assert.equal(pending.knowledge_indexed, null);
+  assert.equal(pending.knowledge_index_status, 'external');
+
+  const down = ctx.resolveKnowledgeIndex('rag_snowz', { status: 'fail' });
+  assert.equal(down.knowledge_indexed, null);
+  assert.equal(down.knowledge_index_status, 'unknown');
+
+  const httpIdx = ctx.resolveKnowledgeIndex('http', { status: 'ok', indexed: 12, docs: 0, chunks: 0 });
+  assert.equal(httpIdx.knowledge_indexed, 12);
+  assert.equal(httpIdx.knowledge_index_kind, 'vectors');
+
+  const builtin = ctx.resolveKnowledgeIndex('builtin', { status: 'ok', docs: 4 });
+  assert.equal(builtin.knowledge_indexed, 0);
+  assert.equal(builtin.knowledge_index_status, 'builtin');
+});
+
 test('snowz health reads docs and chunks and does not call them a vector index', async () => {
   const calls = installFetch(() => jsonResponse({
     ok: true,

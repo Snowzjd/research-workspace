@@ -13,6 +13,7 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { runAiChatLoop } = require('./ai-chat-loop');
 
 const DEFAULT_PORT = 7317;
 const INVOKE_TIMEOUT = 30000;
@@ -23,6 +24,7 @@ let listenPort = 0;
 let tokenFile = '';
 let getWindow = () => null;
 let onLog = () => {};
+let chatImpl = null;
 
 /* ---------- token：读写分 scope ----------
    full = 可读可写；read = 只读（projects/context/list_*）。
@@ -99,11 +101,18 @@ function clientName(req) {
   return '外部 Agent';
 }
 
-async function invokeInRenderer(tool, args, client) {
+async function invokeInRenderer(tool, args, client, opts) {
   const win = getWindow();
   if (!win || win.isDestroyed()) return { ok: false, error: '工作台窗口未就绪，请确认软件正在运行' };
 
-  const payload = JSON.stringify({ tool, args: args || {}, client: client || '外部 Agent' });
+  const extra = opts && typeof opts === 'object' ? opts : {};
+  const limit = Number(extra.timeout) > 0 ? Number(extra.timeout) : INVOKE_TIMEOUT;
+  const payload = JSON.stringify({
+    tool,
+    args: args || {},
+    client: client || '外部 Agent',
+    probe: !!extra.probe
+  });
   const call = win.webContents.executeJavaScript(
     `(window.__RW_API__ ? window.__RW_API__(${payload}) : Promise.resolve({ok:false,error:'渲染层 API 桥接未就绪'}))`,
     true
@@ -111,7 +120,7 @@ async function invokeInRenderer(tool, args, client) {
 
   let timer;
   const timeout = new Promise(resolve => {
-    timer = setTimeout(() => resolve({ ok: false, error: `操作超时（${INVOKE_TIMEOUT / 1000}s）` }), INVOKE_TIMEOUT);
+    timer = setTimeout(() => resolve({ ok: false, error: `操作超时（${Math.round(limit / 1000)}s）` }), limit);
   });
 
   try {
@@ -191,7 +200,7 @@ function buildOpenApi(tools) {
       '/api/health': {
         get: {
           summary: '服务与数据概览（免鉴权）', tags: ['rest'],
-          responses: { 200: { description: 'tools_count / projects_count / knowledge_indexed / knowledge_engine / last_error' } }
+          responses: { 200: { description: 'tools_count / projects_count / knowledge_indexed / knowledge_index_status / knowledge_engine / last_error' } }
         }
       },
       '/api/projects': {
@@ -213,6 +222,17 @@ function buildOpenApi(tools) {
       },
       '/api/tools': {
         get: { summary: '工具清单（与 /api/openapi.json 同源）', tags: ['rest'], responses: { 200: { description: 'tools[]' } } }
+      },
+      '/api/ai/chat': {
+        post: {
+          summary: '最小对话探测：与界面相同的主进程补全和工具循环。需完整令牌。删除类工具仍要 confirm=true，autoApprove 不能跳过。',
+          tags: ['rest'],
+          responses: {
+            200: { description: 'messages / toolCalls / finalText / agent / switched' },
+            401: { description: '缺少令牌' },
+            403: { description: '只读令牌' }
+          }
+        }
       },
       '/api/tasks': {
         get: {
@@ -328,7 +348,13 @@ POST ${base}/api/tools/open_project_folder
 4. 删除类操作先与用户确认
 5. 该令牌仅在用户本机有效，请勿写入任何会外传的文件或提交到代码仓库
 
-## 七、投递方式说明
+## 七、对话探测（可选，会消耗模型额度）
+\`POST ${base}/api/ai/chat\` 走和界面相同的主进程补全与工具循环。必须使用完整权限令牌。
+请求体：\`{"projectId":"<项目ID>","message":"...","presetKey":"writing-review","autoApprove":false}\`
+\`autoApprove\` 只有布尔 \`true\` 才会执行写操作。\`delete_*\` 即使自动批准也必须带 \`confirm: true\`，否则不会删除。\`dry_run: true\` 只预览。
+单次最多 6 轮、12 次工具调用。不会写入界面上的聊天记录。详情与风险见仓库 \`tests/ai-chat-api.md\`。
+
+## 八、投递方式说明
 - 若你运行在用户本机，可直接用上述地址发起 HTTP 请求
 - 若你运行在远端（云端 Agent），你的工具无法访问 127.0.0.1；
   此时请引导用户在本机执行，或改用支持 MCP 的本机客户端接管
@@ -396,6 +422,97 @@ function readAllowed(tool) {
   return /^(get_|list_|search_)/.test(String(tool || ''));
 }
 
+/* 健康检查里的知识库规模。渲染层没给状态时不要把 null 收成 0。 */
+function knowledgeFields(diag, windowReady) {
+  const d = diag && typeof diag === 'object' ? diag : {};
+  if (Object.prototype.hasOwnProperty.call(d, 'knowledge_index_status')) {
+    return {
+      knowledge_indexed: d.knowledge_indexed == null ? null : d.knowledge_indexed,
+      knowledge_index_status: d.knowledge_index_status,
+      knowledge_docs: d.knowledge_docs == null ? null : d.knowledge_docs,
+      knowledge_chunks: d.knowledge_chunks == null ? null : d.knowledge_chunks,
+      knowledge_index_kind: d.knowledge_index_kind || ''
+    };
+  }
+  return {
+    knowledge_indexed: null,
+    knowledge_index_status: windowReady ? 'unknown' : 'external',
+    knowledge_docs: null,
+    knowledge_chunks: null,
+    knowledge_index_kind: 'unknown'
+  };
+}
+
+function setChat(fn) {
+  chatImpl = typeof fn === 'function' ? fn : null;
+  return !!chatImpl;
+}
+
+/* 探测对话。补全用主进程 chat()，工具用渲染层同一套实现。见 tests/ai-chat-api.md。 */
+async function handleAiChat(req, res) {
+  if (!chatImpl) {
+    return send(res, 503, { ok: false, error: '主进程对话通道未接入' });
+  }
+  const body = await readBody(req);
+  if (body.__error) return send(res, 400, { ok: false, error: body.__error });
+  const who = clientName(req);
+  const message = String(body.message || '');
+  let prepared = null;
+  try {
+    prepared = await invokeInRenderer('__ai_prepare__', {
+      projectId: body.projectId,
+      message: body.message,
+      agentName: body.agentName,
+      presetKey: body.presetKey
+    }, who, { probe: true, timeout: 15000 });
+    if (!prepared || prepared.ok === false) {
+      return send(res, 400, { ok: false, error: (prepared && prepared.error) || '无法准备对话' });
+    }
+    const loop = await runAiChatLoop({
+      chat: cfg => chatImpl(cfg),
+      invokeTool: (name, args) => invokeInRenderer(name, args, who, { probe: true, timeout: 60000 }),
+      messages: prepared.messages,
+      tools: prepared.tools,
+      cfg: prepared.cfg,
+      autoApprove: body.autoApprove === true
+    });
+    audit('ai_chat', {
+      client: who,
+      projectId: prepared.projectId,
+      agent: prepared.agent && prepared.agent.name,
+      switched: !!prepared.switched,
+      rounds: loop.rounds || 0,
+      tools: (loop.toolCalls || []).length,
+      ok: loop.ok !== false,
+      stopped: loop.stopped || ''
+    });
+    const payload = {
+      ok: loop.ok !== false,
+      projectId: prepared.projectId,
+      agent: prepared.agent,
+      switched: !!prepared.switched,
+      switchReason: prepared.switchReason || '',
+      messages: [{ role: 'user', content: message }].concat(loop.messages || []),
+      toolCalls: loop.toolCalls || [],
+      finalText: loop.finalText || '',
+      rounds: loop.rounds || 0,
+      capped: !!loop.capped,
+      stopped: loop.stopped || ''
+    };
+    if (loop.error) payload.error = loop.error;
+    return send(res, loop.ok === false ? 502 : 200, payload);
+  } finally {
+    if (prepared && prepared.ok !== false) {
+      try {
+        await invokeInRenderer('__ai_finish__', {
+          projectId: prepared.previousProject || '',
+          aiAgent: prepared.previousAgent || ''
+        }, who, { probe: true, timeout: 10000 });
+      } catch (_) {}
+    }
+  }
+}
+
 /* ---------- 路由 ---------- */
 async function handle(req, res) {
   const url = new URL(req.url, `http://127.0.0.1:${listenPort}`);
@@ -423,9 +540,7 @@ async function handle(req, res) {
       tools_count: diag.tools_count || 0,
       projects_count: diag.projects_count || 0,
       tasks_count: diag.tasks_count || 0,
-      knowledge_indexed: diag.knowledge_indexed || 0,
-      knowledge_docs: diag.knowledge_docs || 0,
-      knowledge_chunks: diag.knowledge_chunks || 0,
+      ...knowledgeFields(diag, ready),
       knowledge_engine: diag.knowledge_engine || 'builtin',
       last_error: diag.last_error || '',
       time: new Date().toISOString()
@@ -493,10 +608,21 @@ async function handle(req, res) {
       return send(res, r.ok === false ? 400 : 200, r);
     }
 
+    /* 最小对话探测：与界面 aiChat + 工具循环同一条主进程路径。见 tests/ai-chat-api.md */
+    if (p === '/api/ai/chat') {
+      if (req.method !== 'POST') return send(res, 405, { ok: false, error: '请使用 POST' });
+      if (scope !== 'write') {
+        audit('denied', { tool: 'ai_chat', client: clientName(req), scope });
+        return send(res, 403, { ok: false, error: '只读令牌不能调用 /api/ai/chat。请使用完整权限令牌。', scope });
+      }
+      return handleAiChat(req, res);
+    }
+
     /* 通用工具调用入口：POST /api/tools/<toolName>  body = args */
     const m = p.match(/^\/api\/tools\/([A-Za-z0-9_]+)$/);
     if (m) {
       if (req.method !== 'POST') return send(res, 405, { ok: false, error: '请使用 POST' });
+      if (m[1].startsWith('_')) return send(res, 404, { ok: false, error: `未知路径：${p}` });
       const body = await readBody(req);
       if (body.__error) return send(res, 400, { ok: false, error: body.__error });
       const who = clientName(req);
@@ -529,7 +655,8 @@ async function handle(req, res) {
           'GET  /api/tasks?project=<id>': '任务列表（含稳定 task_id）',
           'GET  /api/context?project=<id>': '项目全量上下文（任务/待办/材料目录）',
           'GET  /api/openapi.json': 'OpenAPI 描述',
-          'POST /api/tools/<name>': '调用工具，body 为参数对象；写工具可带 dry_run:true 只预览'
+          'POST /api/tools/<name>': '调用工具，body 为参数对象；写工具可带 dry_run:true 只预览',
+          'POST /api/ai/chat': '探测对话（完整令牌）。body: projectId, message, 可选 agentName/presetKey/autoApprove。删除仍要 confirm=true'
         },
         auth: 'Authorization: Bearer <token>'
       });
@@ -588,4 +715,7 @@ const info = () => ({
   tokenFull: tokens.full || ''
 });
 
-module.exports = { start, stop, setWindow, info, rotateToken, readAudit, readAllowed, DEFAULT_PORT };
+module.exports = {
+  start, stop, setWindow, setChat, info, rotateToken, readAudit, readAllowed,
+  knowledgeFields, DEFAULT_PORT
+};
