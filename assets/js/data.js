@@ -721,6 +721,12 @@ const WRITING_TONE_CLEANUP = [
   '存档前扫：翻案腔（不是…而是…/看似…实则…）；顿号罗列过密；相邻句同骨架；揭晓式破折号；提示语/空转冒号；小标题「一、二、三」通篇编号（正文首先、其次不改）；理想化拟人喻体；概括词盖住同段已有数据（无数据只恢复动词、不编造）；说白了/说穿了/先说结论；五种翻译腔（过长前置定语、当…时、对于…来说等话题壳、句首然而因此此外、这意味着式复述）；段首零主语评论补回指。',
   '不做：不调句长凑节奏、不补虚词、不改被动句/名词化/长句本身、不删问句与普通比喻、不改代码与外语段落与引文。'
 ].join('\n');
+/* 用户写出的字数是硬约束。1000 字按汉字计，大约落在 800–1200；超出约 20% 先压缩再存档。 */
+const WRITING_LENGTH_RULE = [
+  '【篇幅】用户指定的字数（如 1000 字）是硬约束，按汉字（CJK 统一表意文字）计数，不计英文字母与空白。',
+  '成稿应落在目标的大约 80%–120%（1000 字对应约 800–1200）。',
+  '若草稿超过目标约 20%，先压缩，再调用 save_document。不要为了凑字数添加事实。'
+].join('\n');
 const WRITING_AGENTS = [
       {
         presetKey: 'writing-paper',
@@ -739,10 +745,12 @@ const WRITING_AGENTS = [
           '',
           WRITING_TONE_CLEANUP,
           '',
+          WRITING_LENGTH_RULE,
+          '',
           '【工作流】',
           '1. 先用 search_knowledge 查工作台已有资料与文献，明确素材边界；',
           '2. 给出章节大纲请用户确认，再逐章成文；',
-          '3. 每章成文后、调用 save_document 之前，按【成稿清理】通读一遍，再存档（kind=paper），并告知保存位置。'
+          '3. 每章成文后、调用 save_document 之前，按【成稿清理】通读一遍。若指定了字数且汉字数超过目标约 20%，先压缩再存档（kind=paper），并告知保存位置。'
         ].join('\n')
       },
       {
@@ -763,11 +771,13 @@ const WRITING_AGENTS = [
           '',
           WRITING_TONE_CLEANUP,
           '',
+          WRITING_LENGTH_RULE,
+          '',
           '【工作流】',
           '1. 写综述前先检索，不要直接成文。调用 search_knowledge 时必须带 mode=search（问答才用 mode=ask）。至少用中文、英文各查一次，并换同义术语再查，目标是多个 document_id，不要停在同一篇 PDF。',
           '2. 先输出文献清单（每条写出 document_id 与 source_relative_path）和大纲，请用户确认后再写正文。',
-          '3. 禁止只根据一篇综述二手扩写。若 unique_docs 少于 3，先说明材料不够并继续检索，不要把这一篇展开成全文。',
-          '4. 每节成文后、调用 save_document 之前，按【成稿清理】通读一遍，再存档（kind=review）。'
+          '3. 禁止只根据一篇综述二手扩写。若 search_knowledge 以 mode=ask 返回且 unique_docs 少于 3，或结果里带有文档不足的 warning，立刻再次调用 search_knowledge，改用 mode=search，并用更宽的中文和英文 query 各查一次。不要根据那一次 ask 展开成文。',
+          '4. 每节成文后、调用 save_document 之前，按【成稿清理】通读一遍。若用户指定了字数且汉字数超过目标约 20%，先压缩到大约 80%–120% 再存档（kind=review）。'
         ].join('\n')
       },
       {
@@ -788,10 +798,12 @@ const WRITING_AGENTS = [
           '',
           WRITING_TONE_CLEANUP,
           '',
+          WRITING_LENGTH_RULE,
+          '',
           '【工作流】',
           '1. 请用户提供技术方案（或用 search_knowledge 查已有资料）；',
           '2. 先产出权利要求书草稿请用户确认保护范围，再补齐其余部分；',
-          '3. 每一部分成文后、调用 save_document 之前，按【成稿清理】通读一遍，再存档（kind=patent）。'
+          '3. 每一部分成文后、调用 save_document 之前，按【成稿清理】通读一遍。若指定了字数且汉字数超过目标约 20%，先压缩再存档（kind=patent）。'
         ].join('\n')
       }
 ];
@@ -1399,9 +1411,87 @@ function agentNamedInText(text) {
   return null;
 }
 
+/* 汉字计数只取 CJK 统一表意文字。1000 字的合格区间是大约 800–1200。 */
+function countCjk(text) {
+  const matched = String(text == null ? '' : text).match(/[\u4e00-\u9fff]/g);
+  return matched ? matched.length : 0;
+}
+
+/* 「1000 字」「约 1000 字」「1000 words」。没有写出数字就不设硬目标。 */
+function parseLengthTarget(text) {
+  const raw = String(text == null ? '' : text);
+  const zh = raw.match(/(\d{2,6})\s*(?:个)?(?:汉字|中文字|字)/);
+  if (zh) return Number(zh[1]);
+  const en = raw.match(/(\d{2,6})\s*(?:words|word|characters|chars)\b/i);
+  if (en) return Number(en[1]);
+  return 0;
+}
+
+function cjkLengthBand(target) {
+  const n = Number(target) || 0;
+  if (!(n > 0)) return null;
+  return { target: n, min: Math.round(n * 0.8), max: Math.round(n * 1.2) };
+}
+
+/* over：超过目标约 20%，存档前应先压缩。within：落在 80%–120%。 */
+function assessCjkLength(text, target) {
+  const count = countCjk(text);
+  const band = cjkLengthBand(target);
+  if (!band) return { count: count, target: 0, min: 0, max: 0, over: false, within: false };
+  return {
+    count: count,
+    target: band.target,
+    min: band.min,
+    max: band.max,
+    over: count > band.max,
+    within: count >= band.min && count <= band.max
+  };
+}
+
+/* 纯英文：有英文字母，且没有汉字、假名、谚文或全角标点。检索片段里的中文不在这里判断。 */
+function messageIsPureEnglish(text) {
+  const raw = String(text == null ? '' : text).trim();
+  if (!raw || !/[A-Za-z]/.test(raw)) return false;
+  if (/[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af\u3000-\u303f\uff00-\uffef]/.test(raw)) return false;
+  return true;
+}
+
+function latestUserText(chat) {
+  const list = Array.isArray(chat) ? chat : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (m && m.role === 'user' && m.content) return String(m.content);
+  }
+  return '';
+}
+
+function lengthConstraintClause(userText) {
+  const band = cjkLengthBand(parseLengthTarget(userText));
+  if (!band) return '';
+  return `【篇幅硬约束】用户指定约 ${band.target} 字。按汉字（CJK）计数，成稿应落在 ${band.min}–${band.max}。超过 ${band.max}（约超过目标 20%）必须先压缩，再调用 save_document。`;
+}
+
+function replyLanguageClause(userText) {
+  if (!messageIsPureEnglish(userText)) return '';
+  return '【回复语言】用户这句话是纯英文。最终回复默认用英文。这优先于上文「用中文说明」以及写作规范里的中文输出要求；存档正文仍按用户要写的文体。工具返回和检索片段可以保持中文或英文原文。';
+}
+
+const ASSISTANT_LANGUAGE_RULE = '回复语言：用户最新这句话若是纯英文（有英文字母，且没有汉字、日文或韩文），最终回复默认用英文；否则默认用中文。工具返回和检索片段可以仍是中文或英文。';
+const ASSISTANT_ASK_RETRY_RULE = '检索不足：若 search_knowledge 以 mode=ask 返回且 unique_docs 少于 3，或结果带有文档不足的 warning，立刻再次调用 search_knowledge，改用 mode=search，并用更宽的中文和英文 query 各查一次。不要停在这一次问答上。';
+
+function standingChatGuidance() {
+  return [WRITING_LENGTH_RULE, ASSISTANT_LANGUAGE_RULE, ASSISTANT_ASK_RETRY_RULE].join('\n');
+}
+
+/* 有具体字数或纯英文时，附在系统提示最后，避免被 Agent 人设里的「用中文」盖住。 */
+function turnChatGuidance(userText) {
+  return [lengthConstraintClause(userText), replyLanguageClause(userText)].filter(Boolean).join('\n\n');
+}
+
 /** 与界面 aiSend 相同的系统提示和历史消息。探测接口复用这一份，避免另写一套人设。 */
 function buildApiMessages(p, chat, agent) {
   const dirs = Object.keys(MATERIALS[p.id] || {});
+  const userText = latestUserText(chat);
   let sys = `你是「个人 AI 科研工程工作台」的科研助理，当前协助用户管理项目「${p.name}」（项目 ID：${p.id}）。
 
 你可以调用工具读取并修改项目数据，修改会立即写入本地数据文件并在界面上生效。
@@ -1409,12 +1499,12 @@ function buildApiMessages(p, chat, agent) {
 工作准则：
 1. 涉及项目现状（任务、待办、进度、材料目录）时，先调用 get_project_context 或相应的查询工具，不要凭猜测回答。
 2. 需要修改数据时直接调用工具完成，不要只给建议让用户自己做。
-3. 完成后用简洁中文说明「改了什么」，不要罗列原始 JSON。
+3. 完成后简洁说明「改了什么」，不要罗列原始 JSON。最终回复用哪种语言，以本提示末尾的回复语言规则为准。
 4. 删除类操作先向用户确认，除非用户已明确要求删除。
 5. 不要编造项目里不存在的数据；查不到就如实说明。
 6. 本项目已有的材料目录：${dirs.join('、') || '（暂无）'} —— create_task 的 material_dir 只能取其中之一。
 7. 工作台共有 ${DB.projects.length} 个项目：${DB.projects.map(x => x.name).join('、')}。需要新建项目用 create_project（默认套用「标准科研项目」模板，含材料目录与起始任务）；删除项目必须先征得用户明确同意，再带 confirm=true 调用。
-8. 用户询问资料、文献或报告内容时调用 search_knowledge。问答用 mode=ask；写综述或论文用 mode=search，并换中英文多次查询，看 unique_docs 是否凑齐多个 document_id。若返回 answer 与 citations，回答里必须写出每条 citation 的 source_relative_path（以及 block_ids，如果有），不要编造路径或引用不存在的片段。检索由本机主进程转发，你看不到知识库服务本身。调用 search_knowledge 时必须显式传入 mode。`;
+8. 用户询问资料、文献或报告内容时调用 search_knowledge。问答用 mode=ask；写综述或论文用 mode=search，并换中英文多次查询，看 unique_docs 是否凑齐多个 document_id。若 mode=ask 且 unique_docs 少于 3，或结果带有文档不足的 warning，立刻再次调用 search_knowledge，改用 mode=search，并用更宽的中文和英文 query 各查一次。若返回 answer 与 citations，回答里必须写出每条 citation 的 source_relative_path（以及 block_ids，如果有），不要编造路径或引用不存在的片段。检索由本机主进程转发，你看不到知识库服务本身。调用 search_knowledge 时必须显式传入 mode。`;
 
   if (agent) {
     const tags = (agent.tags || []).filter(Boolean).join('、');
@@ -1430,6 +1520,10 @@ ${agent.task ? '手上的任务：' + agent.task : ''}
 【该 Agent 的专属写作规范（优先级高于上文的一般准则，冲突时以这里为准）】
 ${agent.prompt}`;
   }
+
+  sys += '\n\n' + standingChatGuidance();
+  const turn = turnChatGuidance(userText);
+  if (turn) sys += '\n\n' + turn;
 
   const out = [{ role: 'system', content: sys }];
   for (const m of chat) {

@@ -233,7 +233,7 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'search_knowledge',
-      description: '在个人科研知识库中检索或抽取式问答。调用时必须显式传入 mode。综述和论文必须用 mode=search，并换中文、英文多次查询，目标是多个 document_id；短问答再用 mode=ask。search 返回检索片段，ask 返回 answer 与 citations（含 source_relative_path、block_ids、source_spans、document_id）。引用必须使用返回的路径，不要编造。若 unique_docs 少于 3，先换英文术语或放宽检索，不要只根据一篇文献展开。',
+      description: '在个人科研知识库中检索或抽取式问答。调用时必须显式传入 mode。综述和论文必须用 mode=search，并换中文、英文多次查询，目标是多个 document_id；短问答再用 mode=ask。search 返回检索片段，ask 返回 answer 与 citations（含 source_relative_path、block_ids、source_spans、document_id）。引用必须使用返回的路径，不要编造。若 unique_docs 少于 3，先换英文术语或放宽检索，不要只根据一篇文献展开。若本次是 mode=ask 且 unique_docs 少于 3，或结果带有文档不足的 warning，立刻改用 mode=search，并用更宽的中文和英文 query 再查。',
       parameters: {
         type: 'object',
         properties: {
@@ -382,6 +382,11 @@ function kbNameMatch(q) {
   return { ok: true, query: q, count: hits.length, results: hits };
 }
 
+/* mode=ask 且不足 3 篇时，工具结果直接要求立刻改走 search，并加宽中英文查询。 */
+function thinAskRetryWarning(n) {
+  return `unique_docs=${n}（少于 3）。文档不足。请立刻再次调用 search_knowledge，改用 mode=search，并用更宽的中文 query 和英文 query 各查一次。不要只重复当前问句，也不要根据这一次 ask 的结果展开成文。`;
+}
+
 /* 同一 document_id（没有 id 时用路径）只算一篇。少于 3 篇时提醒换英文词、放宽检索。 */
 function withUniqueDocs(payload) {
   const rows = (payload && (payload.citations || payload.results)) || [];
@@ -407,8 +412,14 @@ function withUniqueDocs(payload) {
   });
   const out = Object.assign({}, payload, { unique_docs: ids.length, document_ids: ids });
   if (ids.length < 3) {
-    const tip = `unique_docs=${ids.length}（少于 3）。请换英文术语或放宽检索范围，并用 mode=search 再查几次，凑齐多个 document_id。不要只根据同一篇文献展开。`;
+    const mode = String((payload && payload.mode) || '').trim().toLowerCase();
+    const tip = mode === 'ask'
+      ? thinAskRetryWarning(ids.length)
+      : `unique_docs=${ids.length}（少于 3）。请换英文术语或放宽检索范围，并用 mode=search 再查几次，凑齐多个 document_id。不要只根据同一篇文献展开。`;
     out.warning = out.warning ? (out.warning + ' ' + tip) : tip;
+    if (mode === 'ask') {
+      out.next_step = '立刻再次调用 search_knowledge，mode=search，并用更宽的中文 query 和英文 query 各查一次。';
+    }
   }
   return out;
 }

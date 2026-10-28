@@ -89,7 +89,7 @@ async function runAgentJob(jobId) {
     maxTokens: DB.ai.maxTokens
   };
   const messages = [
-    { role: 'system', content: buildAgentSystemPrompt(p, agent) },
+    { role: 'system', content: buildAgentSystemPrompt(p, agent, job.task) },
     { role: 'user', content: job.task }
   ];
 
@@ -173,9 +173,11 @@ async function runAgentJob(jobId) {
   }
 }
 
-/* 员工执行用的系统提示：工作台总则 + 该 Agent 的职责与人设 */
-function buildAgentSystemPrompt(p, agent) {
+/* 员工执行用的系统提示：工作台总则 + 该 Agent 的职责与人设。篇幅和回复语言放在最后。 */
+function buildAgentSystemPrompt(p, agent, userText) {
   const tags = (agent.tags || []).filter(Boolean).join('、');
+  const standing = (typeof standingChatGuidance === 'function') ? standingChatGuidance() : '';
+  const turn = (typeof turnChatGuidance === 'function') ? turnChatGuidance(userText) : '';
   return [
     '你是「个人 AI 科研工程工作台」里的一名科研 Agent，正在执行用户派给你的一个具体任务。',
     `当前项目「${p.name}」（项目 ID：${p.id}）。`,
@@ -184,13 +186,15 @@ function buildAgentSystemPrompt(p, agent) {
     '工作准则：',
     '1. 涉及项目现状时先调用 get_project_context 等查询工具，不要凭猜测。',
     '2. 需要改数据就直接调用工具完成，不要只给建议让用户自己做。',
-    '3. 完成后用简洁中文说明「做了什么、结果如何」，不要罗列原始 JSON。',
+    '3. 完成后简洁说明「做了什么、结果如何」，不要罗列原始 JSON。最终回复用哪种语言，以下方回复语言规则为准。',
     '4. 查不到或做不到就如实说明，不要编造。',
     '',
     `【你的身份】${agent.name}`,
     `职责：${agent.role || '（未填写）'}`,
     tags ? `擅长：${tags}` : '',
-    agent.prompt ? `\n【专属工作规范】\n${agent.prompt}` : ''
+    agent.prompt ? `\n【专属工作规范】\n${agent.prompt}` : '',
+    standing,
+    turn
   ].filter(Boolean).join('\n');
 }
 
