@@ -1528,7 +1528,7 @@ function kbEndpointHost(endpoint) {
 
 function engineDownNotice(endpoint) {
   const host = kbEndpointHost(endpoint);
-  return `知识库服务未启动（${host}）。本次检索没有拿到任何文献，所以没有写稿，也没有保存任何文稿。\n请先启动 RAG_Snowz 服务（默认端口 8765），或到「设置 → AI 与知识库引擎」核对服务地址；确认 http://${host}/v1/health 能打开后，再重新发送这句话。`;
+  return `知识库服务未启动（${host}）。本次检索没有拿到任何文献，所以没有写稿，也没有保存任何文稿。\n请先启动 RAG_Snowz 服务（默认端口 8765），或到「设置 → AI 与知识库引擎」核对服务地址；确认 http://${host}/health 能打开后，再重新发送这句话。`;
 }
 
 /* search_knowledge 返回 engine_down 时，界面、派单和 /api/ai/chat 都在这里停下，不再让模型往下写。 */
