@@ -66,7 +66,7 @@ test('health index aligns with snowz docs and does not pretend a failed probe is
 
   const down = ctx.resolveKnowledgeIndex('rag_snowz', { status: 'fail' });
   assert.equal(down.knowledge_indexed, null);
-  assert.equal(down.knowledge_index_status, 'unknown');
+  assert.equal(down.knowledge_index_status, 'engine_down');
 
   const httpIdx = ctx.resolveKnowledgeIndex('http', { status: 'ok', indexed: 12, docs: 0, chunks: 0 });
   assert.equal(httpIdx.knowledge_indexed, 12);

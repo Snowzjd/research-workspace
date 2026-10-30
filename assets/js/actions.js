@@ -766,6 +766,7 @@ async function aiSend(presetText) {
   if (!DB.chats[p.id]) DB.chats[p.id] = [];
   const chat = DB.chats[p.id];
   chat.push({ role: 'user', content, agent: agent ? agent.name : '' });
+  const turnStart = chat.length;
 
   state.aiDraft = '';
   state.aiBusy = true;
@@ -799,7 +800,14 @@ async function aiSend(presetText) {
       chat.push({ role: 'assistant', content: r.content || '', toolCalls: calls });
       render(); scrollAi();
 
-      if (!calls.length) break;   // 模型给出了最终答复
+      if (!calls.length) {
+        /* 本轮没有 savedPath 却说「已保存 / 上一轮已写好」，或复述历史报错：在回复后附一句核对说明 */
+        const last = chat[chat.length - 1];
+        const note = (typeof unverifiedClaimNote === 'function')
+          ? unverifiedClaimNote(last && last.content, chatToolResults(chat.slice(turnStart))) : '';
+        if (note && last) last.content = (last.content || '') + '\n\n' + note;
+        break;   // 模型给出了最终答复
+      }
 
       if (!DB.ai.autoApprove) {
         state.aiStatus = '等待你的确认…';
@@ -811,17 +819,35 @@ async function aiSend(presetText) {
         }
       }
 
+      let engineDown = null;
       for (const c of calls) {
+        if (engineDown) {
+          /* 知识库已不可用：同批剩下的调用不执行，但要补上 tool 回复，下一轮历史才合法 */
+          chat.push({
+            role: 'tool', tool_call_id: c.id, name: c.name, label: c.label, ok: false,
+            resultText: '未执行：知识库服务未启动',
+            content: JSON.stringify({ ok: false, executed: false, error: '知识库服务未启动，本次未执行' })
+          });
+          continue;
+        }
         state.aiStatus = `执行：${c.label}`;
         render(); scrollAi();
         const res = await runTool(c);
+        const down = typeof isEngineDownResult === 'function' && isEngineDownResult(c.name, res);
         chat.push({
           role: 'tool', tool_call_id: c.id, name: c.name, label: c.label,
-          ok: res && res.ok !== false,
-          resultText: summarizeResult(c.name, res),
+          ok: res && res.ok !== false && !down,
+          resultText: down ? '知识库服务未启动' : summarizeResult(c.name, res),
           content: JSON.stringify(res == null ? { ok: false, error: '工具无返回' } : res)
         });
+        if (down) engineDown = res;
         render(); scrollAi();
+      }
+      if (engineDown) {
+        /* 确定性停止：不再请求模型，直接告诉用户服务没起来 */
+        chat.push({ role: 'assistant', content: engineDown.user_message || engineDownNotice(''), toolCalls: [] });
+        toast('知识库服务未启动，已停止本次处理', 'err');
+        break;
       }
     }
     if (state.aiBusy && !chat.some(m => m.role === 'error' && m.content.includes('已取消'))) {
@@ -3566,14 +3592,14 @@ window.__RW_API__ = async function (req) {
       const eng = (DB.settings && DB.settings.kbEngine) || 'builtin';
       const external = eng === 'http' || eng === 'rag_snowz';
       const ragStatus = state.rag && state.rag.status;
-      if (external && (!ragStatus || ragStatus === 'unknown') && Bridge && typeof Bridge.ragHealth === 'function') {
+      if (external && (!ragStatus || ragStatus === 'unknown' || ragStatus === 'fail') && Bridge && typeof Bridge.ragHealth === 'function') {
         const cfg = (typeof ragClientConfig === 'function') ? ragClientConfig(DB.settings) : null;
         if (cfg && cfg.endpoint) {
           try {
             const h = await Bridge.ragHealth({ endpoint: cfg.endpoint, engine: cfg.engine });
             if (typeof applyRagHealth === 'function') applyRagHealth(h);
           } catch (_) {
-            if (!state.rag || !state.rag.status || state.rag.status === 'unknown') {
+            if (!state.rag || !state.rag.status || state.rag.status === 'unknown' || state.rag.status === 'fail') {
               state.rag = {
                 status: 'fail', indexed: 0, docs: 0, chunks: 0, model: '', askMode: '',
                 error: 'health 不可达'
