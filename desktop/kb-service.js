@@ -105,7 +105,9 @@ function lastLine(text) {
   return lines.length ? lines[lines.length - 1].slice(0, 300) : '';
 }
 
-/* 运行一条命令，等它退出（或超时）。不经过 shell，窗口隐藏，进程脱离本软件。 */
+/* 运行一条命令，等它退出（或超时）。不经过 shell，窗口隐藏。
+   不用 detached：Windows 上 DETACHED_PROCESS 会让 powershell 没有控制台、立刻以 0 退出而什么都没启动。
+   启动脚本自己负责把服务拉成独立进程（例如 Start-Process），本软件退出不影响服务。 */
 function runCommand(cmd, timeoutMs) {
   const parsed = parseCommand(cmd);
   if (!parsed.ok) return Promise.resolve({ ok: false, code: parsed.code, error: parsed.error });
@@ -122,7 +124,7 @@ function runCommand(cmd, timeoutMs) {
     const timer = setTimeout(() => finish({ ok: false, timedOut: true, error: `命令 ${Math.round(timeoutMs / 1000)}s 内没有结束` }), timeoutMs);
     try {
       child = spawnImpl(parsed.file, parsed.args, {
-        detached: true, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe']
+        detached: false, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe']
       });
     } catch (e) {
       return finish({ ok: false, code: 'spawn_failed', error: String((e && e.message) || e) });

@@ -49,6 +49,7 @@ test('concurrent searches share one start, then retry and succeed', async () => 
     spawns.push({ file, args, opts });
     assert.equal(opts.shell, false);
     assert.equal(opts.windowsHide, true);
+    assert.equal(opts.detached, false);
     setTimeout(() => { up = true; }, 30);
     return fakeChild({ stdout: '{"ok":true,"docs":266,"chunks":33383}\n', delay: 40 });
   });
