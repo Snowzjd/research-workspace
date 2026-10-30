@@ -1079,7 +1079,7 @@ function knowledgeView() {
       <span class="ph-right">
         <button class="btn sm" data-act="kb-import">${icon('inbox')}导入资料</button>
         ${snowz
-          ? `<button class="btn sm" data-act="rag-test">${icon('pulse')}测试连接</button>`
+          ? `<button class="btn sm" data-act="rag-test">${icon('pulse')}测试连接</button><button class="btn sm" data-act="kb-svc-start">启动知识库服务</button><button class="btn sm" data-act="kb-svc-stop">停止</button>`
           : vectorOn
             ? `<button class="btn sm primary" data-act="kb-reindex">${icon('refresh')}重建索引</button>`
             : `<button class="btn sm" disabled title="内置登记只按名称匹配，没有向量索引可重建">没有向量索引</button>`}
@@ -2153,6 +2153,8 @@ function settingsView() {
       })()],
       ['检索返回条数', '请求时传给服务的 top_k', `<select class="select" data-act="set-select" data-key="ragTopK">${['4', '8', '12', '20'].map(v => `<option value="${v}"${String(S.ragTopK) === v ? ' selected' : ''}>${v}</option>`).join('')}</select>`],
       ['RAG 连接测试', (S.kbEngine === 'rag_snowz') ? '调用 /health，读取文档数与片段数' : '调用 /health，确认服务可用并读取索引规模', `<button class="btn sm" data-act="rag-test">${icon('pulse')}测试连接</button>`],
+      ['知识库启动 / 停止命令', '检索时服务没开会自动运行启动命令；空闲后只停止由本软件启动的服务。不写开机自启', `<span class="row" style="gap:6px"><span class="set-path" title="${esc(S.kbStartCommand || '')}">${S.kbStartCommand ? '已配置' : '未配置'}</span><button class="btn sm" data-act="kb-svc-config">${icon('pencil')}编辑</button></span>`],
+      ['知识库服务', '手动启动或停止本机知识库服务', `<span class="row" style="gap:6px"><button class="btn sm" data-act="kb-svc-start">${icon('pulse')}启动知识库服务</button><button class="btn sm" data-act="kb-svc-stop">停止</button></span>`],
       ['重建工作区目录', '重新创建缺失的项目材料目录结构', `<button class="btn sm" data-act="rebuild-structure">${icon('refresh')}重建</button>`],
       ['导出全部数据', '把当前工作台数据导出为 JSON 文件', `<button class="btn sm" data-act="export-data">${icon('download')}导出</button>`],
       ['重置所有数据', '清除本地数据，恢复到初始示例内容', `<button class="btn sm danger" data-act="reset-data">${icon('trash')}重置</button>`]

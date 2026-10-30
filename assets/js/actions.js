@@ -2714,6 +2714,64 @@ document.addEventListener('click', async e => {
       }
       return;
     }
+    case 'kb-svc-start': {
+      if (!Bridge.desktop) return toast('需要桌面端运行', 'err');
+      const cfg = ragClientConfig(DB.settings);
+      toast('正在启动知识库…', 'ok');
+      const r = await Bridge.kbStart({ endpoint: cfg.endpoint, engine: cfg.engine });
+      if (r && r.ok) {
+        if (r.health) applyRagHealth(r.health);
+        toast(r.already ? '知识库服务已在运行' : `知识库已启动（${Math.round((r.ms || 0) / 1000)}s）`, 'ok');
+      } else {
+        toast('知识库启动失败：' + esc((r && r.error) || '未知错误'), 'err');
+      }
+      render();
+      return;
+    }
+    case 'kb-svc-stop': {
+      if (!Bridge.desktop) return toast('需要桌面端运行', 'err');
+      const cfg = ragClientConfig(DB.settings);
+      const r = await Bridge.kbStop({ endpoint: cfg.endpoint, engine: cfg.engine });
+      if (r && r.ok) {
+        state.rag = Object.assign({}, state.rag || {}, { status: 'fail', error: '服务已停止' });
+        toast('知识库服务已停止', 'ok');
+      } else {
+        toast('停止失败：' + esc((r && r.error) || '未知错误'), 'err');
+      }
+      render();
+      return;
+    }
+    case 'kb-svc-config': {
+      const S = DB.settings;
+      openModal({
+        title: '知识库服务启动 / 停止',
+        sub: '检索时服务没开会自动运行启动命令；不会写入开机自启',
+        body: fText('start', '启动命令', S.kbStartCommand || '', { ph: 'powershell -NoProfile -ExecutionPolicy Bypass -File D:\\rag\\start.ps1', hint: '不经过 shell。可执行文件写绝对路径，或以 powershell / pwsh 开头。最后一行输出 JSON 时按其中的 ok 判断。' })
+          + fText('stop', '停止命令', S.kbStopCommand || '', { ph: 'powershell -NoProfile -ExecutionPolicy Bypass -File D:\\rag\\stop.ps1' })
+          + fText('timeout', '启动超时（秒）', String(S.kbStartTimeoutSec || 60))
+          + fText('idle', '空闲自动停止（分钟，0 = 不自动停）', String(S.kbIdleStopMinutes == null ? 30 : S.kbIdleStopMinutes), { hint: '只停止由本软件启动的服务；你手动启动的服务不会被停掉。' }),
+        footer: `<span class="grow"></span>
+          <button class="btn" data-act="modal-close">取消</button>
+          <button class="btn primary" data-submit data-act="kb-svc-config-save">保存</button>`
+      });
+      return;
+    }
+    case 'kb-svc-config-save': {
+      const m = document.querySelector('.modal'); if (!m) return;
+      const v = formValues(m);
+      const t = Number(v.timeout);
+      const idle = Number(v.idle);
+      mutate(() => {
+        DB.settings.kbStartCommand = String(v.start || '').trim();
+        DB.settings.kbStopCommand = String(v.stop || '').trim();
+        DB.settings.kbStartTimeoutSec = Number.isFinite(t) && t > 0 ? Math.round(t) : 60;
+        DB.settings.kbIdleStopMinutes = Number.isFinite(idle) && idle >= 0 ? Math.round(idle) : 30;
+      }, { activity: { text: '更新知识库服务启动 / 停止命令', kind: 'edit', color: '#3E63DD' } });
+      closeModal();
+      toast('已保存知识库服务设置', 'ok');
+      render();
+      return;
+    }
     case 'kb-engine': {
       const v = String(t.value || 'builtin');
       mutate(() => {
@@ -3921,6 +3979,27 @@ async function boot() {
 
     /* 交接文件：上次导出/导入时间 */
     try { state.handoff = await Bridge.handoffInfo(); } catch (_) {}
+
+    /* 知识库按需启动的进度：只提示「正在启动知识库…」，结果写回连接状态 */
+    if (!state._kbStatusHooked && typeof Bridge.onKbStatus === 'function') {
+      state._kbStatusHooked = Bridge.onKbStatus(p => {
+        if (!p) return;
+        state.kbService = p;
+        if (p.phase === 'starting') {
+          if (state.aiBusy) state.aiStatus = '正在启动知识库…';
+          toast('正在启动知识库…', 'ok');
+        } else if (p.phase === 'ok') {
+          if (p.health) applyRagHealth(p.health);
+          toast(`知识库已启动（${Math.round((p.ms || 0) / 1000)}s）`, 'ok');
+        } else if (p.phase === 'fail') {
+          toast('知识库启动失败：' + esc(p.error || '未知原因'), 'err');
+        } else if (p.phase === 'stopped') {
+          state.rag = Object.assign({}, state.rag || {}, { status: 'fail', error: '服务已停止' });
+          if (p.reason === 'idle') toast('知识库空闲，已自动停止', 'ok');
+        }
+        render();
+      });
+    }
 
     /* 外部 RAG：读令牌状态；已启用则后台探测一次（不阻塞启动） */
     try {

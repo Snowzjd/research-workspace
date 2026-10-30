@@ -898,8 +898,26 @@ const SETTINGS_DEFAULT = {
   ragEnabled: true,
   ragEndpoint: 'http://127.0.0.1:8765',
   ragTopK: '8',
-  kbEngine: 'rag_snowz'
+  kbEngine: 'rag_snowz',
+  /* 知识库服务按需启动：检索时服务没开就运行启动命令；空闲后只停本软件启动的服务。默认不配置，不写开机自启。 */
+  kbStartCommand: '',
+  kbStopCommand: '',
+  kbStartTimeoutSec: 60,
+  kbIdleStopMinutes: 30
 };
+
+/* 交给主进程的启动 / 停止配置（随检索请求带上） */
+function kbServiceConfig(S) {
+  const s = S || {};
+  const t = Number(s.kbStartTimeoutSec);
+  const idle = Number(s.kbIdleStopMinutes);
+  return {
+    startCommand: String(s.kbStartCommand || '').trim(),
+    stopCommand: String(s.kbStopCommand || '').trim(),
+    startTimeoutSec: Number.isFinite(t) && t > 0 ? t : 60,
+    idleStopMinutes: Number.isFinite(idle) && idle >= 0 ? idle : 30
+  };
+}
 
 /* RAG_Snowz 默认基地址。渲染层只把它交给主进程，自己不发跨域请求。 */
 const RAG_SNOWZ_DEFAULT = 'http://127.0.0.1:8765';
@@ -1526,9 +1544,12 @@ function kbEndpointHost(endpoint) {
   }
 }
 
-function engineDownNotice(endpoint) {
+function engineDownNotice(endpoint, kbStart) {
   const host = kbEndpointHost(endpoint);
-  return `知识库服务未启动（${host}）。本次检索没有拿到任何文献，所以没有写稿，也没有保存任何文稿。\n请先启动 RAG_Snowz 服务（默认端口 8765），或到「设置 → AI 与知识库引擎」核对服务地址；确认 http://${host}/health 能打开后，再重新发送这句话。`;
+  if (kbStart && kbStart.ok === false && kbStart.code !== 'unconfigured') {
+    return `知识库启动失败（${host}）：${kbStart.error || '未知原因'}。本次检索没有拿到任何文献，所以没有写稿，也没有保存任何文稿。\n请检查「设置 → 知识库引擎」里的启动命令，或手动启动知识库服务后再重新发送这句话。`;
+  }
+  return `知识库服务未启动（${host}）。本次检索没有拿到任何文献，所以没有写稿，也没有保存任何文稿。\n请先启动 RAG_Snowz 服务（默认端口 8765），或到「设置 → AI 与知识库引擎」核对服务地址、填写启动命令（填好后检索时会自动启动）；确认 http://${host}/health 能打开后，再重新发送这句话。`;
 }
 
 /* search_knowledge 返回 engine_down 时，界面、派单和 /api/ai/chat 都在这里停下，不再让模型往下写。 */

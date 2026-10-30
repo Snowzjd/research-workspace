@@ -90,3 +90,21 @@ test('search_knowledge returns stop + user_message when RAG is unreachable', asy
   assert.equal(ctx.state.rag.status, 'fail');
   assert.equal(ctx.resolveKnowledgeIndex('rag_snowz', ctx.state.rag).knowledge_index_status, 'engine_down');
 });
+
+test('start failure becomes a start-failed notice and still stops the loop', async () => {
+  const ctx = loadData();
+  ctx.state = { project: '', aiAgent: '', rag: { status: 'unknown' } };
+  const fail = { ok: false, code: 'start_failed', error: 'exit 1' };
+  ctx.Bridge = {
+    ragSearch: async () => ({ ok: false, error: 'x', kb_start: fail }),
+    ragAsk: async () => ({ ok: false, error: 'x', kb_start: fail })
+  };
+  runInContext(readFileSync(new URL('./assets/js/ai-tools.js', root), 'utf8'), ctx, { filename: 'ai-tools.js' });
+  runInContext(`setDB(freshData()); DB.settings.kbEngine = 'rag_snowz'; DB.settings.ragEndpoint = 'http://127.0.0.1:8765';`, ctx);
+  const res = await runInContext(`AI_TOOL_IMPL.search_knowledge({ query: 'TPMS', mode: 'search' })`, ctx);
+  assert.equal(res.code, 'engine_down');
+  assert.equal(res.start_failed, true);
+  assert.ok(res.user_message.startsWith('\u77e5\u8bc6\u5e93\u542f\u52a8\u5931\u8d25\uff08127.0.0.1:8765\uff09'));
+  assert.equal(ctx.kbServiceConfig({}).startCommand, '');
+  assert.equal(ctx.kbServiceConfig({}).startTimeoutSec, 60);
+});

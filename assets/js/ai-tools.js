@@ -1021,7 +1021,7 @@ const AI_TOOL_IMPL_RAW = {
             ask_error: (asked && asked.error) || ''
           });
         }
-        return kbEngineDownResult(kbNameMatch(q), ((searched && searched.error) || (asked && asked.error) || '未知错误'), cfg.endpoint);
+        return kbEngineDownResult(kbNameMatch(q), ((searched && searched.error) || (asked && asked.error) || '未知错误'), cfg.endpoint, (searched && searched.kb_start) || (asked && asked.kb_start));
       }
       const r = await Bridge.ragSearch(payload);
       if (r && r.ok) {
@@ -1033,7 +1033,7 @@ const AI_TOOL_IMPL_RAW = {
         });
       }
       /* 不可用时如实告知，并退回名称匹配，不编造结果 */
-      return kbEngineDownResult(kbNameMatch(q), ((r && r.error) || '未知错误'), cfg.endpoint);
+      return kbEngineDownResult(kbNameMatch(q), ((r && r.error) || '未知错误'), cfg.endpoint, r && r.kb_start);
     }
 
     return Object.assign(kbNameMatch(q), {
@@ -1171,8 +1171,9 @@ function describeToolCall(name, args = {}) {
 
 
 /* 知识库服务不可用：结果带 stop + user_message，循环据此直接停下；同时把健康状态记成 fail。 */
-function kbEngineDownResult(base, err, endpoint) {
-  const notice = engineDownNotice(endpoint);
+function kbEngineDownResult(base, err, endpoint, kbStart) {
+  const notice = engineDownNotice(endpoint, kbStart);
+  const startFailed = !!(kbStart && kbStart.ok === false && kbStart.code !== 'unconfigured');
   if (typeof state !== 'undefined' && state) {
     state.rag = Object.assign({}, state.rag || {}, {
       status: 'fail', indexed: 0, docs: 0, chunks: 0, error: String(err || '连接失败')
@@ -1181,6 +1182,8 @@ function kbEngineDownResult(base, err, endpoint) {
   return Object.assign(base || {}, {
     channel: 'name_fallback', code: 'engine_down',
     stop: true,
+    start_failed: startFailed,
+    kb_start: kbStart || null,
     user_message: notice,
     warning: 'RAG 服务不可用：' + String(err || '未知错误') + '。知识库服务未启动，必须停止，不要继续写作或保存，直接把 user_message 告诉用户。'
   });

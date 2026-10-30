@@ -278,12 +278,31 @@ const Bridge = {
   },
   async ragSearch(cfg) {
     if (!this.desktop) return { ok: false, error: '外部 RAG 需要桌面端运行。' };
-    return await window.workspace.ragSearch(cfg);
+    return await window.workspace.ragSearch(this._withKb(cfg));
   },
   async ragAsk(cfg) {
     if (!this.desktop) return { ok: false, error: '外部 RAG 需要桌面端运行（问答由主进程转发，页面不直接请求知识库端口）。' };
     if (typeof window.workspace.ragAsk !== 'function') return { ok: false, error: '当前桌面桥没有 ragAsk' };
-    return await window.workspace.ragAsk(cfg);
+    return await window.workspace.ragAsk(this._withKb(cfg));
+  },
+  /* 检索请求带上知识库启动 / 停止配置，主进程据此按需启动 */
+  _withKb(cfg) {
+    const S = (typeof DB !== 'undefined' && DB && DB.settings) || null;
+    if (!S || typeof kbServiceConfig !== 'function') return cfg;
+    return Object.assign({}, cfg || {}, { kb: kbServiceConfig(S) });
+  },
+  async kbStart(cfg) {
+    if (!this.desktop || typeof window.workspace.kbStart !== 'function') return { ok: false, error: '需要桌面端运行' };
+    return await window.workspace.kbStart(this._withKb(cfg));
+  },
+  async kbStop(cfg) {
+    if (!this.desktop || typeof window.workspace.kbStop !== 'function') return { ok: false, error: '需要桌面端运行' };
+    return await window.workspace.kbStop(this._withKb(cfg));
+  },
+  onKbStatus(cb) {
+    if (!this.desktop || typeof window.workspace.onKbStatus !== 'function') return false;
+    window.workspace.onKbStatus(cb);
+    return true;
   },
   async ragReindex(cfg) {
     if (!this.desktop) return { ok: false, error: '外部 RAG 需要桌面端运行。' };
