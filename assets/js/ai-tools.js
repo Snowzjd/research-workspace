@@ -1008,7 +1008,8 @@ const AI_TOOL_IMPL_RAW = {
             code: citations.length || asked.answer ? 'ok' : 'empty_corpus',
             answer: asked.answer || '',
             citations, count: citations.length,
-            results: citations
+            results: citations,
+            kb_start: asked.kb_start || undefined
           });
         }
         const searched = await Bridge.ragSearch(payload);
@@ -1018,7 +1019,8 @@ const AI_TOOL_IMPL_RAW = {
             ok: true, query: q, channel: 'rag', engine, mode: 'search',
             code: results.length ? 'ok' : 'empty_corpus',
             count: results.length, results,
-            ask_error: (asked && asked.error) || ''
+            ask_error: (asked && asked.error) || '',
+            kb_start: searched.kb_start || (asked && asked.kb_start) || undefined
           });
         }
         return kbEngineDownResult(kbNameMatch(q), ((searched && searched.error) || (asked && asked.error) || '未知错误'), cfg.endpoint, (searched && searched.kb_start) || (asked && asked.kb_start));
@@ -1029,7 +1031,8 @@ const AI_TOOL_IMPL_RAW = {
         return withUniqueDocs({
           ok: true, query: q, channel: 'rag', engine, mode: 'search',
           code: results.length ? 'ok' : 'empty_corpus',
-          count: results.length, results
+          count: results.length, results,
+          kb_start: r.kb_start || undefined
         });
       }
       /* 不可用时如实告知，并退回名称匹配，不编造结果 */
