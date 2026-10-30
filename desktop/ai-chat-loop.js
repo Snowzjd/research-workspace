@@ -57,6 +57,31 @@ function decideToolExecution(name, args, autoApprove) {
   return { run: true, reason: 'run' };
 }
 
+/* 与渲染层 data.js 的 engineDownNotice / unverifiedClaimNote 保持一致（主进程不能直接加载渲染层脚本）。 */
+const ENGINE_DOWN_FALLBACK = '知识库服务未启动（127.0.0.1:8765）。本次检索没有拿到任何文献，所以没有写稿，也没有保存任何文稿。\n请先启动 RAG_Snowz 服务（默认端口 8765），或到「设置 → AI 与知识库引擎」核对服务地址，确认后再重新发送这句话。';
+
+function isEngineDownResult(name, res) {
+  return String(name || '') === 'search_knowledge' && !!res && typeof res === 'object' && res.code === 'engine_down';
+}
+
+const SAVE_CLAIM_RE = /(?:已经?|已为你|已帮你)(?:保存|存档|落盘|写好|写完)|保存(?:到|至|在)了?\s*[`「"“]?[A-Za-z]:[\\/]|上一轮[^\n。]{0,20}(?:写好|写完|保存|生成|完成)/;
+function unverifiedClaimNote(text, results) {
+  const t = String(text || '');
+  if (!t) return '';
+  const list = Array.isArray(results) ? results : [];
+  const saved = list.some(x => x && x.name === 'save_document' && x.result && x.result.ok !== false && x.result.savedPath);
+  const notes = [];
+  if (!saved && SAVE_CLAIM_RE.test(t)) {
+    notes.push('本轮没有成功调用 save_document，文稿并未保存；上文若提到「已保存」「已写好」或「上一轮已完成」，以这条为准。');
+  }
+  const errs = t.match(/[A-Za-z_$][\w$.]*\s+is not a function/g) || [];
+  if (errs.length) {
+    const blob = list.map(x => { try { return JSON.stringify(x && x.result); } catch (_) { return ''; } }).join('\n');
+    if (errs.some(e => !blob.includes(e))) notes.push('上文引用的「… is not a function」报错不是本轮工具返回的，属于历史信息，不代表当前状态。');
+  }
+  return notes.length ? '（系统核对）' + notes.join('') : '';
+}
+
 function normalizeToolCalls(toolCalls) {
   if (!Array.isArray(toolCalls)) return [];
   const out = [];
@@ -145,12 +170,19 @@ async function runAiChatLoop(opts) {
       convo.push(assistantWire(content, calls));
       if (!calls.length) {
         finalText = content;
+        const note = unverifiedClaimNote(finalText, toolCalls.filter(t => t.executed));
+        if (note) {
+          finalText = (finalText ? finalText + '\n\n' : '') + note;
+          transcript[transcript.length - 1].content = finalText;
+        }
         return stop({ stopped: '' });
       }
       if (content) finalText = content;
 
       let blockedReason = '';
+      let engineDown = null;
       for (const c of calls) {
+        if (engineDown) break;
         if (toolCount >= maxToolCalls) {
           capped = true;
           const result = { ok: false, executed: false, error: `已达到单次最多 ${maxToolCalls} 次工具调用` };
@@ -183,6 +215,13 @@ async function runAiChatLoop(opts) {
         const packed = JSON.stringify(result);
         transcript.push({ role: 'tool', tool_call_id: c.id, name: c.name, content: packed });
         convo.push({ role: 'tool', tool_call_id: c.id, content: packed });
+        if (isEngineDownResult(c.name, result)) engineDown = result;
+      }
+      if (engineDown) {
+        /* 知识库服务未启动：不再请求模型，直接给出确定的说明 */
+        finalText = (typeof engineDown.user_message === 'string' && engineDown.user_message) || ENGINE_DOWN_FALLBACK;
+        transcript.push({ role: 'assistant', content: finalText, toolCalls: [] });
+        return stop({ stopped: 'engine_down' });
       }
       if (blockedReason === 'needs_confirm' || blockedReason === 'needs_approval') {
         return stop({ stopped: blockedReason });
@@ -211,6 +250,8 @@ module.exports = {
   AI_CHAT_MAX_ROUNDS,
   AI_CHAT_MAX_TOOL_CALLS,
   isDryRun,
+  isEngineDownResult,
+  unverifiedClaimNote,
   decideToolExecution,
   runAiChatLoop
 };

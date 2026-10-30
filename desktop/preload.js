@@ -97,6 +97,10 @@ contextBridge.exposeInMainWorld('workspace', {
   ragSearch:   (cfg) => ipcRenderer.invoke('rag:search', cfg),
   ragAsk:      (cfg) => ipcRenderer.invoke('rag:ask', cfg),
   ragReindex:  (cfg) => ipcRenderer.invoke('rag:reindex', cfg),
+  kbStart:     (cfg) => ipcRenderer.invoke('kb:start', cfg),
+  kbStop:      (cfg) => ipcRenderer.invoke('kb:stop', cfg),
+  kbStatus:    () => ipcRenderer.invoke('kb:status'),
+  onKbStatus:  (cb) => { if (typeof cb === 'function') ipcRenderer.on('kb:status', (_e, p) => cb(p)); },
 
   /* 外部 Agent 接入（本地 API + MCP） */
   apiInfo:      () => ipcRenderer.invoke('api:info'),

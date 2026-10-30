@@ -898,8 +898,26 @@ const SETTINGS_DEFAULT = {
   ragEnabled: true,
   ragEndpoint: 'http://127.0.0.1:8765',
   ragTopK: '8',
-  kbEngine: 'rag_snowz'
+  kbEngine: 'rag_snowz',
+  /* 知识库服务按需启动：检索时服务没开就运行启动命令；空闲后只停本软件启动的服务。默认不配置，不写开机自启。 */
+  kbStartCommand: '',
+  kbStopCommand: '',
+  kbStartTimeoutSec: 60,
+  kbIdleStopMinutes: 30
 };
+
+/* 交给主进程的启动 / 停止配置（随检索请求带上） */
+function kbServiceConfig(S) {
+  const s = S || {};
+  const t = Number(s.kbStartTimeoutSec);
+  const idle = Number(s.kbIdleStopMinutes);
+  return {
+    startCommand: String(s.kbStartCommand || '').trim(),
+    stopCommand: String(s.kbStopCommand || '').trim(),
+    startTimeoutSec: Number.isFinite(t) && t > 0 ? t : 60,
+    idleStopMinutes: Number.isFinite(idle) && idle >= 0 ? idle : 30
+  };
+}
 
 /* RAG_Snowz 默认基地址。渲染层只把它交给主进程，自己不发跨域请求。 */
 const RAG_SNOWZ_DEFAULT = 'http://127.0.0.1:8765';
@@ -941,7 +959,7 @@ function resolveKnowledgeIndex(engine, rag) {
   if (status !== 'ok') {
     return {
       knowledge_indexed: null,
-      knowledge_index_status: status === 'fail' ? 'unknown' : 'external',
+      knowledge_index_status: status === 'fail' ? 'engine_down' : 'external',
       knowledge_docs: null,
       knowledge_chunks: null,
       knowledge_index_kind: eng === 'rag_snowz' ? 'docs' : 'vectors'
@@ -1509,8 +1527,67 @@ function replyLanguageClause(userText) {
 const ASSISTANT_LANGUAGE_RULE = '回复语言：用户最新这句话若是纯英文（有英文字母，且没有汉字、日文或韩文），最终回复默认用英文；否则默认用中文。工具返回和检索片段可以仍是中文或英文。';
 const ASSISTANT_ASK_RETRY_RULE = '检索不足：若 search_knowledge 以 mode=ask 返回且 unique_docs 少于 3，或结果带有文档不足的 warning，立刻再次调用 search_knowledge，改用 mode=search，并用更宽的中文和英文 query 各查一次。不要停在这一次问答上。';
 
+const ASSISTANT_ENGINE_DOWN_RULE = '【知识库服务未启动】search_knowledge 返回 code=engine_down 时立刻停止：不要继续检索，不要凭记忆或历史对话写稿，不要调用 save_document。直接告诉用户「知识库服务未启动（服务地址）」，并说明先启动 RAG_Snowz 服务，或到「设置 → AI 与知识库引擎」核对地址。';
+const ASSISTANT_FRESH_FACTS_RULE = '【只陈述本轮事实】对话历史里较早轮次的报错、检索结果、「已写好」「已保存」都可能已经过时。只把用户最新这句话之后、本轮工具真正返回的内容当作当前事实。不要复述历史里的报错（例如旧版本的「Bridge.xxx is not a function」），也不要说「上一轮已经写好/保存」。只有本轮 save_document 返回了 savedPath，才能说文稿已保存，并写出这个路径。';
+
 function standingChatGuidance() {
-  return [WRITING_LENGTH_RULE, ASSISTANT_LANGUAGE_RULE, ASSISTANT_ASK_RETRY_RULE].join('\n');
+  return [WRITING_LENGTH_RULE, ASSISTANT_LANGUAGE_RULE, ASSISTANT_ASK_RETRY_RULE, ASSISTANT_ENGINE_DOWN_RULE, ASSISTANT_FRESH_FACTS_RULE].join('\n');
+}
+
+/* ---------- 知识库服务未启动：确定性停止 ---------- */
+function kbEndpointHost(endpoint) {
+  try {
+    const u = new URL(String(endpoint || ''));
+    return u.host || '127.0.0.1:8765';
+  } catch (_) {
+    return '127.0.0.1:8765';
+  }
+}
+
+function engineDownNotice(endpoint, kbStart) {
+  const host = kbEndpointHost(endpoint);
+  if (kbStart && kbStart.ok === false && kbStart.code !== 'unconfigured') {
+    return `知识库启动失败（${host}）：${kbStart.error || '未知原因'}。本次检索没有拿到任何文献，所以没有写稿，也没有保存任何文稿。\n请检查「设置 → 知识库引擎」里的启动命令，或手动启动知识库服务后再重新发送这句话。`;
+  }
+  return `知识库服务未启动（${host}）。本次检索没有拿到任何文献，所以没有写稿，也没有保存任何文稿。\n请先启动 RAG_Snowz 服务（默认端口 8765），或到「设置 → AI 与知识库引擎」核对服务地址、填写启动命令（填好后检索时会自动启动）；确认 http://${host}/health 能打开后，再重新发送这句话。`;
+}
+
+/* search_knowledge 返回 engine_down 时，界面、派单和 /api/ai/chat 都在这里停下，不再让模型往下写。 */
+function isEngineDownResult(name, res) {
+  return String(name || '') === 'search_knowledge' && !!res && typeof res === 'object' && res.code === 'engine_down';
+}
+
+/* 最终回复里声称「已保存 / 上一轮已写好」，但本轮没有 save_document 的 savedPath；
+   或者引用了本轮工具结果里没有的「… is not a function」报错。返回附加说明，没有问题时返回空串。
+   results：本轮工具结果 [{ name, result }]。 */
+const SAVE_CLAIM_RE = /(?:已经?|已为你|已帮你)(?:保存|存档|落盘|写好|写完)|保存(?:到|至|在)了?\s*[`「"“]?[A-Za-z]:[\\/]|上一轮[^\n。]{0,20}(?:写好|写完|保存|生成|完成)/;
+function unverifiedClaimNote(text, results) {
+  const t = String(text || '');
+  if (!t) return '';
+  const list = Array.isArray(results) ? results : [];
+  const saved = list.some(x => x && x.name === 'save_document' && x.result && x.result.ok !== false && x.result.savedPath);
+  const notes = [];
+  if (!saved && SAVE_CLAIM_RE.test(t)) {
+    notes.push('本轮没有成功调用 save_document，文稿并未保存；上文若提到「已保存」「已写好」或「上一轮已完成」，以这条为准。');
+  }
+  const errs = t.match(/[A-Za-z_$][\w$.]*\s+is not a function/g) || [];
+  if (errs.length) {
+    const blob = list.map(x => { try { return JSON.stringify(x && x.result); } catch (_) { return ''; } }).join('\n');
+    if (errs.some(e => !blob.includes(e))) notes.push('上文引用的「… is not a function」报错不是本轮工具返回的，属于历史信息，不代表当前状态。');
+  }
+  return notes.length ? '（系统核对）' + notes.join('') : '';
+}
+
+/* 界面 chat 里本轮的 tool 消息 → [{ name, result }] */
+function chatToolResults(msgs) {
+  const out = [];
+  for (const m of (Array.isArray(msgs) ? msgs : [])) {
+    if (!m || m.role !== 'tool') continue;
+    let result = null;
+    try { result = JSON.parse(m.content || 'null'); } catch (_) { result = null; }
+    out.push({ name: m.name, result });
+  }
+  return out;
 }
 
 /* 有具体字数或纯英文时，附在系统提示最后，避免被 Agent 人设里的「用中文」盖住。 */

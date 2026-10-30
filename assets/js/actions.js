@@ -766,6 +766,7 @@ async function aiSend(presetText) {
   if (!DB.chats[p.id]) DB.chats[p.id] = [];
   const chat = DB.chats[p.id];
   chat.push({ role: 'user', content, agent: agent ? agent.name : '' });
+  const turnStart = chat.length;
 
   state.aiDraft = '';
   state.aiBusy = true;
@@ -799,7 +800,14 @@ async function aiSend(presetText) {
       chat.push({ role: 'assistant', content: r.content || '', toolCalls: calls });
       render(); scrollAi();
 
-      if (!calls.length) break;   // 模型给出了最终答复
+      if (!calls.length) {
+        /* 本轮没有 savedPath 却说「已保存 / 上一轮已写好」，或复述历史报错：在回复后附一句核对说明 */
+        const last = chat[chat.length - 1];
+        const note = (typeof unverifiedClaimNote === 'function')
+          ? unverifiedClaimNote(last && last.content, chatToolResults(chat.slice(turnStart))) : '';
+        if (note && last) last.content = (last.content || '') + '\n\n' + note;
+        break;   // 模型给出了最终答复
+      }
 
       if (!DB.ai.autoApprove) {
         state.aiStatus = '等待你的确认…';
@@ -811,17 +819,35 @@ async function aiSend(presetText) {
         }
       }
 
+      let engineDown = null;
       for (const c of calls) {
+        if (engineDown) {
+          /* 知识库已不可用：同批剩下的调用不执行，但要补上 tool 回复，下一轮历史才合法 */
+          chat.push({
+            role: 'tool', tool_call_id: c.id, name: c.name, label: c.label, ok: false,
+            resultText: '未执行：知识库服务未启动',
+            content: JSON.stringify({ ok: false, executed: false, error: '知识库服务未启动，本次未执行' })
+          });
+          continue;
+        }
         state.aiStatus = `执行：${c.label}`;
         render(); scrollAi();
         const res = await runTool(c);
+        const down = typeof isEngineDownResult === 'function' && isEngineDownResult(c.name, res);
         chat.push({
           role: 'tool', tool_call_id: c.id, name: c.name, label: c.label,
-          ok: res && res.ok !== false,
-          resultText: summarizeResult(c.name, res),
+          ok: res && res.ok !== false && !down,
+          resultText: down ? '知识库服务未启动' : summarizeResult(c.name, res),
           content: JSON.stringify(res == null ? { ok: false, error: '工具无返回' } : res)
         });
+        if (down) engineDown = res;
         render(); scrollAi();
+      }
+      if (engineDown) {
+        /* 确定性停止：不再请求模型，直接告诉用户服务没起来 */
+        chat.push({ role: 'assistant', content: engineDown.user_message || engineDownNotice(''), toolCalls: [] });
+        toast('知识库服务未启动，已停止本次处理', 'err');
+        break;
       }
     }
     if (state.aiBusy && !chat.some(m => m.role === 'error' && m.content.includes('已取消'))) {
@@ -2688,6 +2714,64 @@ document.addEventListener('click', async e => {
       }
       return;
     }
+    case 'kb-svc-start': {
+      if (!Bridge.desktop) return toast('需要桌面端运行', 'err');
+      const cfg = ragClientConfig(DB.settings);
+      toast('正在启动知识库…', 'ok');
+      const r = await Bridge.kbStart({ endpoint: cfg.endpoint, engine: cfg.engine });
+      if (r && r.ok) {
+        if (r.health) applyRagHealth(r.health);
+        toast(r.already ? '知识库服务已在运行' : `知识库已启动（${Math.round((r.ms || 0) / 1000)}s）`, 'ok');
+      } else {
+        toast('知识库启动失败：' + esc((r && r.error) || '未知错误'), 'err');
+      }
+      render();
+      return;
+    }
+    case 'kb-svc-stop': {
+      if (!Bridge.desktop) return toast('需要桌面端运行', 'err');
+      const cfg = ragClientConfig(DB.settings);
+      const r = await Bridge.kbStop({ endpoint: cfg.endpoint, engine: cfg.engine });
+      if (r && r.ok) {
+        state.rag = Object.assign({}, state.rag || {}, { status: 'fail', error: '服务已停止' });
+        toast('知识库服务已停止', 'ok');
+      } else {
+        toast('停止失败：' + esc((r && r.error) || '未知错误'), 'err');
+      }
+      render();
+      return;
+    }
+    case 'kb-svc-config': {
+      const S = DB.settings;
+      openModal({
+        title: '知识库服务启动 / 停止',
+        sub: '检索时服务没开会自动运行启动命令；不会写入开机自启',
+        body: fText('start', '启动命令', S.kbStartCommand || '', { ph: 'powershell -NoProfile -ExecutionPolicy Bypass -File D:\\rag\\start.ps1', hint: '不经过 shell。可执行文件写绝对路径，或以 powershell / pwsh 开头。最后一行输出 JSON 时按其中的 ok 判断。' })
+          + fText('stop', '停止命令', S.kbStopCommand || '', { ph: 'powershell -NoProfile -ExecutionPolicy Bypass -File D:\\rag\\stop.ps1' })
+          + fText('timeout', '启动超时（秒）', String(S.kbStartTimeoutSec || 60))
+          + fText('idle', '空闲自动停止（分钟，0 = 不自动停）', String(S.kbIdleStopMinutes == null ? 30 : S.kbIdleStopMinutes), { hint: '只停止由本软件启动的服务；你手动启动的服务不会被停掉。' }),
+        footer: `<span class="grow"></span>
+          <button class="btn" data-act="modal-close">取消</button>
+          <button class="btn primary" data-submit data-act="kb-svc-config-save">保存</button>`
+      });
+      return;
+    }
+    case 'kb-svc-config-save': {
+      const m = document.querySelector('.modal'); if (!m) return;
+      const v = formValues(m);
+      const t = Number(v.timeout);
+      const idle = Number(v.idle);
+      mutate(() => {
+        DB.settings.kbStartCommand = String(v.start || '').trim();
+        DB.settings.kbStopCommand = String(v.stop || '').trim();
+        DB.settings.kbStartTimeoutSec = Number.isFinite(t) && t > 0 ? Math.round(t) : 60;
+        DB.settings.kbIdleStopMinutes = Number.isFinite(idle) && idle >= 0 ? Math.round(idle) : 30;
+      }, { activity: { text: '更新知识库服务启动 / 停止命令', kind: 'edit', color: '#3E63DD' } });
+      closeModal();
+      toast('已保存知识库服务设置', 'ok');
+      render();
+      return;
+    }
     case 'kb-engine': {
       const v = String(t.value || 'builtin');
       mutate(() => {
@@ -3566,14 +3650,14 @@ window.__RW_API__ = async function (req) {
       const eng = (DB.settings && DB.settings.kbEngine) || 'builtin';
       const external = eng === 'http' || eng === 'rag_snowz';
       const ragStatus = state.rag && state.rag.status;
-      if (external && (!ragStatus || ragStatus === 'unknown') && Bridge && typeof Bridge.ragHealth === 'function') {
+      if (external && (!ragStatus || ragStatus === 'unknown' || ragStatus === 'fail') && Bridge && typeof Bridge.ragHealth === 'function') {
         const cfg = (typeof ragClientConfig === 'function') ? ragClientConfig(DB.settings) : null;
         if (cfg && cfg.endpoint) {
           try {
             const h = await Bridge.ragHealth({ endpoint: cfg.endpoint, engine: cfg.engine });
             if (typeof applyRagHealth === 'function') applyRagHealth(h);
           } catch (_) {
-            if (!state.rag || !state.rag.status || state.rag.status === 'unknown') {
+            if (!state.rag || !state.rag.status || state.rag.status === 'unknown' || state.rag.status === 'fail') {
               state.rag = {
                 status: 'fail', indexed: 0, docs: 0, chunks: 0, model: '', askMode: '',
                 error: 'health 不可达'
@@ -3895,6 +3979,27 @@ async function boot() {
 
     /* 交接文件：上次导出/导入时间 */
     try { state.handoff = await Bridge.handoffInfo(); } catch (_) {}
+
+    /* 知识库按需启动的进度：只提示「正在启动知识库…」，结果写回连接状态 */
+    if (!state._kbStatusHooked && typeof Bridge.onKbStatus === 'function') {
+      state._kbStatusHooked = Bridge.onKbStatus(p => {
+        if (!p) return;
+        state.kbService = p;
+        if (p.phase === 'starting') {
+          if (state.aiBusy) state.aiStatus = '正在启动知识库…';
+          toast('正在启动知识库…', 'ok');
+        } else if (p.phase === 'ok') {
+          if (p.health) applyRagHealth(p.health);
+          toast(`知识库已启动（${Math.round((p.ms || 0) / 1000)}s）`, 'ok');
+        } else if (p.phase === 'fail') {
+          toast('知识库启动失败：' + esc(p.error || '未知原因'), 'err');
+        } else if (p.phase === 'stopped') {
+          state.rag = Object.assign({}, state.rag || {}, { status: 'fail', error: '服务已停止' });
+          if (p.reason === 'idle') toast('知识库空闲，已自动停止', 'ok');
+        }
+        render();
+      });
+    }
 
     /* 外部 RAG：读令牌状态；已启用则后台探测一次（不阻塞启动） */
     try {

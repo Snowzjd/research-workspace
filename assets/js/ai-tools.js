@@ -1008,7 +1008,8 @@ const AI_TOOL_IMPL_RAW = {
             code: citations.length || asked.answer ? 'ok' : 'empty_corpus',
             answer: asked.answer || '',
             citations, count: citations.length,
-            results: citations
+            results: citations,
+            kb_start: asked.kb_start || undefined
           });
         }
         const searched = await Bridge.ragSearch(payload);
@@ -1018,13 +1019,11 @@ const AI_TOOL_IMPL_RAW = {
             ok: true, query: q, channel: 'rag', engine, mode: 'search',
             code: results.length ? 'ok' : 'empty_corpus',
             count: results.length, results,
-            ask_error: (asked && asked.error) || ''
+            ask_error: (asked && asked.error) || '',
+            kb_start: searched.kb_start || (asked && asked.kb_start) || undefined
           });
         }
-        return Object.assign(kbNameMatch(q), {
-          channel: 'name_fallback', code: 'engine_down',
-          warning: 'RAG 服务不可用，已退回资料名称匹配：' + ((searched && searched.error) || (asked && asked.error) || '未知错误')
-        });
+        return kbEngineDownResult(kbNameMatch(q), ((searched && searched.error) || (asked && asked.error) || '未知错误'), cfg.endpoint, (searched && searched.kb_start) || (asked && asked.kb_start));
       }
       const r = await Bridge.ragSearch(payload);
       if (r && r.ok) {
@@ -1032,14 +1031,12 @@ const AI_TOOL_IMPL_RAW = {
         return withUniqueDocs({
           ok: true, query: q, channel: 'rag', engine, mode: 'search',
           code: results.length ? 'ok' : 'empty_corpus',
-          count: results.length, results
+          count: results.length, results,
+          kb_start: r.kb_start || undefined
         });
       }
       /* 不可用时如实告知，并退回名称匹配，不编造结果 */
-      return Object.assign(kbNameMatch(q), {
-        channel: 'name_fallback', code: 'engine_down',
-        warning: 'RAG 服务不可用，已退回资料名称匹配：' + ((r && r.error) || '未知错误')
-      });
+      return kbEngineDownResult(kbNameMatch(q), ((r && r.error) || '未知错误'), cfg.endpoint, r && r.kb_start);
     }
 
     return Object.assign(kbNameMatch(q), {
@@ -1173,4 +1170,24 @@ function describeToolCall(name, args = {}) {
     default: break;
   }
   return bits.length ? `${label}（${bits.join('，')}）` : label;
+}
+
+
+/* 知识库服务不可用：结果带 stop + user_message，循环据此直接停下；同时把健康状态记成 fail。 */
+function kbEngineDownResult(base, err, endpoint, kbStart) {
+  const notice = engineDownNotice(endpoint, kbStart);
+  const startFailed = !!(kbStart && kbStart.ok === false && kbStart.code !== 'unconfigured');
+  if (typeof state !== 'undefined' && state) {
+    state.rag = Object.assign({}, state.rag || {}, {
+      status: 'fail', indexed: 0, docs: 0, chunks: 0, error: String(err || '连接失败')
+    });
+  }
+  return Object.assign(base || {}, {
+    channel: 'name_fallback', code: 'engine_down',
+    stop: true,
+    start_failed: startFailed,
+    kb_start: kbStart || null,
+    user_message: notice,
+    warning: 'RAG 服务不可用：' + String(err || '未知错误') + '。知识库服务未启动，必须停止，不要继续写作或保存，直接把 user_message 告诉用户。'
+  });
 }

@@ -20,6 +20,7 @@ const syncCloud = require('./sync-cloud');
 const updater = require('./updater');
 const ai = require('./ai');
 const rag = require('./rag');
+const kbService = require('./kb-service');
 const apiServer = require('./api-server');
 apiServer.setChat(cfg => ai.chat(cfg));
 const connectors = require('./connectors');
@@ -947,8 +948,19 @@ ipcMain.handle('ai:test', (_e, cfg) => ai.test(cfg));
 ipcMain.handle('rag:state', () => rag.state());
 ipcMain.handle('rag:setToken', (_e, plain) => rag.saveToken(plain));
 ipcMain.handle('rag:health', (_e, cfg = {}) => rag.health(cfg));
-ipcMain.handle('rag:search', (_e, cfg = {}) => rag.search(cfg));
-ipcMain.handle('rag:ask', (_e, cfg = {}) => rag.ask(cfg));
+/* 检索 / 问答失败且服务不在线时，按设置里的启动命令自动拉起，再重发一次（见 kb-service.js） */
+kbService.setHealth(cfg => rag.health(cfg));
+kbService.setNotifier(payload => {
+  for (const w of BrowserWindow.getAllWindows()) {
+    try { if (!w.isDestroyed()) w.webContents.send('kb:status', payload); } catch (_) {}
+  }
+});
+kbService.startIdleTimer(60000);
+ipcMain.handle('rag:search', (_e, cfg = {}) => kbService.withService(cfg, () => rag.search(cfg)));
+ipcMain.handle('rag:ask', (_e, cfg = {}) => kbService.withService(cfg, () => rag.ask(cfg)));
+ipcMain.handle('kb:start', (_e, cfg = {}) => kbService.ensureUp(cfg, { manual: true }));
+ipcMain.handle('kb:stop', (_e, cfg = {}) => kbService.stop(cfg, { reason: 'manual' }));
+ipcMain.handle('kb:status', () => kbService.status());
 ipcMain.handle('rag:reindex', (_e, cfg = {}) => rag.reindex(cfg));
 
 /* ==========================================================================

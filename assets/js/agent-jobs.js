@@ -126,20 +126,41 @@ async function runAgentJob(jobId) {
       if (!calls.length) {
         job.status = 'done';
         job.result = r.content || '（模型没有返回文字内容）';
+        if (typeof unverifiedClaimNote === 'function') {
+          const done = [];
+          for (const m of messages) {
+            if (m.role !== 'tool') continue;
+            let result = null;
+            try { result = JSON.parse(m.content || 'null'); } catch (_) {}
+            const call = messages.find(x => x.role === 'assistant' && (x.tool_calls || []).some(t => t.id === m.tool_call_id));
+            const tc = call && call.tool_calls.find(t => t.id === m.tool_call_id);
+            done.push({ name: tc && tc.function && tc.function.name, result });
+          }
+          const note = unverifiedClaimNote(job.result, done);
+          if (note) job.result += '\n\n' + note;
+        }
         break;
       }
 
+      let engineDown = null;
       for (const c of calls) {
         job.steps.push({ label: c.label, ok: null });
         persist(); render();
         const res = await runTool(c);
-        job.steps[job.steps.length - 1] = { label: c.label, ok: !(res && res.ok === false) };
+        const down = typeof isEngineDownResult === 'function' && isEngineDownResult(c.name, res);
+        job.steps[job.steps.length - 1] = { label: c.label, ok: !(res && res.ok === false) && !down };
         messages.push({
           role: 'tool',
           tool_call_id: c.id,
           content: JSON.stringify(res == null ? { ok: false, error: '工具无返回' } : res)
         });
         persist(); render();
+        if (down) { engineDown = res; break; }
+      }
+      if (engineDown) {
+        job.status = 'failed';
+        job.error = engineDown.user_message || engineDownNotice('');
+        break;
       }
 
       if (round === AGENT_JOB_ROUNDS) {

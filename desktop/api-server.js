@@ -470,7 +470,8 @@ async function handleAiChat(req, res) {
     }
     const loop = await runAiChatLoop({
       chat: cfg => chatImpl(cfg),
-      invokeTool: (name, args) => invokeInRenderer(name, args, who, { probe: true, timeout: 60000 }),
+      /* search_knowledge 可能要先按需启动知识库（默认最多 60s，可配置），留足时间 */
+      invokeTool: (name, args) => invokeInRenderer(name, args, who, { probe: true, timeout: name === 'search_knowledge' ? 720000 : 60000 }),
       messages: prepared.messages,
       tools: prepared.tools,
       cfg: prepared.cfg,
