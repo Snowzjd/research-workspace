@@ -104,7 +104,8 @@ test('knowledge health keeps a real zero and does not coerce unknown to 0', () =
 
   const src = readFileSync(new URL('./desktop/api-server.js', root), 'utf8');
   assert.equal(src.includes('diag.knowledge_indexed || 0'), false);
-  assert.match(src, /version: '3\.2\.0'/);
+  assert.match(src, /version: '3\.2\.1'/);
+  assert.match(src, /diag\.version \|\| '3\.2\.1'/);
   const actions = readFileSync(new URL('./assets/js/actions.js', root), 'utf8');
   assert.match(actions, /resolveKnowledgeIndex/);
   assert.match(actions, /__ai_prepare__/);
@@ -246,7 +247,7 @@ describe('POST /api/ai/chat', { concurrency: false }, () => {
     vm = loadWorkspace();
     diag = {
       ok: true,
-      version: '3.2.0',
+      version: '3.2.1',
       tools_count: 1,
       projects_count: 1,
       tasks_count: 0,
@@ -298,6 +299,7 @@ describe('POST /api/ai/chat', { concurrency: false }, () => {
     assert.equal(ok.json.knowledge_index_status, 'ok');
     assert.equal(ok.json.knowledge_index_kind, 'docs');
     assert.equal(ok.json.knowledge_engine, 'rag_snowz');
+    assert.equal(ok.json.version, '3.2.1');
 
     diag = {
       ok: true,
@@ -311,6 +313,7 @@ describe('POST /api/ai/chat', { concurrency: false }, () => {
     const pending = await call('/api/health');
     assert.equal(pending.json.knowledge_indexed, null);
     assert.equal(pending.json.knowledge_index_status, 'external');
+    assert.equal(pending.json.version, '3.2.1');
 
     api.setWindow({ isDestroyed: () => true });
     const down = await call('/api/health');
