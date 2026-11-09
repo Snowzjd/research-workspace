@@ -214,12 +214,13 @@ function buildOpenApi(tools) {
           responses: { 200: { description: 'project 与 GET /api/context 的 project 同形' }, 404: { description: '没有这个 ID' } }
         },
         patch: {
-          summary: '按项目 ID 部分更新。只改请求体里出现的字段。folder 为相对文件夹名。',
+          summary: '按项目 ID 部分更新。未传字段保持；未知字段、非法进度或非法日期整单拒绝（进度不会变成 50）。revision 冲突返回 409。dry_run 只返回差异。folder 为相对名。cover / schedule / 成果 / 软件绑定与界面共用校验。',
           tags: ['rest'],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
-            200: { description: 'saved、changes、record。record 与随后的 GET 一致' },
-            400: { description: '字段不合法，或没有要改的字段' },
+            200: { description: 'saved、changed_fields、warnings、revision、record。record 与随后的 GET 一致' },
+            400: { description: '字段不合法或未识别。整单不写入。非法进度不会变成 50' },
+            409: { description: 'revision 与当前修订不一致' },
             403: { description: '只读令牌' }
           }
         }
@@ -359,6 +360,8 @@ PATCH ${base}/api/projects/<项目ID>
 {"folder":"tpms_disk","nodes":[{"label":"建模","state":"done","date":"10.05"},{"label":"仿真","state":"current","date":"10.20"}],"plan":["补一组工况","写方法章"],"goal":"把压降降下来"}
 \`\`\`
 保存结果在 \`record\`。再用同一个 ID GET 一次，应与 \`record\` 一致。数据写在本机 \`workspace-data.json\`（与界面同一份）。
+
+还可以部分更新短名称、周期 \`schedule\`、本地封面 \`cover\`、负责人、联接目标、建议软件、成果关联和材料索引状态。未传的字段保持原样。未知字段、非法进度、非法日期会整单拒绝，进度不会被写成 50。\`revision\` 对不上返回冲突。\`dry_run: true\` 只返回校验后的差异。空周期显示为待确认，不要把模板日期当成事实。取消成果关联不会删除磁盘文件。绑定软件不会启动程序。
 
 在文件管理器中打开材料目录：
 \`\`\`
@@ -655,7 +658,8 @@ async function handle(req, res) {
           dryRun: !!(r && r.dryRun),
           project_id: id
         });
-        return send(res, r.ok === false ? 400 : 200, r);
+        const code = !r || r.ok !== false ? 200 : (r.code === 'conflict' ? 409 : (r.code === 'not_found' ? 404 : 400));
+        return send(res, code, r);
       }
       return send(res, 405, { ok: false, error: '请使用 GET 或 PATCH' });
     }
@@ -702,7 +706,8 @@ async function handle(req, res) {
         ok: r && r.ok !== false,
         dryRun: !!(r && r.dryRun)
       });
-      return send(res, r.ok === false ? 400 : 200, r);
+      const code = !r || r.ok !== false ? 200 : (r.code === 'conflict' ? 409 : (r.code === 'not_found' ? 404 : 400));
+      return send(res, code, r);
     }
 
     /* 根路径给出用法提示 */

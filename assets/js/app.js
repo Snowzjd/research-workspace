@@ -124,7 +124,13 @@ function mutate(fn, opts = {}) {
     if (undoStack.length > UNDO_LIMIT) undoStack.shift();
   }
   fn();
-  if (opts.activity) logActivity(opts.activity.text, opts.activity.kind, opts.activity.color);
+  if (opts.activity) logActivity(opts.activity.text, opts.activity.kind, opts.activity.color, {
+    projectId: opts.activity.projectId || '',
+    batchId: opts.activity.batchId || '',
+    actor: opts.activity.actor || '',
+    objectId: opts.activity.objectId || '',
+    type: opts.activity.type || opts.activity.kind || ''
+  });
   persist(opts.immediate);
   if (opts.rerender !== false) render();
   return undoable ? undoStack[undoStack.length - 1] : null;
@@ -233,51 +239,59 @@ function aiModeSeg(active) {
   ).join('')}</div>`;
 }
 
-function projectCard(p, big) {
-  /* 信息层级：显示名最重，阶段其次，未完成数仅在 >0 时出现 */
-  const name = projName(p);
-  const openTasks = DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length;
-  const openLabel = incompleteLabel(openTasks);
-  const nodes = Array.isArray(p.nodes) ? p.nodes : [];
-  const done = nodes.filter(n => n.s !== 'todo').length;
-  const fill = nodes.length > 1 ? Math.max(0, (done - 1) / (nodes.length - 1) * 100) : 100;
-  const lastAct = (DB.activities || []).find(a => String(a.text || '').includes(p.name));
+function coverSrc(resource) {
+  const s = String(resource || '').trim();
+  if (!s || /^https?:\/\//i.test(s)) return '';
+  if (/^file:/i.test(s) || s.startsWith('data:')) return s;
+  if (/^[a-zA-Z]:[\\/]/.test(s) || s.startsWith('\\\\') || s.startsWith('/')) {
+    return 'file:///' + s.replace(/\\/g, '/');
+  }
+  return s;
+}
 
-  return `<article class="card proj-card ${state.project === p.id ? 'selected' : ''}" data-project="${p.id}" title="点击查看这个项目">
+function coverHTML(p) {
+  const c = coverView(p);
+  const broken = !!(state.coverBroken && state.coverBroken[p.id]);
+  const alt = c.alt || (projName(p) + '封面');
+  const src = !broken && c.kind === 'local_reference' ? coverSrc(c.resource) : '';
+  if (src) {
+    return `<div class="thumb cover-frame" data-fit="${esc(c.fit)}">
+      <img alt="${esc(alt)}" data-cover="${esc(p.id)}" src="${esc(src)}" style="object-fit:${c.fit === 'cover' ? 'cover' : 'contain'};object-position:${esc(c.focus || 'center')}">
+    </div>`;
+  }
+  const miss = c.kind === 'local_reference' ? '<span class="cover-miss">原封面不可用</span>' : '';
+  return `<div class="thumb cover-frame" data-fit="contain" role="img" aria-label="${esc(alt)}">${thumbSVG(c.thumb || p.thumb, p.seed)}${miss}</div>`;
+}
+
+function projectCard(p) {
+  const full = projName(p);
+  const short = String(p.shortName || '').trim() || full;
+  const openTasks = DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length;
+  const mile = milestoneStats(p);
+  const sched = scheduleView(p);
+  const selected = state.project === p.id;
+  const kind = ({ tpms: '科研课题', lng: '科研课题', cfd: '仿真', pareto: '优化', bench: '实验', rag: '工具' })[p.thumb] || '项目';
+  const mileText = mile.unknown ? '未知' : `${mile.done}/${mile.total}`;
+  return `<article class="card proj-card ${selected ? 'selected' : ''}" data-project="${p.id}" tabindex="0" role="button" aria-pressed="${selected ? 'true' : 'false'}" aria-label="${esc(full)}" title="${esc(full)}">
     <div class="proj-card-head">
       <div class="grow" style="min-width:0">
-        <h4>${esc(name)}</h4>
-        <p>${esc(p.subtitle || p.goal || '未填写简介')}</p>
+        <h4 title="${esc(full)}">${esc(short)}</h4>
+        <p title="${esc(p.subtitle || p.goal || '未填写简介')}">${esc(p.subtitle || p.goal || '未填写简介')}</p>
       </div>
-      <button class="proj-more" data-act="project-menu" data-id="${p.id}" title="项目操作">${icon('more')}</button>
+      <span class="proj-kind">${esc(kind)}</span>
+      <button class="proj-more" data-act="project-menu" data-id="${p.id}" title="项目操作" aria-label="项目操作">${icon('more')}</button>
     </div>
-    <div class="thumb">${thumbSVG(p.thumb, p.seed)}</div>
-
-    <div class="proj-line1">
-      <span class="proj-stage">${esc(p.stage || '未设置阶段')}</span>
-      <span class="grow"></span>
-      <span class="proj-pct">${p.progress || 0}%</span>
+    ${coverHTML(p)}
+    <div class="proj-fact"><span class="k">当前</span><span class="v">${esc(p.stage || '未设置阶段')}</span></div>
+    <div class="proj-fact">
+      <span class="k">里程碑</span><span class="v">${esc(mileText)}</span>
+      <span class="k">未完成任务</span><span class="v">${openTasks}</span>
     </div>
-    <span class="bar" style="display:block;margin:2px 0 8px"><i style="width:${p.progress || 0}%"></i></span>
-
-    <div class="proj-line2">
-      ${openLabel ? `<span class="proj-kpi hot">${esc(openLabel)}</span>` : ''}
-      <span class="proj-next">${p.next ? '下一步：' + esc(p.next) : ''}</span>
+    <div class="proj-fact"><span class="k">下一步</span><span class="v">${esc(p.next || '未填写')}</span></div>
+    <div class="proj-fact">
+      <span class="v">${esc(sched.label)}</span>
+      ${selected ? '<span class="proj-current-mark">当前</span>' : ''}
     </div>
-    ${lastAct ? `<div class="proj-recent" title="${esc(String(lastAct.text).replace(/<[^>]+>/g, ''))}">
-      ${icon('clock')}${esc(String(lastAct.text).replace(/<[^>]+>/g, '').slice(0, 34))}
-    </div>` : ''}
-
-    <div class="stepper">
-      <span class="step-line"><i style="width:${fill}%"></i></span>
-      ${nodes.map(n => `<span class="step ${n.s !== 'todo' ? 'done' : ''}"><span class="node"></span><span class="lbl">${esc(n.l)}</span></span>`).join('')}
-    </div>
-    ${big ? `<div class="row mt-10" style="gap:6px;flex-wrap:wrap">
-        ${(p.agents || []).filter(n => DB.agents.some(a => a.name === n))
-          .map(a => `<span class="chip accent">${esc(a)}</span>`).join('')}
-        <span class="grow"></span>
-        <span class="mono muted" style="font-size:9.5px">${esc(p.period || '')}</span>
-      </div>` : ''}
   </article>`;
 }
 
@@ -286,100 +300,40 @@ function projectCard(p, big) {
    项目详情
    ========================================================================== */
 function detailCard(p) {
-  const owner = p.owner || { n: '—', r: '', agent: '' };
-  const agent = owner.agent || '';
-  const tags = Array.isArray(p.tags) ? p.tags : [];
-  const members = Array.isArray(p.members) ? p.members : [];
-  const tools = Array.isArray(p.tools) ? p.tools : [];
-  const fileCount = materialsIn(p.id).length;
+  const who = ownerView(p);
+  const mile = milestoneStats(p);
+  const sched = scheduleView(p);
+  const index = materialStatusView(p.id);
+  const goal = String(p.goal || '').trim();
+  const intro = String(p.intro || '').trim();
+  const showIntro = intro && intro !== goal;
+  const legacy = sched.legacy && !sched.confirmed ? `<span class="meta-note">历史周期文本未核定：${esc(sched.legacy)}</span>` : '';
   return `<div class="card panel">
     <div class="detail-hero">
-      <div class="thumb">${thumbSVG(p.thumb, p.seed)}</div>
+      ${coverHTML(p)}
       <div class="detail-hero-body">
-        <div class="detail-title-row">
-          <h2>${esc(projName(p))}</h2>
-          <span class="grow"></span>
-          <button class="btn sm primary" data-act="project-open" data-id="${p.id}">${icon('grid')}项目页</button>
-          <button class="btn sm" data-act="ai-open-project" data-id="${p.id}">${icon('sparkles')}AI 助手</button>
-          <button class="btn sm" data-act="open-project-folder" data-id="${p.id}">${icon('folderOpen')}打开目录</button>
-          <button class="btn sm" data-act="edit-project" data-id="${p.id}">${icon('pencil')}编辑</button>
-        </div>
-        <p class="detail-sub">${esc(p.goal)}</p>
+        <h2 title="${esc(p.name)}">${esc(projName(p))}</h2>
+        <p class="detail-sub">${goal ? esc(goal) : '还没填写项目目标'}</p>
+        ${showIntro ? `<details class="detail-more"><summary>长简介</summary><p>${esc(intro)}</p></details>` : ''}
         <div class="detail-meta">
-          ${tags.map(t => `<span class="meta-pill">${icon('target')}${esc(t)}</span>`).join('')}
-          <span class="meta-pill">${icon('calendar')}<b>${esc(p.period || '—')}</b></span>
-          <span class="meta-pill">${icon('user')}<b>${members.length} 人</b> · ${members.map(m => esc(m.n)).join(' / ')}</span>
-          <span class="meta-pill">${icon('folder')}<b>${projectFolderCount(p.id)} 个材料目录</b> · ${fileCount} 个文件</span>
-          ${p.next ? `<span class="meta-pill">${icon('chevronRight')}下一步 <b>${esc(p.next)}</b></span>` : ''}
+          <span class="meta-pill">${icon('pulse')}<b>${esc(mile.label)}</b></span>
+          <span class="meta-pill">${icon('calendar')}<b>${esc(sched.label)}</b></span>
+          <span class="meta-pill">${icon('user')}<b>${esc(who.label)}</b>${who.note ? ` · ${esc(who.note)}` : ''}</span>
+          <span class="meta-pill">${icon('folder')}<b>${esc(index.label)}</b></span>
         </div>
-        <div class="row mt-10" style="gap:9px">
-          <span class="bar" style="flex:1"><i style="width:${p.progress}%"></i></span>
-          <span class="mono" style="font-size:11px;font-weight:660;color:var(--accent-600)">整体进度 ${p.progress}%</span>
+        ${legacy}
+        <p class="meta-note">登记 ${index.registered_dirs} 个目录 / ${index.registered_files} 个文件。${index.scanned_files == null ? '尚未扫描，不能把登记 0 当成磁盘为空。' : `扫描到 ${index.scanned_files} 个文件。`}</p>
+        <div class="id-line">
+          <span>稳定 ID <b class="mono">${esc(p.id)}</b></span>
+          <span>相对目录 <b class="mono">${esc(p.folder || p.name)}</b></span>
+          ${p.junctionTarget ? `<span>联接目标 <b class="mono">${esc(p.junctionTarget)}</b></span>` : ''}
         </div>
-        <div class="row mt-10" style="gap:5px">
-          ${icon('folder', 'color:var(--text-4);width:11px;height:11px')}
-          <span class="mono muted" style="font-size:9.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(projectDir(p))}</span>
+        <div class="path-line" title="${esc(projectDir(p))}">
+          ${icon('folder')}<span class="mono">${esc(projectDir(p))}</span>
+          <button class="btn sm" data-act="open-project-folder" data-id="${p.id}">${icon('folderOpen')}打开目录</button>
         </div>
-      </div>
-    </div>
-
-    ${(() => {
-      /* v2.8.6：删掉三列空壳后，这里放本项目真实任务，不留空白 */
-      const mine = DB.tasks.filter(t => t.p === p.id);
-      const open = mine.filter(t => t.st !== 'done');
-      const doneN = mine.length - open.length;
-      const rows = open.slice(0, 4);
-      return `<div class="detail-tasks">
-        <div class="dt-head">
-          <h5>本项目任务</h5>
-          ${open.length ? `<span class="dt-count">${incompleteLabel(open.length)}${doneN ? ` · ${doneN} 个已完成` : ''}</span>` : (doneN ? `<span class="dt-count">${doneN} 个已完成</span>` : '')}
-          <span class="grow"></span>
-          <button class="head-link" data-act="project-tab" data-v="tasks">全部 ${mine.length} 个 ${icon('chevronRight')}</button>
-          <button class="head-link" data-act="new-task">${icon('plus')}新建</button>
-        </div>
-        ${rows.length ? `<div class="dt-list">
-          ${rows.map(t => `<div class="dt-row" data-act="open-task" data-idx="${DB.tasks.indexOf(t)}">
-            <span class="dt-dot ${t.st === 'doing' ? 'doing' : ''}"></span>
-            <span class="dt-name">${esc(t.t)}</span>
-            ${t.agent ? `<span class="dt-agent">${esc(t.agent)}</span>` : ''}
-            <span class="dt-due">${esc(t.due || '')}</span>
-          </div>`).join('')}
-          ${open.length > 4 ? `<div class="dt-more">还有 ${open.length - 4} 个未完成，点右上「全部」查看</div>` : ''}
-        </div>` : emptyState({
-          icon: 'tasks',
-          title: mine.length ? '没有未完成任务' : '还没有任务',
-          sub: mine.length ? '已完成的任务收在「任务」页。' : '拆出第一条任务，或让助手按项目目标来拆。',
-          primary: { act: 'new-task', label: '新建任务', ico: 'plus' },
-          secondary: { act: 'ai-open-project', label: '让助手拆', ico: 'sparkles', data: { id: p.id } }
-        })}
-      </div>`;
-    })()}
-
-    <div class="detail-foot">
-      <div>
-        <h5>负责人 / Agent</h5>
-        <div class="owner-row">
-          <span class="avatar">${esc(String(owner.n || '—').slice(0, 1))}</span>
-          <div><div class="o-name">${esc(owner.n || '—')}</div><div class="o-sub">${esc(owner.r || '')}</div></div>
-          <span class="grow"></span>
-          <span class="agent-chip">${agentTile(agent, 22)}<span>${esc(agent)}</span></span>
-        </div>
-      </div>
-      <div>
-        <h5>涉及软件</h5>
-        <div class="row" style="flex-wrap:wrap;gap:6px">
-          ${tools.map(t => `<span class="chip gray">${appTile(t, 13)}${esc(t)}</span>`).join('')}
-        </div>
-        <div class="row mt-10"><span class="mono muted" style="font-size:9.5px">${esc(p.git)}</span></div>
-      </div>
-      <div>
-        <h5>关键节点状态</h5>
-        <div class="node-track">
-          ${flowNodesOf(p).map(n => `<div class="node-item ${n.s}">
-            <span class="ni-line"></span><span class="ni-dot"></span>
-            <span class="ni-lbl">${esc(n.l)}</span><span class="ni-date">${esc(n.d)}</span>
-          </div>`).join('')}
-        </div>
+        ${p.progressChange ? `<p class="meta-note">${esc(p.progressChange)}</p>` : ''}
+        ${mile.basis ? `<p class="meta-note">${esc(mile.basis)}</p>` : ''}
       </div>
     </div>
   </div>`;
@@ -391,7 +345,7 @@ function detailCard(p) {
 /* 流程节点唯一数据源 = p.nodes。p.flow 只作老数据兜底，不再用固定名字猜位置。 */
 function flowNodesOf(p) {
   if (Array.isArray(p.nodes) && p.nodes.length) {
-    return p.nodes.map(n => ({ l: String(n.l || ''), s: n.s || 'todo', d: String(n.d || '') }));
+    return p.nodes.map(n => copyFlowNode(n)).filter(Boolean);
   }
   const flow = Array.isArray(p.flow) ? p.flow : [];
   return flow.map((l, i) => ({ l, s: i === 0 ? 'current' : 'todo', d: '' }));
@@ -405,68 +359,88 @@ function flowCurrentIndex(nodes) {
   return ti >= 0 ? ti : Math.max(0, nodes.length - 1);
 }
 
-const FLOW_STATE_TEXT = { done: '已完成', current: '进行中', todo: '待开始' };
-
 /* 流程节点写回的唯一入口：归一规则在 settleFlowNodes，界面和 Agent API 共用。
    推进语义：原来有「进行中」，保存后没有（通常是把它标成已完成）→ 自动把下一个未完成阶段接为进行中，
    否则流程会断在「没人正在做」。用户主动把所有阶段设成待开始的情况也走这条，同样补上第一个。 */
 function applyFlowNodes(p, nodes, activityText) {
+  const before = milestoneStats(p);
   const settled = settleFlowNodes(p.nodes, nodes);
   mutate(() => {
     p.nodes = settled.nodes;
     p.flow = settled.flow;
     p.stage = settled.stage || p.stage;
-    p.progress = settled.progress;
-  }, { activity: { text: activityText, kind: 'flow', color: '#0D7485' } });
+    if (p.progressMode !== 'manual') p.progress = settled.progress;
+    const change = milestoneProgressChange(before, milestoneStats(p));
+    if (change) p.progressChange = change.reason;
+    p.revision = (p.revision || 1) + 1;
+  }, { activity: { text: activityText, kind: 'flow', color: '#0D7485', projectId: p.id } });
   return { advanced: settled.advanced, total: settled.total, done: settled.done };
 }
 
-function flowCard(p) {
-  const nodes = flowNodesOf(p);
-  if (!nodes.length) {
-    return `<div class="card panel flow-card">
-      <div class="panel-head"><h3>${icon('branch')}项目流程</h3>
-        <span class="head-sub">${esc(p.displayName || p.name)}</span>
-        <button class="head-link" data-act="flow-edit" data-id="${p.id}">${icon('plus')}添加阶段</button>
-      </div>
-      ${emptyState({
-        icon: 'branch',
-        title: '还没有阶段',
-        sub: '阶段决定当前进度。至少留下一个进行中的阶段。',
-        primary: { act: 'flow-edit', label: '添加阶段', ico: 'plus', data: { id: p.id } },
-        secondary: { act: 'edit-project', label: '编辑项目', ico: 'pencil', data: { id: p.id } }
-      })}
-    </div>`;
-  }
-  const ci = flowCurrentIndex(nodes);
-  const hasCurrent = nodes.some(n => n.s === 'current');
-  const doneCount = nodes.filter(n => n.s === 'done').length;
-  const cur = nodes[ci] || {};
+const FLOW_STATE_TEXT = { done: '已完成', current: '进行中', todo: '待开展' };
 
+function flowStepHTML(p, n, i, current) {
+  const st = n.s === 'done' ? 'done' : (n.s === 'current' || i === current ? 'current' : 'todo');
+  const due = String(n.d || '').trim();
+  const dateKind = n.dateKind === 'done' || (n.s === 'done' && due && due !== '—') ? '完成日期' : (due && due !== '—' ? '计划日期' : '');
+  const dateText = !due || due === '—' || due === '待确认' ? '日期未定' : `${dateKind} ${due}`;
+  return `<button class="flow-step ${st}" data-act="flow-node" data-id="${esc(p.id)}" data-idx="${i}">
+    <span class="fs-mark" aria-hidden="true">${n.s === 'done' ? '✓' : (st === 'current' ? '●' : '○')}</span>
+    <span class="fs-body">
+      <span class="fs-name">${esc(n.l)}</span>
+      <span class="fs-meta"><span class="chip ${st === 'current' ? 'accent' : (n.s === 'done' ? 'green' : 'gray')}">${FLOW_STATE_TEXT[n.s] || '待开展'}</span>
+        <span>${esc(dateText)}</span>
+        ${st === 'current' ? '<span class="proj-current-mark">当前节点</span>' : ''}
+      </span>
+      ${n.criterion ? `<span class="fs-note">完成标准：${esc(n.criterion)}</span>` : '<span class="fs-note">完成标准未填写</span>'}
+      <span class="fs-note">${(n.evidence && n.evidence.length) ? `证据 ${n.evidence.length} 条` : '还没有证据入口'}</span>
+    </span>
+  </button>`;
+}
+
+function flowStepsCard(p) {
+  const nodes = flowNodesOf(p);
+  const mile = milestoneStats(p);
   return `<div class="card panel flow-card">
     <div class="panel-head">
-      <h3>${icon('branch')}项目流程</h3>
-      <span class="head-sub">${esc(p.displayName || p.name)}</span>
+      <h3>${icon('branch')}完整阶段</h3>
+      <span class="head-sub">${esc(mile.label)}</span>
       <button class="head-link" data-act="flow-edit" data-id="${p.id}">${icon('pencil')}编辑流程</button>
-      <button class="head-link" data-act="new-task">${icon('plus')}新建任务</button>
     </div>
-    <div class="flow-track">
-      ${nodes.map((n, i) => {
-        const st = n.s === 'done' ? 'done' : (n.s === 'current' ? 'active' : '');
-        return `${i ? `<span class="flow-arrow">${icon('chevronRight')}</span>` : ''}
-        <button class="flow-node ${st}" data-act="flow-node" data-id="${p.id}" data-idx="${i}" title="点击管理这个阶段">
-          <span class="fn-ico">${icon(n.s === 'done' ? 'check' : (n.s === 'current' ? 'pulse' : 'target'))}</span>
-          <span class="fn-name">${esc(n.l)}</span>
-        </button>`;
-      }).join('')}
-    </div>
-    <div class="row mt-10" style="gap:6px;flex-wrap:wrap">
-      <span class="chip ${hasCurrent ? 'accent' : 'amber'}">当前：${esc(cur.l || '—')}${hasCurrent ? '' : '（未标记进行中）'}</span>
-      ${cur.d ? `<span class="chip gray">节点日期 ${esc(cur.d)}</span>` : ''}
-      <span class="grow"></span>
-      <span class="mono muted" style="font-size:9.5px">已完成 ${doneCount}/${nodes.length} 个阶段</span>
-    </div>
+    ${nodes.length ? `<div class="flow-steps">${nodes.map((n, i) => flowStepHTML(p, n, i, flowCurrentIndex(nodes))).join('')}</div>`
+      : emptyState({
+        icon: 'branch', title: '还没有阶段',
+        sub: '阶段决定里程碑。至少留下一个进行中的阶段。',
+        primary: { act: 'flow-edit', label: '添加阶段', ico: 'plus', data: { id: p.id } }
+      })}
   </div>`;
+}
+
+function flowSummaryCard(p) {
+  const nodes = flowNodesOf(p);
+  if (!nodes.length) return flowStepsCard(p);
+  const ci = flowCurrentIndex(nodes);
+  const prev = ci > 0 ? nodes[ci - 1] : null;
+  const cur = nodes[ci] || null;
+  const next = ci < nodes.length - 1 ? nodes[ci + 1] : null;
+  const done = nodes.filter(n => n.s === 'done').length;
+  const cell = (k, n, on) => `<div class="flow-adj-cell ${on ? 'is-current' : ''}"><span class="k">${k}</span><span class="v">${n ? esc(n.l) : '—'}</span>${on ? '<span class="proj-current-mark">当前</span>' : ''}</div>`;
+  return `<div class="card panel flow-card flow-summary">
+    <div class="panel-head">
+      <h3>${icon('branch')}阶段摘要</h3>
+      <button class="head-link" data-act="project-open" data-id="${p.id}">查看完整流程</button>
+    </div>
+    <div class="flow-adj">
+      ${cell('上一阶段', prev, false)}
+      ${cell('当前阶段', cur, true)}
+      ${cell('下一阶段', next, false)}
+    </div>
+    <p class="flow-count">已完成 ${done}/${nodes.length} 个节点。完整名称在项目页纵向列出。</p>
+  </div>`;
+}
+
+function flowCard(p) {
+  return flowStepsCard(p);
 }
 
 /* 只留「实质性变化」：项目进程、任务、文件/材料、流程、软件操作。
@@ -482,23 +456,54 @@ function activityList(max = 6) {
   }).slice(0, max);
 }
 
-function activityCard() {
-  const list = activityList(6);
+function activityRowsHTML(list, opts = {}) {
+  const groups = groupActivities(list);
+  if (!groups.length) {
+    return emptyState({
+      icon: 'pulse',
+      title: opts.emptyTitle || '还没有这个项目的动态',
+      sub: opts.emptySub || '只显示带有本项目 ID 的活动。没有归属的历史记录留在全局，不会编到当前项目上。',
+      primary: opts.primary || { act: 'new-task', label: '新建任务', ico: 'plus' }
+    });
+  }
+  return `<div class="activity-list">${groups.map(g => {
+    const head = g.items[0];
+    const idx = DB.activities.indexOf(head);
+    const proj = head && head.projectId ? projName(P(head.projectId)) : '未归属';
+    const badge = opts.global ? `<span class="chip gray">${esc(proj)}</span>` : '';
+    if (g.items.length < 2) {
+      return `<button class="activity-row activity-btn" data-act="activity-view" data-idx="${idx}">
+        ${badge}<span class="a-txt">${head.t}</span><span class="a-time">${esc(head.time || '')}</span>
+      </button>`;
+    }
+    const details = g.items.map(a => `<li>${String(a.t || '').replace(/<[^>]+>/g, '')}</li>`).join('');
+    return `<details class="activity-batch">
+      <summary class="activity-row">${badge}<span class="a-txt">${esc(g.summary)}</span><span class="a-time">${g.items.length} 条</span></summary>
+      <ul class="batch-detail">${details}</ul>
+    </details>`;
+  }).join('')}</div>`;
+}
+
+function projectJobRows(projectId) {
+  return (DB.agentJobs || []).filter(j => j && j.projectId === projectId).map(j => {
+    const kind = j.status === 'running' ? '执行中' : (j.status === 'queued' ? '排队中' : (j.status === 'done' ? 'Agent 完成' : (j.status === 'failed' ? 'Agent 未完成' : '')));
+    if (!kind) return '';
+    return `<button class="activity-row activity-btn" data-act="job-view" data-id="${esc(j.id || '')}">
+      <span class="chip gray">${kind}</span>
+      <span class="a-txt">${esc((j.agent || 'Agent') + ' · ' + (j.task || '未填写任务'))}</span>
+    </button>`;
+  }).join('');
+}
+
+function activityCard(projectId) {
+  const scoped = !!projectId;
+  const list = scoped ? activitiesForProject(projectId).slice(0, 8) : activityList(8);
+  const jobs = scoped ? projectJobRows(projectId) : '';
   return `<div class="card panel activity-card">
-    <div class="panel-head"><h3>${icon('pulse')}最近活动</h3>
-      <span class="head-sub">进程 / 文件 / 流程变化</span>
+    <div class="panel-head"><h3>${icon('pulse')}${scoped ? '本项目最近活动' : '全局活动'}</h3>
+      <span class="head-sub">${scoped ? '只含本项目 ID' : '跨项目，每条带项目名；无 ID 的标为未归属'}</span>
       <button class="head-link" data-act="all-activity">全部活动 ${icon('chevronRight')}</button></div>
-    <div class="activity-list">
-      ${list.map(a => {
-        const idx = DB.activities.indexOf(a);
-        return `<button class="activity-row activity-btn" data-act="activity-view" data-idx="${idx}" title="点开查看详情">
-          <span class="a-dot" style="background:${a.c}">${icon(a.i)}</span>
-          <span class="a-txt">${a.t}</span>
-          <span class="a-time">${esc(a.time)}</span>
-        </button>`;
-      }).join('') || `<div class="empty">${icon('pulse')}<div>暂无项目变动</div>
-        <div class="field-hint" style="margin-top:4px">建任务、改流程、存文档、同步材料都会记在这里</div></div>`}
-    </div>
+    ${jobs || ''}${list.length || !jobs ? activityRowsHTML(list, { global: !scoped, emptyTitle: scoped ? '还没有这个项目的动态' : '暂无活动' }) : ''}
   </div>`;
 }
 
@@ -515,48 +520,106 @@ function todoRow(t, i) {
     </span>
   </div>`;
 }
-function todoCard() {
-  const list = DB.todos.slice(0, 7);
+function todoCard(projectId) {
+  const scoped = !!projectId;
+  const all = scoped ? todosForProject(projectId) : globalTodos();
+  const showDone = !!state.showDoneTodos;
+  const list = all.filter(t => showDone || !t.done);
+  const openN = all.filter(t => !t.done).length;
+  const doneN = all.length - openN;
   return `<div class="card panel fill-card">
     <div class="panel-head">
-      <h3>${icon('tasks')}待办事项</h3>
-      ${(() => { const n = DB.todos.filter(t => !t.done).length; return n ? `<span class="head-sub">${incompleteLabel(n, '项未完成')}</span>` : ''; })()}
+      <h3>${icon('tasks')}${scoped ? '本项目待办' : '全局待办'}</h3>
+      <span class="head-sub">${scoped ? '只显示明确关联到该项目的待办，和项目任务不是同一张表' : '没有项目 ID 的待办留在这里，不会自动分给当前项目'}</span>
       <span class="grow"></span>
-      <button class="btn sm primary" data-act="new-todo">${icon('plus')}新建任务</button>
+      ${doneN ? `<button class="head-link" data-act="toggle-done-todos">${showDone ? '收起已完成' : `已完成 ${doneN} 条`}</button>` : ''}
+      <button class="btn sm primary" data-act="new-todo" data-project="${esc(projectId || '')}">${icon('plus')}新建待办</button>
     </div>
-    <div class="tabs" style="margin-bottom:9px">
-      <button class="tab active" data-tab="todo" data-val="all">全部</button>
-      ${TODO_CATS.map(([k, l]) => `<button class="tab" data-tab="todo" data-val="${k}">${l}</button>`).join('')}
-    </div>
+    <p class="meta-note">未完成 ${openN}。已完成默认折叠，不会出现在待处理列表里。范围：${scoped ? '本项目' : '全局 / 未归属'}。</p>
     <div class="todo-list" id="todo-list">
-      ${list.map((t, i) => todoRow(t, i)).join('') || emptyState({
-        icon: 'tasks', title: '暂无待办', sub: '待办是今天要勾掉的小事，和项目任务分开记。',
-        primary: { act: 'new-todo', label: '新建待办', ico: 'plus' },
-        secondary: { act: 'project-tab', label: '看项目任务', ico: 'tasks', data: { v: 'tasks' } }
+      ${list.map(t => todoRow(t, DB.todos.indexOf(t))).join('') || emptyState({
+        icon: 'tasks',
+        title: scoped ? '这个项目没有待办' : '没有全局待办',
+        sub: '项目任务在「任务」里。待办不会因为你正看着某个项目就归到它名下。',
+        primary: { act: 'project-tab', label: '看项目任务', ico: 'tasks', data: { v: 'tasks' } }
       })}
     </div>
   </div>`;
 }
 
-function resourceCard() {
+function resourceCard(projectId) {
   const cats = [['all', '全部'], ['doc', '研究文档'], ['data', '数据集'], ['ref', '参考文献'], ['code', '代码']];
+  const index = projectId ? materialStatusView(projectId) : null;
+  const rows = (DB.resources || []).filter(r => {
+    if (!projectId) return true;
+    return r && (r.p === projectId || (Array.isArray(r.project_ids) && r.project_ids.includes(projectId)));
+  });
+  let stateNote = '';
+  if (projectId && index) {
+    if (index.state === 'failed') stateNote = '加载失败：' + (index.error || '无法读取目录');
+    else if (index.state === 'junction_broken') stateNote = '路径不可用：原位关联目标不可用';
+    else if (!rows.length) stateNote = '尚未关联研究资源';
+  }
   return `<div class="card panel fill-card">
     <div class="panel-head">
       <h3>${icon('book')}研究资源</h3>
+      <span class="head-sub">${projectId ? '本项目已关联' : '全部'}</span>
       <span class="grow"></span>
-      <button class="head-link" data-act="open-root-folder">打开资源库 ${icon('chevronRight')}</button>
+      <button class="head-link" data-act="link-outcome" data-id="${esc(projectId || '')}">关联已有文件</button>
     </div>
     <div class="tabs" style="margin-bottom:9px">
       ${cats.map(([k, l], i) => `<button class="tab ${i === 0 ? 'active' : ''}" data-tab="res" data-val="${k}">${l}</button>`).join('')}
     </div>
-    <div class="res-list" id="res-list">
-      ${DB.resources.map(r => `<div class="res-row" data-cat="${r.cat}" data-act="open-res" data-name="${esc(r.n)}" title="点击打开：${esc(projectDir(r.p) + '\\' + r.dir)}">
+    ${stateNote && !rows.length ? emptyState({
+      icon: 'book',
+      title: stateNote,
+      sub: index && index.state === 'failed' ? '请检查路径或权限后再试。失败不会显示成已确认 0 个文件。' : '可以从已关联目录选择论文、模型、图表或报告，不会把文件复制进工作台。',
+      primary: { act: 'link-outcome', label: '关联已有成果', ico: 'plus', data: { id: projectId || '' } },
+      secondary: { act: 'open-project-folder', label: '打开目录', ico: 'folderOpen', data: { id: projectId || '' } }
+    }) : `<div class="res-list" id="res-list">
+      ${rows.map(r => `<div class="res-row" data-cat="${esc(r.cat || 'doc')}" data-act="open-res" data-name="${esc(r.n)}" title="点击打开：${esc(projectDir(r.p) + '\\' + (r.dir || '') )}">
         <span class="r-ico" style="background:${fileType(r.ext).c}">${icon(extIcon(r.ext))}</span>
         <span class="r-name">${esc(r.n)}</span>
-        <span class="r-size">${esc(r.size)}</span>
-        <span class="r-date">${esc(r.date)}</span>
+        <span class="r-size">${esc(r.size || '')}</span>
+        <span class="r-date">${esc(r.date || '')}</span>
       </div>`).join('')}
-    </div>
+      <div class="res-filter-empty" id="res-filter-empty" hidden>筛选无结果。换一个分类，或清除筛选。</div>
+    </div>`}
+  </div>`;
+}
+
+function outcomesCard(p) {
+  const rows = outcomesForProject(p.id);
+  const current = rows.filter(o => o.current !== false);
+  const history = rows.filter(o => o.current === false);
+  const statusText = { draft: '草稿', review: '待复核', confirmed: '已确认', submitted: '已提交' };
+  const typeText = { paper: '论文', review: '综述', patent: '专利', cad: '模型', mesh: '网格', dataset: '数据集', figure: '图表', report: '报告', other: '其他' };
+  const line = o => `<button class="activity-row activity-btn" data-act="open-abs" data-path="${esc(o.file)}" data-label="${esc(o.title)}">
+      <span class="chip gray">${esc(typeText[o.type] || '成果')}</span>
+      <span class="a-txt">${esc(o.title)}${o.version ? ' · ' + esc(o.version) : ''}</span>
+      <span class="a-time">${esc(statusText[o.status] || '草稿')}${o.current === false ? ' · 历史版本' : ' · 当前版本'}</span>
+    </button>`;
+  return `<div class="card panel" id="preview-outputs">
+    <div class="panel-head"><h3>${icon('pencil')}已关联成果</h3>
+      <span class="head-sub">论文 / 模型 / 图表 / 报告。未关联不等于不存在</span>
+      <button class="head-link" data-act="link-outcome" data-id="${p.id}">关联已有成果</button></div>
+    ${(() => {
+      const docs = typeof projectOutputDocs === 'function' ? projectOutputDocs(p) : [];
+      if (!docs.length) return '';
+      return `<div class="activity-list">${docs.slice(0, 6).map(d => `<button class="activity-row activity-btn" data-act="proj-open-doc" data-file="${esc(d.file)}">
+        <span class="chip gray">${esc(outputKindOf(d) || '文稿')}</span>
+        <span class="a-txt">${esc(d.n || d.file)}</span>
+        <span class="a-time">${esc(d.date || '')}</span>
+      </button>`).join('')}</div>`;
+    })()}
+    ${current.length ? `<div class="activity-list">${current.map(line).join('')}</div>` : emptyState({
+      icon: 'pencil',
+      title: '尚未关联成果',
+      sub: '工作台没有登记论文，不能据此说项目没有论文。从原位目录关联已有文件，不会上传或改名。',
+      primary: { act: 'link-outcome', label: '关联已有成果', ico: 'plus', data: { id: p.id } },
+      secondary: { act: 'open-project-folder', label: '打开项目目录', ico: 'folderOpen', data: { id: p.id } }
+    })}
+    ${history.length ? `<details class="detail-more"><summary>历史版本 ${history.length}</summary><div class="activity-list">${history.map(line).join('')}</div></details>` : ''}
   </div>`;
 }
 
@@ -583,11 +646,11 @@ function homeView() {
   if (!DB.projects.length) return emptyWorkspace({ full: true });
   const q = (state.search || '').toLowerCase();
   const list = DB.projects.filter(p => !q || (projName(p) + p.name + p.subtitle + p.stage).toLowerCase().includes(q));
-  const dueTodos = DB.todos.filter(t => !t.done).length;
-  const openN = DB.tasks.filter(t => t.st !== 'done').length;
-  const bits = [`共 ${DB.projects.length} 个项目`];
-  if (openN) bits.push(incompleteLabel(openN, '个未完成任务'));
-  if (dueTodos) bits.push(`${dueTodos} 条待办`);
+  const stats = taskScheduleStats(DB.tasks);
+  const globalOpen = globalTodos().filter(t => !t.done).length;
+  const bits = [`共 ${DB.projects.length} 个项目`, `未完成 ${stats.open}`, `待排期 ${stats.unscheduled}`, `今日到期 ${stats.dueToday}`];
+  if (stats.overdue) bits.push(`逾期 ${stats.overdue}`);
+  if (globalOpen) bits.push(`全局待办 ${globalOpen}`);
   return `<div class="page">
     <div class="page-head">
       <h2>项目总览</h2>
@@ -603,16 +666,16 @@ function homeView() {
     </div>
     ${(() => {
       /* Sprint F：跨项目「今日到期」聚合（不占侧栏入口） */
-      const isToday = (d) => /今天/.test(String(d || ''));
+      const today = shanghaiToday();
       const items = [
-        ...DB.tasks.filter(t => t.st !== 'done' && isToday(t.due)).map(t => ({ kind: '任务', text: t.t, due: t.due, pid: t.p })),
-        ...DB.todos.filter(t => !t.done && isToday(t.due)).map(t => ({ kind: '待办', text: t.t, due: t.due, pid: t.p || state.project }))
+        ...DB.tasks.filter(t => t.st !== 'done' && parseTaskDate(t.due, today).kind === 'today').map(t => ({ kind: '任务', text: t.t, due: '今天到期', project: projName(P(t.p)) })),
+        ...DB.todos.filter(t => !t.done && parseTaskDate(t.due, today).kind === 'today').map(t => ({ kind: t.projectId ? '项目待办' : '全局待办', text: t.t, due: '今天到期', project: t.projectId ? projName(P(t.projectId)) : '全局' }))
       ];
       if (!items.length) return '';
       return `<div class="today-bar">
         <span class="tb-ico">${icon('clock')}</span>
         <b>今日到期 ${items.length} 项</b>
-        <span class="tb-list">${items.slice(0, 3).map(i => `${esc(i.text)}<span class="tb-due">${esc(i.due)}</span>`).join('　·　')}</span>
+        <span class="tb-list">${items.slice(0, 3).map(i => `${esc(i.project)} · ${esc(i.text)}<span class="tb-due">${esc(i.due)}</span>`).join('　·　')}</span>
         ${items.length > 3 ? `<span class="muted">等 ${items.length} 项</span>` : ''}
       </div>`;
     })()}
@@ -636,40 +699,65 @@ function showProjectOnHome(id) {
   if (DB.workspace) DB.workspace.project = projName(p);
   state.projectTab = 'overview';
   state.route = 'home';
+  state.viewGen = (state.viewGen || 0) + 1;
+  state.matScan = null;
   return true;
 }
 
 /* 首页预览只放项目级事实。阶段在右侧流程里，这里不重复。 */
 function previewFactsHTML(p) {
-  const tags = Array.isArray(p.tags) ? p.tags : [];
+  const mile = milestoneStats(p);
+  const sched = scheduleView(p);
+  const index = materialStatusView(p.id);
   const goal = String(p.goal || '').trim();
-  const intro = String(p.subtitle || p.intro || '').trim();
-  const period = String(p.period || '').trim();
-  const showPeriod = period && period !== '—';
-  const showIntro = intro && intro !== goal;
-  const progress = Number(p.progress) || 0;
   return `<div class="card panel" id="preview-facts">
     <div class="panel-head">
-      <h3>${icon('grid')}项目详情</h3>
-      <span class="head-sub">${esc(projName(p))}</span>
+      <h3>${icon('grid')}项目摘要</h3>
+      <span class="head-sub">${esc(p.shortName || projName(p))}</span>
       <span class="grow"></span>
       <button class="btn sm" data-act="edit-project" data-id="${p.id}">${icon('pencil')}编辑</button>
-      <button class="btn sm primary" data-act="project-open" data-id="${p.id}">${icon('grid')}项目页</button>
+      <button class="btn sm" data-act="open-project-folder" data-id="${p.id}">${icon('folderOpen')}打开目录</button>
+      <button class="btn sm primary" data-act="project-open" data-id="${p.id}">${icon('grid')}打开项目</button>
     </div>
     <p class="detail-sub">${goal ? esc(goal) : '还没填写项目目标'}</p>
     <div class="detail-meta">
-      ${showIntro ? `<span class="meta-pill">${icon('file')}${esc(intro)}</span>` : ''}
-      ${showPeriod ? `<span class="meta-pill">${icon('calendar')}<b>${esc(period)}</b></span>` : ''}
-      <span class="meta-pill">${icon('pulse')}进度 <b>${progress}%</b></span>
-      ${tags.map(t => `<span class="meta-pill">${icon('target')}${esc(t)}</span>`).join('')}
+      <span class="meta-pill">当前阶段 <b>${esc(p.stage || '未设置')}</b></span>
+      <span class="meta-pill">下一交付 <b>${esc(p.next || '未填写')}</b></span>
+      <span class="meta-pill"><b>${esc(mile.label)}</b></span>
+      <span class="meta-pill"><b>${esc(sched.label)}</b></span>
     </div>
-    <div class="row mt-10" style="gap:9px">
-      <span class="bar" style="flex:1"><i style="width:${progress}%"></i></span>
+    <p class="meta-note">${esc(index.label)}。入口 <span class="mono">${esc(projectDir(p))}</span>${p.junctionTarget ? ` · 联接目标 <span class="mono">${esc(p.junctionTarget)}</span>` : ''}</p>
+    ${sched.legacy && !sched.confirmed ? `<p class="meta-note">历史周期文本未核定，不作为正式起止：${esc(sched.legacy)}</p>` : ''}
+  </div>`;
+}
+
+function previewTasksHTML(p) {
+  const mine = DB.tasks.filter(t => t.p === p.id);
+  const stats = taskScheduleStats(mine);
+  const open = mine.filter(t => t.st !== 'done').slice(0, 6);
+  const row = t => {
+    const due = parseTaskDate(t.due);
+    const idx = DB.tasks.indexOf(t);
+    return `<button class="task-line" data-act="open-task" data-idx="${idx}">
+      <span class="task-name">${esc(t.t)}</span>
+      ${priTag(t.pri)}
+      ${stChip(t.st)}
+      <span class="task-owner">${esc(t.agent ? t.agent : '待指定')}</span>
+      <span class="task-due">${esc(due.label)}</span>
+    </button>`;
+  };
+  return `<div class="card panel" id="preview-tasks">
+    <div class="panel-head">
+      <h3>${icon('tasks')}当前任务</h3>
+      <span class="head-sub">未完成 ${stats.open} · 待排期 ${stats.unscheduled} · 今日到期 ${stats.dueToday}${stats.overdue ? ' · 逾期 ' + stats.overdue : ''}</span>
+      <button class="head-link" data-act="new-task" data-p="${p.id}">${icon('plus')}新建</button>
     </div>
-    <div class="row mt-10" style="gap:5px">
-      ${icon('folder', 'color:var(--text-4);width:11px;height:11px')}
-      <span class="mono muted" style="font-size:9.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(projectDir(p))}</span>
-    </div>
+    <p class="meta-note">范围是这个项目的任务。日期空着或写着「待确认」都显示为待排期，不当成状态。</p>
+    ${open.length ? `<div class="task-lines">${open.map(row).join('')}</div>` : emptyState({
+      icon: 'tasks', title: mine.length ? '没有未完成任务' : '还没有任务',
+      sub: '点开一条就能改状态、优先级、负责人和日期。',
+      primary: { act: 'new-task', label: '新建任务', ico: 'plus', data: { p: p.id } }
+    })}
   </div>`;
 }
 
@@ -783,10 +871,10 @@ function previewOutputsHTML(p) {
 function homeProjectPreview(p) {
   if (!p) return '';
   return `<div class="detail-grid" id="project-preview" style="margin-top:var(--gap)">
-      <div class="detail-main">${previewFactsHTML(p)}</div>
-      <div class="detail-side">${flowCard(p)}</div>
+      <div class="detail-main">${previewFactsHTML(p)}${previewTasksHTML(p)}</div>
+      <div class="detail-side">${flowSummaryCard(p)}${outcomesCard(p)}</div>
     </div>
-    <div class="bottom-grid bottom-grid-2">${previewFeedHTML(p)}${previewOutputsHTML(p)}</div>`;
+    <div class="bottom-grid bottom-grid-2">${activityCard(p.id)}${resourceCard(p.id)}</div>`;
 }
 
 /* ==========================================================================
@@ -2215,23 +2303,24 @@ const NAV = [
    侧栏：待办 + 快捷启动（v2.8.2 把左侧空间用起来）
    ========================================================================== */
 function sidebarTodosHTML() {
-  const open = DB.todos.filter(t => !t.done).slice(0, 6);
-  const total = DB.todos.filter(t => !t.done).length;
+  const open = globalTodos().filter(t => !t.done).slice(0, 6);
+  const total = globalTodos().filter(t => !t.done).length;
   return `<div class="side-block">
     <div class="side-block-head">
-      <span>${icon('check')}待办${total ? ` <b>${total}</b>` : ''}</span>
-      <button class="side-mini" data-act="new-todo" title="新建待办">${icon('plus')}</button>
+      <span>${icon('check')}全局待办${total ? ` <b>${total}</b>` : ''}</span>
+      <button class="side-mini" data-act="new-todo" title="新建全局待办">${icon('plus')}</button>
     </div>
+    <p class="side-scope">这里只计没有项目 ID 的待办。项目任务在项目页，待排期不进今日到期。</p>
     ${open.length ? `<div class="side-todos">
       ${open.map(t => {
         const idx = DB.todos.indexOf(t);
         const cat = (TODO_CATS.find(c => c[0] === t.cat) || [])[1] || '其他';
-        return `<button class="side-todo" data-act="side-todo-done" data-idx="${idx}" title="${esc(cat)} · ${esc(t.due || '')}">
+        return `<button class="side-todo" data-act="side-todo-done" data-idx="${idx}" title="${esc(cat)} · ${esc(parseTaskDate(t.due).label)}">
           <span class="st-dot"></span>
           <span class="st-txt">${esc(t.t)}</span>
         </button>`;
       }).join('')}
-    </div>` : `<div class="side-empty">没有待办</div>`}
+    </div>` : `<div class="side-empty">没有全局待办</div>`}
     ${total > 6 ? `<button class="side-more" data-act="side-all-todos">还有 ${total - 6} 条…</button>` : ''}
   </div>`;
 }
@@ -2295,7 +2384,7 @@ function buildNotifications() {
 
 function renderTopbar() {
   const stats = [
-    ['tasks', 'linear-gradient(135deg,#E0668E,#B01E58)', `${DB.todos.filter(t => !t.done).length}`, '今日待办'],
+    ['tasks', 'linear-gradient(135deg,#E0668E,#B01E58)', `${taskScheduleStats(DB.tasks).dueToday + globalTodos().filter(t => !t.done && parseTaskDate(t.due).kind === 'today').length}`, '今日到期'],
     ['grid', 'linear-gradient(135deg,#8A7ED6,#5B4C9E)', `${DB.projects.length}`, '项目'],
     ['bot', 'linear-gradient(135deg,#4E88C0,#2A5C8C)', `${DB.agents.filter(a => a.status !== 'idle').length}`, '运行Agent']
   ];

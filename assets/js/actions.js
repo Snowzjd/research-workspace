@@ -139,7 +139,7 @@ function openTaskDetail(idx) {
 function openTaskForm(idx) {
   const isNew = idx == null;
   const t = isNew
-    ? { t: '', p: state.project, agent: 'Engineer', tool: 'Python', due: '10-31', pri: 'mid', st: 'todo', dir: '' }
+    ? { t: '', p: state.project, agent: '', tool: '', due: '', pri: 'mid', st: 'todo', dir: '' }
     : JSON.parse(JSON.stringify(DB.tasks[idx]));
   const p = P(t.p);
   const dirs = Object.keys(MATERIALS[t.p] || {});
@@ -152,7 +152,7 @@ function openTaskForm(idx) {
     </div>
     <div class="field-row">
       ${fText('tool', '使用工具', t.tool, { ph: 'Fluent / Python / Tecplot…' })}
-      ${fText('due', '截止时间', t.due, { ph: '10-31' })}
+      ${fText('due', '截止日期', t.due, { ph: 'YYYY-MM-DD，留空表示待排期', hint: '不要把「待确认」写在这里。空着就会显示待排期，状态在旁边单独选' })}
     </div>
     <div class="field-row">
       ${fSeg('pri', '优先级', t.pri, [['high', '高'], ['mid', '中'], ['low', '低']])}
@@ -226,9 +226,6 @@ function openProjectForm(id, draft) {
   const isNew = id == null;
   const p = isNew ? null : P(id);
   const d = draft || {};
-  const now = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  const defPeriod = `${now.getFullYear()}.${pad(now.getMonth() + 1)} - ${now.getFullYear() + 1}.06`;
   const root = d.rootDir != null ? d.rootDir : (rootDir() || (state.device && state.device.suggestedRoot) || '');
   const tplId = d.template || 'standard';
   const name0 = d.name || '';
@@ -266,32 +263,52 @@ function openProjectForm(id, draft) {
     <div class="path-preview" id="pf-path" title="最终位置">${icon('folder')} <span class="mono">${esc(pathPreview)}</span></div>
     ${fText('subtitle', '一句话描述', d.subtitle || '', { ph: '多孔结构换热器设计与性能优化' })}
     ${fArea('goal', '研究目标', d.goal || '', { rows: 2, ph: '要解决什么问题、做到什么程度', hint: '写清楚这一条，后面 AI 和 Agent 才有判断依据' })}
-    ${fText('period', '研究周期', d.period || defPeriod, { ph: '2026.10 - 2027.06' })}
+    <div class="field-hint">新建项目的周期记为「周期待确认」，不会填入模板起止日期。</div>
     ${tplField}
     ${fCheckbox('starterTasks', '生成模板自带的起始任务', true, { hint: '不勾选则只建项目与材料目录' })}
   ` : `
     ${fText('name', '项目名称', p.name, { req: true })}
-    ${fText('displayName', '显示名', p.displayName || '', { ph: '留空则使用项目名称', hint: '只改界面上的名字，不改项目名称，也不改文件夹' })}
-    ${fText('folder', '项目文件夹名', p.folder || p.name, { hint: '改这里不会移动磁盘上已有的文件夹，也不改显示名' })}
+    ${fText('displayName', '显示名', p.displayName || '', { ph: '留空则使用项目名称', hint: '只改界面上的名字，不改稳定 ID，也不改文件夹' })}
+    ${fText('shortName', '短名称', p.shortName || '', { ph: '例如 SN2 渐变翅片', hint: '卡片和页头优先用它。留空则用完整显示名，两行内换行，不靠截断来排版' })}
+    ${fText('folder', '项目文件夹名', p.folder || p.name, { hint: '只保存相对名。改这里不会移动磁盘目录，外部路径请自建目录联接' })}
     ${fText('subtitle', '一句话描述', p.subtitle)}
     ${fArea('goal', '研究目标', p.goal, { rows: 2 })}
     <div class="field-row">
-      ${fText('period', '研究周期', p.period, { ph: '2026.10 - 2027.06' })}
-      ${fSelect('thumb', '缩略图风格', p.thumb, THUMB_KINDS)}
+      ${fSelect('schedule_state', '周期状态', (p.schedule && p.schedule.state) || 'unconfirmed', [
+        ['unconfirmed', '周期待确认'], ['planned', '已计划'], ['active', '进行中'], ['done', '已完成']
+      ])}
+      ${fSelect('thumb', '类型占位图', p.thumb, THUMB_KINDS)}
     </div>
+    <div class="field-row">
+      ${fText('planned_start', '计划开始', (p.schedule && p.schedule.planned_start) || '', { ph: 'YYYY-MM-DD' })}
+      ${fText('planned_end', '计划结束', (p.schedule && p.schedule.planned_end) || '', { ph: 'YYYY-MM-DD' })}
+    </div>
+    <div class="field-row">
+      ${fText('actual_start', '实际开始', (p.schedule && p.schedule.actual_start) || '', { ph: 'YYYY-MM-DD' })}
+      ${fText('actual_end', '实际完成', (p.schedule && p.schedule.actual_end) || '', { ph: 'YYYY-MM-DD' })}
+    </div>
+    <div class="field-hint">${(p.periodLegacy || p.period) ? `历史周期文本（未核定，不作为正式区间）：${esc(p.periodLegacy || p.period)}` : '未核定的周期不会显示成起止日期。'}</div>
+    <div class="field-row">
+      ${fSelect('cover_kind', '封面', (p.cover && p.cover.kind) || 'builtin', [['builtin', '类型占位图'], ['local_reference', '本地图片'], ['none', '无图']])}
+      ${fSelect('cover_fit', '适配', (p.cover && p.cover.fit) || 'contain', [['contain', '完整显示'], ['cover', '裁切铺满']])}
+    </div>
+    ${fText('cover_resource', '本地封面路径', (p.cover && p.cover.resource) || '', { ph: '例如 G:\\\\SN2\\\\fig\\\\cover.jpg', hint: '只记录本机路径，不会上传' })}
+    ${fText('cover_alt', '封面替代文字', (p.cover && p.cover.alt) || '', { ph: '渐变翅片几何' })}
     <div class="field-row">
       ${fText('stage', '当前阶段', p.stage, { ph: '仿真计算' })}
       ${fText('next', '下一阶段', p.next, { ph: '优化结构参数' })}
     </div>
-    ${fText('tools', '使用软件（逗号分隔）', (p.tools || []).join(', '), { ph: 'Fluent, Python, Tecplot' })}
+    ${fText('tools', '建议软件（逗号分隔）', (p.tools || []).join(', '), { ph: 'Fluent, Python', hint: '只是任务建议。不会把这些名字记成已安装或已绑定，也不会启动' })}
     ${(() => {
       const prog = editorProgressControl(p.progress);
       return `<div class="field" data-field="progress">
       <label>项目进度：<b id="pv">${prog.label}</b></label>
       <input class="input" type="range" min="0" max="100" step="1" name="progress" value="${prog.value}"${prog.unset ? ' data-progress-unset="1"' : ''} style="padding:0;height:22px">
       ${prog.unset ? '<div class="field-hint">当前进度不是 0–100 的有效数字。滑块停在 0 只是占位，不拖动就不会保存，也不会被写成 50%。</div>' : ''}
+      <label class="check-line"><input type="checkbox" name="progress_manual" ${p.progressMode === 'manual' ? 'checked' : ''}> 改用手动百分比（必须填写说明，否则不会覆盖自动里程碑）</label>
     </div>`;
-    })()}`;
+    })()}
+    ${fText('progress_note', '手动进度说明', p.progressNote || '', { ph: '例如：等待实验复核，暂不按节点等权' })}`;
 
   openModal({
     title: isNew ? '新建科研项目' : '编辑项目',
@@ -373,13 +390,18 @@ function projectMenu(id) {
 
 /* 流程编辑的单行模板（弹窗内动态增删） */
 function flowEditRow(r) {
-  return `<div class="flow-edit-row">
+  return `<div class="flow-edit-row" data-id="${esc(r.id || '')}">
     <input class="input" data-f="name" value="${esc(r.l || '')}" placeholder="阶段名称">
     <select class="select" data-f="state">
-      ${[['todo', '待开始'], ['current', '进行中'], ['done', '已完成']]
+      ${[['todo', '待开展'], ['current', '进行中'], ['done', '已完成']]
         .map(([v, l]) => `<option value="${v}"${(r.s || 'todo') === v ? ' selected' : ''}>${l}</option>`).join('')}
     </select>
-    <input class="input" data-f="date" value="${esc(r.d || '')}" placeholder="日期" style="max-width:76px">
+    <select class="select" data-f="dateKind">
+      ${[['planned', '计划日期'], ['done', '完成日期']]
+        .map(([v, l]) => `<option value="${v}"${(r.dateKind || 'planned') === v ? ' selected' : ''}>${l}</option>`).join('')}
+    </select>
+    <input class="input" data-f="date" value="${esc(r.d && r.d !== '—' ? r.d : '')}" placeholder="YYYY-MM-DD">
+    <input class="input" data-f="criterion" value="${esc(r.criterion || '')}" placeholder="完成标准">
     <span class="flow-edit-ops">
       <button class="icon-btn" data-act="flow-row-move" data-dir="up" title="上移">${icon('chevronRight', 'transform:rotate(-90deg)')}</button>
       <button class="icon-btn" data-act="flow-row-move" data-dir="down" title="下移">${icon('chevronRight', 'transform:rotate(90deg)')}</button>
@@ -1036,7 +1058,14 @@ document.addEventListener('click', async e => {
     else if (t.dataset.tab === 'todo' || t.dataset.tab === 'res') {
       setActiveTab(t);
       const sel = t.dataset.tab === 'todo' ? '#todo-list' : '#res-list';
-      $$(`${sel} > *`).forEach(r => { r.style.display = (v === 'all' || r.dataset.cat === v) ? '' : 'none'; });
+      const rows = $$(`${sel} > *`).filter(r => r.id !== 'res-filter-empty');
+      rows.forEach(r => { r.style.display = (v === 'all' || r.dataset.cat === v) ? '' : 'none'; });
+      const empty = document.getElementById('res-filter-empty');
+      if (empty && t.dataset.tab === 'res') {
+        const visible = rows.some(r => r.style.display !== 'none');
+        empty.hidden = visible || v === 'all';
+        if (!visible && v !== 'all') empty.hidden = false;
+      }
       return;
     }
     render();
@@ -1077,7 +1106,7 @@ document.addEventListener('click', async e => {
       const withTasks = !starterEl || starterEl.checked;
       const proj = makeProject({
         name: v.name, folder, displayName: v.displayName, subtitle: v.subtitle, goal: v.goal,
-        period: v.period, templateId: v.template
+        templateId: v.template
       });
       const span = monthsFromPeriod(proj.period);
       const due = days => {
@@ -1109,7 +1138,7 @@ document.addEventListener('click', async e => {
         if (!DB.settings.defaultWorkspace) DB.settings.defaultWorkspace = proj.id;
         DB.workspace.project = projName(proj);
         state.project = proj.id;
-      }, { activity: { text: `创建项目 <b>${esc(proj.name)}</b>`, kind: 'create', color: '#218358' } });
+      }, { activity: { text: `创建项目 <b>${esc(proj.name)}</b>`, kind: 'create', color: '#218358', projectId: proj.id } });
 
       closeModal();
       toast(`项目 <b>${esc(proj.name)}</b> 已创建 · 文件夹 <span class="mono">${esc(folder)}</span>`, 'ok');
@@ -1119,27 +1148,60 @@ document.addEventListener('click', async e => {
     case 'project-update': {
       const m = document.querySelector('.modal'); if (!validate(m, ['name'])) return;
       const v = formValues(m); const p = P(t.dataset.id);
+      if (!p) return;
       const progressInput = m.querySelector('[name="progress"]');
       const progressTouched = !!(progressInput && progressInput.dataset.progressTouched === '1');
+      const manual = !!(m.querySelector('[name="progress_manual"]') && m.querySelector('[name="progress_manual"]').checked);
       const progressDecision = progressFromEditor(
         p.progress,
         progressInput ? progressInput.value : '',
-        progressTouched
+        progressTouched && manual
       );
+      if (progressDecision.rejected) return toast('进度不是有效数字，未保存，也不会写成 50%', 'err');
+      const blankDate = s => { const t = String(s || '').trim(); return t ? t : null; };
+      const unconfirmed = (v.schedule_state || 'unconfirmed') === 'unconfirmed';
+      const args = {
+        display_name: v.displayName,
+        short_name: v.shortName,
+        subtitle: v.subtitle,
+        goal: v.goal,
+        folder: v.folder,
+        stage: v.stage,
+        next_stage: v.next,
+        suggested_tools: String(v.tools || '').split(/[,，]/).map(s => s.trim()).filter(Boolean),
+        schedule: unconfirmed ? {
+          state: 'unconfirmed', planned_start: null, planned_end: null, actual_start: null, actual_end: null
+        } : {
+          state: v.schedule_state,
+          planned_start: blankDate(v.planned_start),
+          planned_end: blankDate(v.planned_end),
+          actual_start: blankDate(v.actual_start),
+          actual_end: blankDate(v.actual_end)
+        },
+        cover: {
+          kind: v.cover_kind || 'builtin',
+          resource: v.cover_resource || '',
+          alt: v.cover_alt || '',
+          fit: v.cover_fit || 'contain'
+        }
+      };
+      if (manual) {
+        args.progress_mode = 'manual';
+        args.progress_note = v.progress_note || '';
+        if (progressDecision.changed) args.progress = progressDecision.progress;
+        else if (typeof p.progress === 'number') args.progress = p.progress;
+      } else if (p.progressMode === 'manual') {
+        args.progress_mode = 'auto';
+      }
+      const preview = applyProjectPatch(p, args, { dryRun: true });
+      if (!preview.ok) return toast(esc(preview.error || '没有保存'), 'err');
       mutate(() => {
-        Object.assign(p, {
-          name: v.name, subtitle: v.subtitle, goal: v.goal, period: v.period,
-          stage: v.stage, next: v.next, thumb: v.thumb,
-          folder: v.folder ? safeFolderName(v.folder) : (p.folder || p.name),
-          tools: (v.tools || '').split(/[,，]/).map(s => s.trim()).filter(Boolean)
-        });
-        if (v.stage) renameCurrentFlowNode(p, v.stage);
-        if (progressTouched && !progressDecision.rejected) p.progress = progressDecision.progress;
-        const dn = String(v.displayName || '').trim().slice(0, 60);
-        if (dn && dn !== p.name) p.displayName = dn;
-        else delete p.displayName;
-        if (state.project === p.id) DB.workspace.project = projName(p);
-      }, { activity: { text: `更新项目 <b>${esc(v.name)}</b>`, kind: 'edit', color: '#AD5700' } });
+        applyProjectPatch(p, args);
+        const name = String(v.name || '').trim();
+        if (name && name !== p.name) p.name = name;
+        if (v.thumb) p.thumb = v.thumb;
+        if (state.project === p.id && DB.workspace) DB.workspace.project = projName(p);
+      }, { activity: { text: `更新项目 <b>${esc(v.name || p.name)}</b>`, kind: 'edit', color: '#AD5700', projectId: p.id } });
       closeModal(); toast('项目已更新', 'ok');
       return;
     }
@@ -1747,9 +1809,56 @@ document.addEventListener('click', async e => {
     case 'project-open': {
       const p = P(t.dataset.id);
       if (!p) return;
+      state.viewGen = (state.viewGen || 0) + 1;
+      state.matScan = null;
       mutate(() => { state.project = p.id; DB.workspace.project = p.name; state.projectTab = 'overview'; },
-        { activity: { text: `进入项目 <b>${esc(p.name)}</b>`, kind: 'edit', color: '#6E56CF' } });
+        { activity: { text: `进入项目 <b>${esc(p.name)}</b>`, kind: 'nav', color: '#6E56CF', projectId: p.id } });
       go('project');
+      return;
+    }
+    case 'toggle-done-todos': {
+      state.showDoneTodos = !state.showDoneTodos;
+      render();
+      return;
+    }
+    case 'link-outcome': {
+      const p = P(t.dataset.id || state.project);
+      if (!p) return;
+      openModal({
+        title: '关联已有成果',
+        sub: '只记录原位路径。不会复制、上传，也不会因为文件名判断已提交。',
+        body: `
+          ${fText('title', '标题', '', { req: true })}
+          ${fText('file', '原位文件', '', { req: true, ph: 'G:\\\\SN2\\\\写作\\\\稿件.docx' })}
+          ${fSelect('type', '类型', 'paper', [['paper', '论文'], ['review', '综述'], ['patent', '专利'], ['cad', '模型'], ['mesh', '网格'], ['dataset', '数据集'], ['figure', '图表'], ['report', '报告'], ['other', '其他']])}
+          ${fSelect('status', '状态', 'draft', [['draft', '草稿'], ['review', '待复核'], ['confirmed', '已确认'], ['submitted', '已提交']])}
+          ${fText('version', '版本标签', '', { ph: 'v3 修订' })}
+          ${fText('previous_id', '上一版本 ID', '', { ph: '可选' })}
+          <label class="check-line"><input type="checkbox" name="current" checked> 标为当前版本</label>`,
+        footer: `<span class="grow"></span><button class="btn" data-act="modal-close">取消</button>
+          <button class="btn primary" data-submit data-act="link-outcome-save" data-id="${p.id}">关联</button>`
+      });
+      return;
+    }
+    case 'link-outcome-save': {
+      const p = P(t.dataset.id);
+      const m = document.querySelector('.modal');
+      if (!p || !m || !validate(m, ['title', 'file'])) return;
+      const v = formValues(m);
+      const current = !!(m.querySelector('[name="current"]') && m.querySelector('[name="current"]').checked);
+      const applied = applyProjectPatch(p, {
+        link_outcome: {
+          title: v.title, file: v.file, type: v.type, status: v.status,
+          version: v.version, previous_id: v.previous_id, current,
+          idempotency_key: p.id + '|' + v.file + '|' + v.title
+        }
+      });
+      if (!applied.ok) return toast(esc(applied.error || '没有关联'), 'err');
+      logActivity(`关联成果 <b>${esc(v.title)}</b>`, 'create', '#218358', { projectId: p.id, objectId: applied.outcome && applied.outcome.id, type: 'link_outcome' });
+      persist();
+      closeModal();
+      render();
+      toast(applied.changes && applied.changes[0] ? esc(applied.changes[0]) : '已关联', 'ok');
       return;
     }
     case 'project-back': { state.route = 'home'; go('home'); return; }
@@ -3301,9 +3410,12 @@ document.addEventListener('click', async e => {
       const list = document.querySelector('[data-flow-rows]');
       if (!p || !list) return;
       const rows = Array.from(list.querySelectorAll('.flow-edit-row')).map(r => ({
+        id: r.dataset.id || '',
         l: String((r.querySelector('[data-f="name"]') || {}).value || '').trim(),
         s: String((r.querySelector('[data-f="state"]') || {}).value || 'todo'),
-        d: String((r.querySelector('[data-f="date"]') || {}).value || '').trim()
+        d: String((r.querySelector('[data-f="date"]') || {}).value || '').trim(),
+        dateKind: String((r.querySelector('[data-f="dateKind"]') || {}).value || 'planned'),
+        criterion: String((r.querySelector('[data-f="criterion"]') || {}).value || '').trim()
       })).filter(r => r.l);
       if (!rows.length) return toast('至少要有一个有名字的阶段', 'err');
       /* 只允许一个 current：保留第一个 */
@@ -3476,7 +3588,21 @@ document.addEventListener('input', e => {
 });
 
 /* 搜索框回车 / ESC */
+document.addEventListener('error', e => {
+  const img = e.target;
+  if (!img || !img.dataset || !img.dataset.cover) return;
+  state.coverBroken = state.coverBroken || {};
+  if (state.coverBroken[img.dataset.cover]) return;
+  state.coverBroken[img.dataset.cover] = true;
+  render();
+}, true);
+
 document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.classList && e.target.classList.contains('proj-card')) {
+    e.preventDefault();
+    e.target.click();
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault();
     const s = document.getElementById('global-search');

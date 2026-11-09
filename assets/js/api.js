@@ -420,25 +420,34 @@ function persist(immediate) {
       }
       toast(`数据保存失败（已重试）：${esc((r && r.error) || '未知错误')}`, 'err');
     }
-    if (_dirty) run();
+    if (_dirty) return run();
+    return r || { ok: true };
   };
 
-  if (immediate) run();
-  else _saveTimer = setTimeout(run, 350);
+  if (immediate) return run();
+  _saveTimer = setTimeout(run, 350);
+  return undefined;
 }
 
 /* ---------- 活动日志（真实写入，全局共享） ---------- */
 const LOG_ICONS = { create: 'plus', edit: 'pencil', delete: 'trash', run: 'play', stop: 'stop', search: 'search', open: 'folderOpen', save: 'save', agent: 'bot' };
-function logActivity(text, kind, color) {
+function logActivity(text, kind, color, meta) {
   const d = new Date();
   const pad = n => String(n).padStart(2, '0');
+  const extra = meta && typeof meta === 'object' ? meta : {};
   DB.activities.unshift({
     c: color || '#3E63DD',
     i: LOG_ICONS[kind] || 'pulse',
     kind: kind || 'edit',
     t: text,
     time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-    at: d.getTime()
+    at: d.getTime(),
+    projectId: extra.projectId || '',
+    actor: extra.actor || '',
+    type: extra.type || kind || 'edit',
+    objectId: extra.objectId || '',
+    batchId: extra.batchId || '',
+    level: extra.level === 'notice' ? 'notice' : 'log'
   });
-  if (DB.activities.length > 40) DB.activities.length = 40;
+  if (DB.activities.length > 80) DB.activities.length = 80;
 }

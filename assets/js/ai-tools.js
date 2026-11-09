@@ -65,7 +65,7 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'get_project_context',
-      description: '获取科研项目的完整上下文：目标、简介、阶段、进度、显示名、相对文件夹、流程节点、详细计划、任务、待办与材料目录。传 project 为项目 ID 可精确读取；id_only 为 true 时不按名称匹配。',
+      description: '获取科研项目的完整上下文：目标、简介、阶段、里程碑进度、显示名、短名称、相对文件夹、联接目标、流程节点与证据、周期、封面、材料索引状态、软件绑定、成果、本项目活动。传 project 为项目 ID 可精确读取；id_only 为 true 时不按名称匹配。todos 只含明确关联到该项目的待办；无 project_id 的在 global_todos。',
       parameters: {
         type: 'object',
         properties: {
@@ -203,7 +203,7 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'update_project',
-      description: '按项目部分更新：进度、阶段、下一阶段、研究目标、一句话简介、长简介、显示名、相对文件夹、完整流程节点、详细计划。只改请求里出现的字段。folder 是工作区根目录下的相对名，不移动、不复制文件；外部目录用 junction 链到这个名字。nodes 会同步 flow，并按已完成节点重算进度，除非同时传入了有效的 progress。无效进度保持原值，不会写成 50。',
+      description: '按稳定项目 ID 部分更新。只改请求里出现的字段。未识别字段会整单拒绝。folder 仍是工作区根目录下的相对名，不移动、不复制文件；外部目录用 junction，可用 junction_target 只记录目标。nodes 在自动进度下按已完成节点重算，除非同时传入有效 progress。无效进度整单拒绝，不会写成 50。schedule 用 state 与 YYYY-MM-DD，空周期不要沿用模板日期。cover 只收本地路径，不上传。bind_software 不启动程序。link_outcome 只记原位路径。dry_run 做校验和差异，不落盘。revision 与当前修订不一致时返回冲突。',
       parameters: {
         type: 'object',
         properties: {
@@ -226,7 +226,25 @@ const AI_TOOLS = [
             type: 'array',
             description: '详细计划，字符串数组（也可用 detailed_plan，或一行一条的文本）。不传则保持原样；空数组会清空',
             items: { type: 'string' }
-          }
+          },
+          short_name: { type: 'string', description: '卡片短名称。不改稳定 ID，也不改 folder。空串清空' },
+          progress_mode: { type: 'string', enum: ['auto', 'manual'], description: 'auto=等权里程碑。manual 必须同时给 progress_note' },
+          progress_note: { type: 'string', description: '手动进度的说明。自动模式不需要' },
+          schedule: { type: 'object', description: '周期。state: unconfirmed|planned|active|done。日期键 planned_start/planned_end/actual_start/actual_end 为 YYYY-MM-DD 或 null。null 对象表示整段清空为待确认' },
+          period: { type: 'string', description: '只接受空串或 null 来清空未核定周期。非空文本会拒绝，请改用 schedule' },
+          cover: { type: 'object', description: '封面。kind: builtin|local_reference|none。local_reference 需要 resource 本地路径。fit: contain|cover。null 恢复类型占位。不上传' },
+          owner: { type: 'object', description: '负责人。{name, role, agent, confirmed}。null 改为待指定。不会启动 agent' },
+          junction_target: { type: 'string', description: '原位联接目标，只作记录。不复制文件，也不改相对 folder' },
+          suggested_tools: { type: 'array', items: { type: 'string' }, description: '任务建议软件名称。不是已绑定程序，不会启动' },
+          link_outcome: { type: 'object', description: '关联已有成果。{title, file, type, status, version, note, current, previous_id, idempotency_key}。不复制磁盘文件' },
+          update_outcome: { type: 'object', description: '更新已关联成果。需要 id。文件名含「最终版」不会自动改状态' },
+          unlink_outcome: { type: 'object', description: '取消成果关联。{id}。不删除磁盘文件' },
+          bind_software: { type: 'object', description: '绑定软件引用 {name, path, available}。不启动' },
+          unbind_software: { type: 'object', description: '解除本项目软件绑定 {name}。不启动、不删除程序' },
+          material_scan: { type: 'object', description: '写入材料索引状态，不复制文件。state: scanning|ok|empty|failed|junction_broken|excluded|stale' },
+          revision: { type: 'string', description: '上次读到的修订号。不一致则冲突，不覆盖' },
+          batch_id: { type: 'string', description: '同一批操作的标识。活动按它合并摘要' },
+          dry_run: { type: 'boolean', description: 'true 时只返回校验后的差异，不落盘、不改修订' }
         },
         required: []
       }
@@ -388,6 +406,22 @@ function isDryRun(args) {
   return v === true || v === 1 || v === 'true' || v === '1';
 }
 function dryRunResult(tool, args) {
+  if (tool === 'update_project' && typeof applyProjectPatch === 'function') {
+    const idOnly = wantsExactId(args || {});
+    const p = args && args.project ? resolveProject(args.project, { idOnly }) : (typeof P === 'function' ? P(state.project) : null);
+    if (args && args.project && !p) {
+      return {
+        ok: false, dryRun: true, saved: false, tool,
+        error: idOnly ? `未找到项目 id「${args.project}」` : `未找到项目「${args.project}」`
+      };
+    }
+    if (!p) return { ok: false, dryRun: true, saved: false, tool, error: '没有可预览的项目' };
+    const preview = applyProjectPatch(p, args || {}, { dryRun: true });
+    preview.tool = tool;
+    preview.dryRun = true;
+    preview.saved = false;
+    return preview;
+  }
   const preview = { ...(args || {}) };
   delete preview.dry_run;
   delete preview.dryRun;
@@ -631,22 +665,59 @@ const AI_TOOL_IMPL_RAW = {
     }
     const materialDirs = dirsOf(p.id);
     const record = projectContent(p);
+    const taskRows = DB.tasks.filter(t => t.p === p.id);
+    const today = shanghaiToday();
     const out = {
       ok: true,
       project: record,
+      revision: record.revision,
+      field_sources: {
+        progress: record.progress_mode === 'manual' ? 'manual' : 'auto_milestone',
+        schedule: record.schedule && record.schedule.state || 'unconfirmed',
+        cover: record.cover && record.cover.kind || 'builtin',
+        owner: record.owner_confirmed ? 'confirmed' : 'unassigned',
+        material_index: record.material_index && record.material_index.state || 'unscanned'
+      },
       material_dirs: materialDirs,
       project_folder: record.project_folder,
-      tasks: DB.tasks.filter(t => t.p === p.id).map(t => ({
-        task_id: t.id || '', id: t.id || '',
-        title: t.t, agent: t.agent, tool: t.tool, due: t.due,
-        priority: PRI_OUT[t.pri], status: ST_OUT[t.st], material_dir: t.dir
+      junction_target: record.junction_target || '',
+      materials_index: record.material_index,
+      tasks: taskRows.map(t => {
+        const due = parseTaskDate(t.due, today);
+        return {
+          task_id: t.id || '', id: t.id || '',
+          title: t.t, agent: t.agent || '', tool: t.tool || '',
+          due: due.kind === 'unscheduled' ? '' : (t.due || ''),
+          due_label: due.label, due_kind: due.kind,
+          priority: PRI_OUT[t.pri], status: ST_OUT[t.st], material_dir: t.dir,
+          project_id: p.id
+        };
+      }),
+      task_stats: taskScheduleStats(taskRows),
+      todos: todosForProject(p.id).map(t => ({
+        content: t.t, category: t.cat, project_id: t.projectId,
+        priority: PRI_OUT[t.pri], due: t.due, done: !!t.done, scope: 'project'
       })),
-      todos: DB.todos.map((t, i) => ({
-        index: i, content: t.t, category: t.cat,
-        priority: PRI_OUT[t.pri], due: t.due, done: t.done
+      global_todos: globalTodos().map(t => ({
+        content: t.t, category: t.cat, project_id: '',
+        priority: PRI_OUT[t.pri], due: t.due, done: !!t.done, scope: 'global'
+      })),
+      outcomes: outcomesForProject(p.id).map(publicOutcome),
+      software: {
+        bound: (DB.apps || []).filter(a => a && a.bound === p.id).map(a => ({
+          name: a.n, path: a.path || '', available: a.available || 'unknown', running: a.run === true
+        })),
+        suggested_from_tasks: [...new Set(taskRows.map(t => String(t.tool || '').trim()).filter(Boolean))]
+      },
+      activities: activitiesForProject(p.id).slice(0, 20).map(a => ({
+        project_id: a.projectId, text: String(a.t || '').replace(/<[^>]+>/g, ''),
+        type: a.type || a.kind || '', batch_id: a.batchId || '', at: a.at || 0
       }))
     };
     if (!materialDirs.length) out.materials_note = '当前项目没有材料子目录。';
+    if (record.material_index && record.material_index.state === 'unscanned') {
+      out.materials_index_note = '已关联目录，尚未建立材料索引。登记数量为 0 不等于磁盘没有文件。';
+    }
     return out;
   },
 
@@ -682,19 +753,32 @@ const AI_TOOL_IMPL_RAW = {
     }
     const dirs = dirsOf(p.id);
     const dir = args.material_dir && dirs.includes(args.material_dir) ? args.material_dir : (dirs[0] || '');
+    const idem = String(args.idempotency_key || '').trim();
+    if (idem) {
+      const exist = DB.tasks.find(t => t && t.idempotency_key === idem);
+      if (exist) {
+        return {
+          ok: true, created: false, duplicate: true, task_id: exist.id, id: exist.id,
+          project: (P(exist.p) || {}).name || '', message: '同一 idempotency_key 已有任务，未重复创建'
+        };
+      }
+    }
     const task = {
       id: newTaskId(),
+      idempotency_key: idem,
       t: title,
       p: p.id,
       agent: args.agent || (p.agents[0] || ''),
-      tool: args.tool || (p.tools[0] || 'Python'),
-      due: args.due || '待定',
+      tool: args.tool || (p.tools[0] || ''),
+      due: args.due || '',
       pri: PRI_IN[args.priority] || 'mid',
       st: ST_IN[args.status] || 'todo',
       dir
     };
     DB.tasks.unshift(task);
-    logActivity(`<b>AI</b> 新建任务「${esc(title)}」`, 'create', '#218358');
+    logActivity(`<b>AI</b> 新建任务「${esc(title)}」`, 'create', '#218358', {
+      projectId: p.id, objectId: task.id, batchId: args.batch_id || '', actor: 'agent', type: 'create_task'
+    });
     persist();
     return {
       ok: true, created: task.t, task_id: task.id, id: task.id,
@@ -771,15 +855,24 @@ const AI_TOOL_IMPL_RAW = {
     const content = String(args.content || '').trim();
     if (!content) return { ok: false, error: 'content 不能为空' };
     const CAT = { '任务': 'task', '会议': 'meeting', '截止日期': 'deadline', '其他': 'other' };
+    let projectId = '';
+    if (args.project) {
+      const host = resolveProject(args.project, { idOnly: wantsExactId(args) });
+      if (!host) return { ok: false, error: `未找到项目「${args.project}」。不带 project 则会建成全局待办` };
+      projectId = host.id;
+    }
     const todo = {
       t: content,
       cat: CAT[args.category] || 'task',
       pri: PRI_IN[args.priority] || 'mid',
-      due: args.due || '未设置',
-      done: false
+      due: args.due || '',
+      done: false,
+      projectId
     };
     DB.todos.unshift(todo);
-    logActivity(`<b>AI</b> 新增待办「${esc(content)}」`, 'create', '#218358');
+    logActivity(`<b>AI</b> 新增待办「${esc(content)}」`, 'create', '#218358', {
+      projectId, batchId: args.batch_id || '', actor: 'agent', type: 'create_todo'
+    });
     persist();
     return { ok: true, created: todo.t, due: todo.due, priority: PRI_OUT[todo.pri] };
   },
@@ -821,6 +914,7 @@ const AI_TOOL_IMPL_RAW = {
     if (args.project && !p) {
       return {
         ok: false,
+        code: 'not_found',
         error: idOnly
           ? `未找到项目 id「${args.project}」`
           : `未找到项目「${args.project}」。可用项目：${projectHint()}`
@@ -828,120 +922,46 @@ const AI_TOOL_IMPL_RAW = {
     }
     if (!p) return { ok: false, error: DB.projects.length ? '当前没有选中项目，请带上 project 参数' : '还没有项目，先用 create_project 建一个' };
 
-    const has = (k) => Object.prototype.hasOwnProperty.call(args, k);
-    const changes = [];
-    let progressRejected = false;
-    let nextProgress = null;
-    if (has('progress') && args.progress != null) {
-      const v = parseProjectProgress(args.progress);
-      if (v == null) progressRejected = true;
-      else nextProgress = v;
-    }
-
-    let settled = null;
-    if (has('nodes')) {
-      const parsed = parseFlowNodes(args.nodes);
-      if (parsed.error) return { ok: false, error: parsed.error };
-      settled = settleFlowNodes(p.nodes, parsed.nodes);
-    }
-
-    let nextFolder = null;
-    if (has('folder') || has('folder_name')) {
-      const fromFolder = has('folder') ? parseProjectFolder(args.folder) : null;
-      const fromName = has('folder_name') ? parseProjectFolder(args.folder_name) : null;
-      if (fromFolder && fromFolder.error) return { ok: false, error: fromFolder.error };
-      if (fromName && fromName.error) return { ok: false, error: fromName.error };
-      if (fromFolder && fromName && fromFolder.folder !== fromName.folder) {
-        return { ok: false, error: 'folder 与 folder_name 不一致' };
+    const applied = applyProjectPatch(p, args, { dryRun: false });
+    if (!applied.ok) return applied;
+    logActivity(`<b>AI</b> 更新项目「${esc(p.name)}」：${esc((applied.changes || []).join('、'))}`, 'edit', '#6E56CF', {
+      projectId: p.id, batchId: args.batch_id || '', actor: 'agent', type: 'update_project', objectId: p.id
+    });
+    let saved = true;
+    let saveError = '';
+    try {
+      const pending = persist(true);
+      if (pending && typeof pending.then === 'function') {
+        const r = await pending;
+        if (r && r.ok === false) { saved = false; saveError = r.error || '保存失败'; }
       }
-      nextFolder = (fromFolder || fromName).folder;
-      if (DB.projects.some(x => x.id !== p.id && (x.folder || x.name) === nextFolder)) {
-        return { ok: false, error: `工作区里已有文件夹「${nextFolder}」，请换一个相对名` };
-      }
+    } catch (err) {
+      saved = false;
+      saveError = String((err && err.message) || err);
     }
-
-    let nextPlan = null;
-    if (has('plan') || has('detailed_plan')) {
-      const fromPlan = has('plan') ? parseProjectPlan(args.plan) : null;
-      const fromAlias = has('detailed_plan') ? parseProjectPlan(args.detailed_plan) : null;
-      if (fromPlan && fromPlan.error) return { ok: false, error: fromPlan.error };
-      if (fromAlias && fromAlias.error) return { ok: false, error: fromAlias.error };
-      if (fromPlan && fromAlias && JSON.stringify(fromPlan.plan) !== JSON.stringify(fromAlias.plan)) {
-        return { ok: false, error: 'plan 与 detailed_plan 不一致' };
-      }
-      nextPlan = (fromPlan || fromAlias).plan;
-    }
-
-    const stageText = args.stage ? String(args.stage).trim() : '';
-    const willChange = settled || nextFolder != null || nextPlan != null || nextProgress != null
-      || stageText || args.next_stage || args.goal || args.subtitle
-      || has('intro') || args.display_name != null;
-    if (!willChange) {
-      if (progressRejected) {
-        return {
-          ok: false,
-          error: '进度不是 0–100 的有效数字，未保存（不会改成 50%）',
-          progress_unchanged: true
-        };
-      }
-      return { ok: false, error: '没有提供任何要修改的字段' };
-    }
-
-    if (settled) {
-      p.nodes = settled.nodes;
-      p.flow = settled.flow;
-      p.stage = settled.stage || p.stage;
-      p.progress = settled.progress;
-      changes.push(`流程节点→${settled.nodes.length} 个`);
-    }
-    if (stageText) {
-      const renamed = renameCurrentFlowNode(p, stageText);
-      if (!renamed) p.stage = stageText;
-      changes.push(`当前阶段→${p.stage}`);
-    }
-    if (nextProgress != null) {
-      p.progress = nextProgress;
-      changes.push(`进度→${nextProgress}%`);
-    }
-    if (args.next_stage) { p.next = args.next_stage; changes.push(`下一阶段→${args.next_stage}`); }
-    if (args.goal) { p.goal = args.goal; changes.push('研究目标已更新'); }
-    if (args.subtitle) { p.subtitle = args.subtitle; changes.push('描述已更新'); }
-    if (has('intro')) {
-      p.intro = String(args.intro == null ? '' : args.intro).trim().slice(0, 4000);
-      changes.push('长简介已更新');
-    }
-    if (nextFolder != null) {
-      p.folder = nextFolder;
-      changes.push(`文件夹→${nextFolder}`);
-    }
-    if (nextPlan != null) {
-      p.plan = nextPlan;
-      changes.push(nextPlan.length ? `详细计划→${nextPlan.length} 条` : '详细计划已清空');
-    }
-    if (args.display_name != null) {
-      const dn = String(args.display_name).trim().slice(0, 60);
-      if (!dn || dn === p.name) { delete p.displayName; changes.push('显示名恢复为项目名称'); }
-      else { p.displayName = dn; changes.push('显示名已更新'); }
-    }
-    logActivity(`<b>AI</b> 更新项目「${esc(p.name)}」：${esc(changes.join('、'))}`, 'edit', '#6E56CF');
-    persist();
     const record = projectContent(p);
-    const out = {
+    if (!saved) {
+      return {
+        ok: false, saved: false, project_id: p.id, project: p.name,
+        changes: applied.changes, changed_fields: applied.changed_fields,
+        warnings: applied.warnings, revision: applied.revision, record,
+        error: `内存已改，但没有持久保存：${saveError}`
+      };
+    }
+    return {
       ok: true,
       saved: true,
       project_id: p.id,
       project: p.name,
-      changes,
+      changes: applied.changes,
+      changed_fields: applied.changed_fields,
+      warnings: applied.warnings || [],
+      revision: record.revision,
+      progress_change: applied.progress_change || null,
+      outcome: applied.outcome,
+      launched: false,
       record
     };
-    if (progressRejected) {
-      out.progress_rejected = true;
-      out.progress_unchanged = !settled;
-      out.warning = settled
-        ? '请求里的进度不是有效百分比，已按流程节点完成比例写入，没有改成 50%'
-        : '进度不是 0–100 的有效数字，已保持原值（没有写成 50%）';
-    }
-    return out;
   },
 
   async list_templates() {

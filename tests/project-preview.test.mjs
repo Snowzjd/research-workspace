@@ -70,13 +70,12 @@ test('home shows the selected project preview without leaving home', () => {
   const preview = html.slice(html.indexOf('id="project-preview"'));
   assert.match(html, /id="project-preview"/);
   assert.match(preview, /id="preview-facts"/);
-  assert.match(preview, /项目详情/);
+  assert.match(preview, /项目摘要/);
   assert.match(preview, /看乙的内容/);
-  assert.match(preview, /id="preview-feed"/);
-  assert.match(preview, /最近动态/);
+  assert.match(preview, /本项目最近活动/);
   assert.match(preview, /id="preview-outputs"/);
-  assert.match(preview, /产出物快览/);
-  assert.match(preview, /项目流程/);
+  assert.match(preview, /已关联成果/);
+  assert.match(preview, /阶段摘要/);
   assert.equal(preview.includes('看甲的内容'), false);
   assert.equal(preview.includes('本项目任务'), false);
   assert.equal(preview.includes('负责人 / Agent'), false);
@@ -88,7 +87,8 @@ test('home shows the selected project preview without leaving home', () => {
 
   runInContext(`DB.projects[1].stage = '阶段标记XYZ'`, ctx);
   const facts = runInContext('previewFactsHTML(DB.projects[1])', ctx);
-  assert.equal(facts.includes('阶段标记XYZ'), false);
+  assert.match(facts, /阶段标记XYZ/);
+  assert.match(facts, /当前阶段/);
   assert.equal(facts.includes('当前：'), false);
 });
 
@@ -105,7 +105,8 @@ test('home preview still renders a project that is missing optional fields', () 
   assert.match(preview, /只有名字/);
   assert.match(preview, /还没填写项目目标/);
   assert.match(preview, /还没有这个项目的动态/);
-  assert.match(preview, /还没有论文、综述或专利/);
+  assert.match(preview, /尚未关联成果/);
+  assert.equal(preview.includes('还没有论文、综述或专利'), false);
   assert.equal(preview.includes('本项目任务'), false);
   assert.equal(preview.includes('负责人 / Agent'), false);
   assert.equal(preview.includes('涉及软件'), false);
@@ -124,7 +125,7 @@ test('feed folds stuck work and finished agents; outputs open real files only', 
       { id: 'j-other', agent: 'Writer', task: '别的项目的稿', projectId: 'nope', status: 'done', finishedAt: 99 }
     ];
     DB.activities = [
-      { t: '<b>你</b> 更新了甲项目的目标', time: '09:00', at: 10, kind: 'edit', c: '#333', i: 'pencil' },
+      { t: '<b>你</b> 更新了甲项目的目标', time: '09:00', at: 10, kind: 'edit', c: '#333', i: 'pencil', projectId: DB.projects[0].id },
       { t: '<b>无关项目</b> 改了别的东西', time: '08:00', at: 5, kind: 'edit', c: '#333', i: 'pencil' }
     ];
     DB.kbDocs = [
@@ -136,7 +137,7 @@ test('feed folds stuck work and finished agents; outputs open real files only', 
   `, ctx);
   const preview = ctx.homeView().slice(ctx.homeView().indexOf('id="project-preview"'));
   const facts = runInContext('previewFactsHTML(DB.projects[0])', ctx);
-  assert.equal(facts.includes('阶段标记XYZ'), false);
+  assert.match(facts, /阶段标记XYZ/);
   assert.match(preview, /执行中/);
   assert.match(preview, /正在算工况/);
   assert.match(preview, /待复核/);
@@ -151,6 +152,46 @@ test('feed folds stuck work and finished agents; outputs open real files only', 
   assert.equal(preview.includes('没有路径的论文'), false);
   assert.equal(preview.includes('乙的专利'), false);
   assert.equal(preview.includes('本项目任务'), false);
+});
+
+test('cards drop the full stepper and the project page uses one vertical flow', () => {
+  const ctx = loadViews();
+  seed(ctx);
+  runInContext(`
+    const p = DB.projects[0];
+    p.shortName = '甲短名';
+    p.nodes = [
+      { id: 'n1', l: '论文大修与证据复核需要完整读完不能挤成竖字', s: 'done', d: '2026-10-01', dateKind: 'done', criterion: '修回关闭' },
+      { id: 'n2', l: '终稿与投稿材料验收', s: 'current', d: '', criterion: '投稿包齐' },
+      { id: 'n3', l: '外部评审意见回收', s: 'todo', d: '' }
+    ];
+    p.stage = '终稿与投稿材料验收';
+    DB.activities = [
+      { t: '甲项目里的动态', kind: 'edit', projectId: p.id, c: '#333', i: 'pencil', time: '09:00', at: 2 },
+      { t: '扩展通用原生CAD网格验证案例', kind: 'create', projectId: 'other', c: '#333', i: 'plus', time: '08:00', at: 1 }
+    ];
+    DB.todos = [{ t: '111', done: true, projectId: '', cat: 'other', pri: 'low', due: '' }];
+    state.project = p.id;
+    state.route = 'project';
+    state.projectTab = 'overview';
+  `, ctx);
+  const card = runInContext('projectCard(DB.projects[0])', ctx);
+  assert.match(card, /甲短名/);
+  assert.equal(card.includes('论文大修与证据复核需要完整读完不能挤成竖字'), false);
+  assert.equal(card.includes('class="stepper"'), false);
+  assert.equal(card.includes('class="step '), false);
+  assert.match(card, /里程碑/);
+  assert.match(card, /aria-pressed="true"/);
+  const page = ctx.projectView();
+  assert.match(page, /class="flow-steps"/);
+  assert.match(page, /论文大修与证据复核需要完整读完不能挤成竖字/);
+  assert.equal(page.includes('class="node-track"'), false);
+  assert.equal(page.includes('class="flow-track"'), false);
+  assert.equal(page.includes('>项目页<'), false);
+  assert.match(page, /甲项目里的动态/);
+  assert.equal(page.includes('扩展通用原生CAD网格验证案例'), false);
+  assert.equal(page.includes('>111<'), false);
+  assert.match(page, /尚未关联成果|已关联目录，尚未建立材料索引|周期待确认/);
 });
 
 test('project card click stays on home and does not open the project route', () => {

@@ -701,8 +701,22 @@ function parseProjectFolder(raw) {
 
 const FLOW_STATE_IN = {
   done: 'done', current: 'current', todo: 'todo',
-  '已完成': 'done', '进行中': 'current', '待开始': 'todo'
+  '已完成': 'done', '进行中': 'current', '待开始': 'todo', '待开展': 'todo'
 };
+
+function copyFlowNode(n) {
+  if (!n || !n.l) return null;
+  const o = {
+    l: String(n.l),
+    s: n.s === 'done' || n.s === 'current' || n.s === 'todo' ? n.s : 'todo',
+    d: String(n.d || '')
+  };
+  if (n.id) o.id = String(n.id);
+  if (n.criterion) o.criterion = String(n.criterion);
+  if (Array.isArray(n.evidence) && n.evidence.length) o.evidence = n.evidence.map(x => String(x));
+  if (n.dateKind === 'done' || n.dateKind === 'planned') o.dateKind = n.dateKind;
+  return o;
+}
 
 function parseFlowNodes(raw) {
   if (!Array.isArray(raw)) return { error: 'nodes 必须是流程节点数组' };
@@ -710,7 +724,7 @@ function parseFlowNodes(raw) {
   for (const item of raw) {
     if (typeof item === 'string') {
       const l = item.trim();
-      if (l) nodes.push({ l: l.slice(0, 80), s: 'todo', d: '' });
+      if (l) nodes.push({ l: l.slice(0, 200), s: 'todo', d: '' });
       continue;
     }
     if (!item || typeof item !== 'object') return { error: '流程节点必须是对象或阶段名称' };
@@ -719,7 +733,17 @@ function parseFlowNodes(raw) {
     const rawS = String(item.s != null ? item.s : (item.state != null ? item.state : (item.status != null ? item.status : 'todo'))).trim();
     const s = FLOW_STATE_IN[rawS] || 'todo';
     const d = String(item.d != null ? item.d : (item.date != null ? item.date : '')).trim().slice(0, 40);
-    nodes.push({ l: l.slice(0, 80), s, d });
+    const node = { l: l.slice(0, 200), s, d };
+    const id = item.id != null ? String(item.id).trim() : '';
+    if (id) node.id = id.slice(0, 40);
+    const criterion = item.criterion != null ? item.criterion : item.done_when;
+    if (criterion != null) node.criterion = String(criterion).trim().slice(0, 400);
+    if (Array.isArray(item.evidence)) node.evidence = item.evidence.map(x => String(x)).filter(Boolean).slice(0, 20);
+    const dateKind = item.date_kind != null ? item.date_kind : item.dateKind;
+    if (dateKind === 'done' || dateKind === 'planned' || dateKind === '完成' || dateKind === '计划') {
+      node.dateKind = (dateKind === 'done' || dateKind === '完成') ? 'done' : 'planned';
+    }
+    nodes.push(node);
   }
   if (!nodes.length) return { error: '至少要有一个有名字的流程节点' };
   if (nodes.length > 40) return { error: '流程节点最多 40 个' };
@@ -729,11 +753,31 @@ function parseFlowNodes(raw) {
 /* 与界面「保存流程」同一套推进规则：至多一个进行中；一个都没有时把第一个未完成接上。
    不写盘。progress 按已完成节点占比计算，调用方可以再用显式进度盖掉。 */
 function settleFlowNodes(previousNodes, incoming) {
-  const list = (incoming || []).map(n => ({
-    l: String((n && n.l) || ''),
-    s: n && (n.s === 'done' || n.s === 'current' || n.s === 'todo') ? n.s : 'todo',
-    d: String((n && n.d) || '')
-  }));
+  const prev = Array.isArray(previousNodes) ? previousNodes : [];
+  const used = new Set();
+  const list = (incoming || []).map((n, index) => {
+    const label = String((n && n.l) || '');
+    const state = n && (n.s === 'done' || n.s === 'current' || n.s === 'todo') ? n.s : 'todo';
+    let prevNode = null;
+    if (n && n.id) prevNode = prev.find(x => x && x.id === n.id && !used.has(x));
+    if (!prevNode && label) prevNode = prev.find(x => x && String(x.l) === label && !used.has(x));
+    if (prevNode) used.add(prevNode);
+    const id = String((n && n.id) || (prevNode && prevNode.id) || ('n' + hashKey(label + '#' + index)));
+    const criterion = n && Object.prototype.hasOwnProperty.call(n, 'criterion')
+      ? String(n.criterion || '')
+      : (prevNode && prevNode.criterion ? String(prevNode.criterion) : '');
+    const evidence = n && Object.prototype.hasOwnProperty.call(n, 'evidence')
+      ? (Array.isArray(n.evidence) ? n.evidence.map(x => String(x)).filter(Boolean) : [])
+      : (prevNode && Array.isArray(prevNode.evidence) ? prevNode.evidence.map(x => String(x)) : []);
+    const dateKind = n && (n.dateKind === 'done' || n.dateKind === 'planned')
+      ? n.dateKind
+      : ((prevNode && (prevNode.dateKind === 'done' || prevNode.dateKind === 'planned')) ? prevNode.dateKind : '');
+    const node = { id, l: label, s: state, d: String((n && n.d) || '') };
+    if (criterion) node.criterion = criterion;
+    if (evidence.length) node.evidence = evidence;
+    if (dateKind) node.dateKind = dateKind;
+    return node;
+  });
   const hadCurrent = (previousNodes || []).some(n => n && n.s === 'current');
   const curCount = list.filter(n => n.s === 'current').length;
   let advanced = '';
@@ -773,7 +817,8 @@ function renameCurrentFlowNode(p, stage) {
   if (!p || !label) return false;
   const nodes = (Array.isArray(p.nodes) ? p.nodes : [])
     .filter(n => n && n.l)
-    .map(n => ({ l: String(n.l), s: n.s || 'todo', d: String(n.d || '') }));
+    .map(n => copyFlowNode(n))
+    .filter(Boolean);
   if (!nodes.length) return false;
   const cur = nodes.find(n => n.s === 'current');
   if (cur) {
@@ -808,6 +853,920 @@ function parseProjectPlan(raw) {
   return { plan };
 }
 
+/* ==========================================================================
+   项目管理闭环（界面与 API 共用）
+   进度、周期、封面、负责人、材料索引、成果、活动归属。
+   不复制源文件，不启动软件，不把无效进度写成 50。
+   ========================================================================== */
+const SCHEDULE_STATES = new Set(['unconfirmed', 'planned', 'active', 'done']);
+const COVER_KINDS = new Set(['builtin', 'local_reference', 'none']);
+const COVER_FITS = new Set(['contain', 'cover']);
+const OUTCOME_STATUS = {
+  draft: 'draft', review: 'review', confirmed: 'confirmed', submitted: 'submitted',
+  '草稿': 'draft', '待复核': 'review', '已确认': 'confirmed', '已提交': 'submitted'
+};
+const OUTCOME_TYPES = {
+  paper: 'paper', review: 'review', patent: 'patent', cad: 'cad', mesh: 'mesh',
+  dataset: 'dataset', figure: 'figure', report: 'report', other: 'other',
+  '论文': 'paper', '综述': 'review', '专利': 'patent', '模型': 'cad', '网格': 'mesh',
+  '数据集': 'dataset', '图表': 'figure', '报告': 'report', '其他': 'other'
+};
+const SCAN_STATES = new Set(['unscanned', 'scanning', 'ok', 'empty', 'failed', 'junction_broken', 'excluded', 'stale']);
+const OWNER_PLACEHOLDERS = new Set(['', '研究员', '我', '—', '-', '未指定', '待指定']);
+const PROJECT_PATCH_KEYS = new Set([
+  'project', 'id_only', 'dry_run', 'dryRun', 'revision', 'batch_id',
+  'progress', 'progress_mode', 'progress_note',
+  'stage', 'next_stage', 'goal', 'subtitle', 'intro', 'display_name', 'short_name',
+  'folder', 'folder_name', 'nodes', 'plan', 'detailed_plan',
+  'schedule', 'period', 'cover', 'owner', 'junction_target', 'suggested_tools',
+  'link_outcome', 'update_outcome', 'unlink_outcome',
+  'bind_software', 'unbind_software', 'material_scan'
+]);
+
+function hasOwn(obj, key) { return !!obj && Object.prototype.hasOwnProperty.call(obj, key); }
+
+function shanghaiToday(now) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(now || new Date());
+  } catch (_) {
+    const d = now || new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+}
+
+function emptySchedule() {
+  return { state: 'unconfirmed', planned_start: null, planned_end: null, actual_start: null, actual_end: null };
+}
+
+function cloneSchedule(raw) {
+  const s = raw && typeof raw === 'object' ? raw : {};
+  return {
+    state: SCHEDULE_STATES.has(s.state) ? s.state : 'unconfirmed',
+    planned_start: s.planned_start || null,
+    planned_end: s.planned_end || null,
+    actual_start: s.actual_start || null,
+    actual_end: s.actual_end || null
+  };
+}
+
+function validISODate(raw) {
+  if (raw == null || raw === '') return { value: null };
+  const s = String(raw).trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return { error: '必须是 YYYY-MM-DD，或 null 清空' };
+  const y = +m[1], mo = +m[2], d = +m[3];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) {
+    return { error: '不是有效日期：' + s };
+  }
+  return { value: s };
+}
+
+function normalizeSchedule(raw, current) {
+  if (raw === null) return { schedule: emptySchedule(), cleared: true };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'schedule 必须是对象或 null' };
+  const next = cloneSchedule(current);
+  if (hasOwn(raw, 'state')) {
+    if (!SCHEDULE_STATES.has(raw.state)) return { error: 'schedule.state 只能是 unconfirmed、planned、active、done' };
+    next.state = raw.state;
+  }
+  for (const key of ['planned_start', 'planned_end', 'actual_start', 'actual_end']) {
+    if (!hasOwn(raw, key)) continue;
+    const parsed = validISODate(raw[key]);
+    if (parsed.error) return { error: key + '：' + parsed.error };
+    next[key] = parsed.value;
+  }
+  const anyDate = next.planned_start || next.planned_end || next.actual_start || next.actual_end;
+  if (next.state === 'unconfirmed' && anyDate) {
+    return { error: '周期未核定时不能带起止日期。请把 state 设为 planned、active 或 done，或把日期传 null' };
+  }
+  if (next.state === 'unconfirmed') {
+    next.planned_start = null;
+    next.planned_end = null;
+    next.actual_start = null;
+    next.actual_end = null;
+  }
+  return { schedule: next };
+}
+
+function scheduleView(p) {
+  const schedule = cloneSchedule(p && p.schedule);
+  const legacy = String((p && (p.periodLegacy || p.period)) || '').trim();
+  const dated = schedule.state !== 'unconfirmed' && (schedule.planned_start || schedule.planned_end || schedule.actual_start || schedule.actual_end);
+  let label = '周期待确认';
+  if (schedule.state === 'planned' && dated) label = '已计划 ' + [schedule.planned_start, schedule.planned_end].filter(Boolean).join(' — ');
+  else if (schedule.state === 'active' && dated) label = '进行中 ' + [schedule.actual_start || schedule.planned_start, schedule.planned_end].filter(Boolean).join(' — ');
+  else if (schedule.state === 'done' && dated) label = '已完成 ' + [schedule.actual_start, schedule.actual_end].filter(Boolean).join(' — ');
+  else if (schedule.state === 'planned') label = '已计划（日期未填全）';
+  else if (schedule.state === 'active') label = '进行中（日期未填全）';
+  else if (schedule.state === 'done') label = '已完成（日期未填全）';
+  return { schedule, label, legacy: legacy && legacy !== '—' ? legacy : '', confirmed: schedule.state !== 'unconfirmed' && !!dated };
+}
+
+function normalizeCover(raw) {
+  if (raw === null) return { cover: { kind: 'builtin', resource: '', alt: '', fit: 'contain', focus: '' }, cleared: true };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'cover 必须是对象或 null' };
+  const kind = String(raw.kind || raw.type || 'builtin');
+  if (!COVER_KINDS.has(kind)) return { error: 'cover.kind 只能是 builtin、local_reference 或 none' };
+  const fit = String(raw.fit || 'contain');
+  if (!COVER_FITS.has(fit)) return { error: 'cover.fit 只能是 contain 或 cover' };
+  const resource = String(raw.resource != null ? raw.resource : (raw.resource_id != null ? raw.resource_id : (raw.path != null ? raw.path : ''))).trim();
+  if (kind === 'local_reference' && !resource) return { error: '本地封面需要 resource 路径。接口不上传图片' };
+  if (/^https?:\/\//i.test(resource)) return { error: '封面只接受本地路径，不会发到网络' };
+  return {
+    cover: {
+      kind,
+      resource,
+      alt: String(raw.alt || '').trim().slice(0, 200),
+      fit,
+      focus: String(raw.focus || '').trim().slice(0, 40)
+    }
+  };
+}
+
+function coverView(p) {
+  const c = p && p.cover && typeof p.cover === 'object' ? p.cover : {};
+  const kind = COVER_KINDS.has(c.kind) ? c.kind : 'builtin';
+  const resource = String(c.resource || '');
+  const unavailable = kind === 'local_reference' && !resource;
+  return {
+    kind,
+    resource,
+    alt: String(c.alt || ''),
+    fit: COVER_FITS.has(c.fit) ? c.fit : 'contain',
+    focus: String(c.focus || ''),
+    thumb: (p && p.thumb) || 'cfd',
+    unavailable
+  };
+}
+
+function milestoneStats(p) {
+  const nodes = Array.isArray(p && p.nodes) ? p.nodes.filter(n => n && n.l) : [];
+  const total = nodes.length;
+  const done = nodes.filter(n => n.s === 'done').length;
+  if (!total) {
+    return { done: 0, total: 0, percent: null, unknown: true, label: '进度未知（没有里程碑）', basis: '没有节点，不记为 0%' };
+  }
+  const percent = Math.round(done / total * 100);
+  return {
+    done, total, percent, unknown: false,
+    label: `里程碑 ${done}/${total}，约 ${percent}%`,
+    basis: '等权：已完成节点数 / 总节点数。节点完成表示该节点交付标准已满足，不是整个课题结论已验证'
+  };
+}
+
+function ownerView(p) {
+  const owner = (p && p.owner) || {};
+  const name = String(owner.n || '').trim();
+  const confirmed = owner.confirmed === true && !OWNER_PLACEHOLDERS.has(name);
+  const placeholder = !name || OWNER_PLACEHOLDERS.has(name) || owner.confirmed === false;
+  const members = Array.isArray(p && p.members) ? p.members : [];
+  const confirmedMembers = members.filter(m => m && m.confirmed === true && !OWNER_PLACEHOLDERS.has(String(m.n || '').trim()));
+  return {
+    name: confirmed ? name : (placeholder ? '' : name),
+    label: placeholder || !name ? '待指定' : (confirmed ? name : name),
+    confirmed: !!confirmed,
+    pending: !confirmed,
+    role: placeholder ? '' : String(owner.r || ''),
+    agent: String(owner.agent || ''),
+    confirmed_count: confirmedMembers.length + (confirmed ? 0 : 0),
+    note: placeholder || !name ? '尚未绑定具体人员，默认称呼不计入已确认成员' : (confirmed ? '' : '姓名未标记为已确认，不计入已确认成员数')
+  };
+}
+
+function materialDirExcluded(name) {
+  return /曹妃甸|rag[_-]?snowz|RAG引擎|知识库引擎/i.test(String(name || ''));
+}
+
+function materialStatusView(projectId) {
+  const registeredFiles = typeof materialsIn === 'function' ? materialsIn(projectId).length : 0;
+  const registeredDirs = typeof projectFolderCount === 'function' ? projectFolderCount(projectId) : 0;
+  const scan = (DB && DB.materialScans && DB.materialScans[projectId]) || {};
+  const state = SCAN_STATES.has(scan.state) ? scan.state : 'unscanned';
+  const outcomes = typeof outcomesForProject === 'function' ? outcomesForProject(projectId).length : 0;
+  let label = '已关联目录，尚未建立材料索引';
+  if (state === 'scanning') label = '正在更新材料列表';
+  else if (state === 'empty') label = '此目录当前没有符合条件的文件';
+  else if (state === 'ok') label = `已发现 ${Number(scan.files) || 0} 项，关联成果 ${outcomes} 项`;
+  else if (state === 'failed') label = scan.error ? `无法读取目录：${scan.error}` : '无法读取目录，请检查路径或权限';
+  else if (state === 'junction_broken') label = '原位关联目标不可用';
+  else if (state === 'excluded') label = '该目录按隐私规则跳过';
+  else if (state === 'stale') label = '材料可能已变化，可刷新';
+  const proj = typeof P === 'function' ? P(projectId) : null;
+  return {
+    state,
+    label,
+    registered_files: registeredFiles,
+    registered_dirs: registeredDirs,
+    scanned_files: (state === 'ok' || state === 'empty' || state === 'stale') ? (Number(scan.files) || 0) : null,
+    error: scan.error || '',
+    entry: proj ? (proj.folder || proj.name || '') : '',
+    target: (proj && proj.junctionTarget) || scan.target || '',
+    at: scan.at || ''
+  };
+}
+
+const UNSCHEDULED_DUE = /^(待确认|待定|未设置|待排期|—|-|无|tbd|n\/a)?$/i;
+
+function parseTaskDate(raw, today) {
+  const s = String(raw == null ? '' : raw).trim();
+  const day = today || shanghaiToday();
+  if (!s || UNSCHEDULED_DUE.test(s)) return { kind: 'unscheduled', label: '待排期', iso: '' };
+  if (/今天|今日/.test(s)) return { kind: 'today', label: '今天到期', iso: day };
+  let iso = '';
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) iso = `${m[1]}-${m[2]}-${m[3]}`;
+  if (!iso) {
+    m = s.match(/^(\d{4})[./](\d{1,2})[./](\d{1,2})$/);
+    if (m) iso = `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+  }
+  if (!iso) {
+    m = s.match(/^(\d{1,2})-(\d{1,2})$/);
+    if (m) iso = `${day.slice(0, 4)}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
+  }
+  if (!iso) return { kind: 'unscheduled', label: '待排期', iso: '', raw: s };
+  const check = validISODate(iso);
+  if (check.error) return { kind: 'unscheduled', label: '待排期', iso: '', raw: s };
+  if (iso === day) return { kind: 'today', label: '今天到期', iso };
+  if (iso < day) return { kind: 'overdue', label: '逾期 ' + iso, iso };
+  return { kind: 'future', label: iso, iso };
+}
+
+function taskScheduleStats(tasks, now) {
+  const today = shanghaiToday(now);
+  const list = Array.isArray(tasks) ? tasks : [];
+  const stats = { open: 0, dueToday: 0, overdue: 0, unscheduled: 0, scheduled: 0, done: 0, today, scope: '未完成项目任务。今日到期按 Asia/Shanghai。待排期不计入今日到期。' };
+  list.forEach(t => {
+    if (!t) return;
+    if (t.st === 'done') { stats.done += 1; return; }
+    stats.open += 1;
+    const due = parseTaskDate(t.due, today);
+    if (due.kind === 'today') stats.dueToday += 1;
+    else if (due.kind === 'overdue') stats.overdue += 1;
+    else if (due.kind === 'future') stats.scheduled += 1;
+    else stats.unscheduled += 1;
+  });
+  return stats;
+}
+
+function outcomesForProject(projectId) {
+  const all = (DB && Array.isArray(DB.outcomes)) ? DB.outcomes : [];
+  return all.filter(o => o && Array.isArray(o.project_ids) && o.project_ids.includes(projectId));
+}
+
+function todosForProject(projectId) {
+  return (DB && Array.isArray(DB.todos) ? DB.todos : []).filter(t => t && t.projectId && t.projectId === projectId);
+}
+
+function globalTodos() {
+  return (DB && Array.isArray(DB.todos) ? DB.todos : []).filter(t => t && !t.projectId);
+}
+
+function activityPlain(a) {
+  return String((a && (a.t || a.text)) || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function activitiesForProject(projectId) {
+  return (DB && Array.isArray(DB.activities) ? DB.activities : []).filter(a => {
+    if (!a || !a.projectId || a.projectId !== projectId) return false;
+    if (a.kind === 'switch' || a.kind === 'nav' || a.kind === 'view') return false;
+    return !/切换工作区|进入项目|当前工作区/.test(activityPlain(a));
+  });
+}
+
+function groupActivities(list) {
+  const groups = [];
+  const byBatch = new Map();
+  (list || []).forEach(a => {
+    const batch = a && a.batchId ? String(a.batchId) : '';
+    if (batch) {
+      if (!byBatch.has(batch)) {
+        const g = { batchId: batch, projectId: a.projectId || '', items: [] };
+        byBatch.set(batch, g);
+        groups.push(g);
+      }
+      byBatch.get(batch).items.push(a);
+    } else {
+      groups.push({ batchId: '', projectId: (a && a.projectId) || '', items: [a] });
+    }
+  });
+  groups.forEach(g => {
+    if (g.items.length < 2) {
+      g.summary = activityPlain(g.items[0]);
+      return;
+    }
+    const creates = g.items.filter(i => /新建任务|新增任务|创建任务/.test(activityPlain(i))).length;
+    g.summary = creates
+      ? `项目资料已更新，新增 ${creates} 项任务`
+      : `一批更新（${g.items.length} 条，可展开）`;
+  });
+  return groups;
+}
+
+function newOutcomeId() {
+  return 'oc' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function publicOutcome(o) {
+  if (!o) return null;
+  return {
+    id: o.id,
+    project_ids: (o.project_ids || []).slice(),
+    type: o.type || 'other',
+    title: o.title || '',
+    file: o.file || '',
+    version: o.version || '',
+    status: o.status || 'draft',
+    note: o.note || '',
+    source: o.source || '',
+    current: o.current !== false,
+    previous_id: o.previous_id || '',
+    updated_at: o.updated_at || ''
+  };
+}
+
+function ensureOutcomeStore() {
+  if (!DB.outcomes || !Array.isArray(DB.outcomes)) DB.outcomes = [];
+  if (!DB.materialScans || typeof DB.materialScans !== 'object') DB.materialScans = {};
+}
+
+function linkOutcomeRecord(project, spec) {
+  ensureOutcomeStore();
+  if (!spec || typeof spec !== 'object') return { error: 'link_outcome 必须是对象' };
+  const key = String(spec.idempotency_key || spec.client_key || '').trim();
+  if (key) {
+    const exist = DB.outcomes.find(o => o && o.idempotency_key === key);
+    if (exist) {
+      if (!exist.project_ids.includes(project.id)) exist.project_ids.push(project.id);
+      return { outcome: exist, created: false };
+    }
+  }
+  const title = String(spec.title || '').trim();
+  const file = String(spec.file || spec.path || '').trim();
+  if (!title) return { error: '关联成果需要 title' };
+  if (!file) return { error: '关联成果需要原位 file 路径，不会复制或上传文件' };
+  const type = OUTCOME_TYPES[String(spec.type || 'other')] || 'other';
+  const status = OUTCOME_STATUS[String(spec.status || 'draft')] || '';
+  if (!status) return { error: '成果状态只能是草稿、待复核、已确认、已提交' };
+  const same = DB.outcomes.find(o => o && o.file === file && o.title === title && (o.project_ids || []).includes(project.id));
+  if (same) return { outcome: same, created: false };
+  const outcome = {
+    id: spec.id ? String(spec.id) : newOutcomeId(),
+    idempotency_key: key,
+    project_ids: [project.id],
+    type, title, file,
+    version: String(spec.version || '').slice(0, 80),
+    status,
+    note: String(spec.note || spec.evidence || '').slice(0, 500),
+    source: String(spec.source || 'linked').slice(0, 80),
+    current: spec.current !== false,
+    previous_id: spec.previous_id ? String(spec.previous_id) : '',
+    updated_at: new Date().toISOString()
+  };
+  if (outcome.previous_id) {
+    const prev = DB.outcomes.find(o => o.id === outcome.previous_id);
+    if (prev && outcome.current) prev.current = false;
+  }
+  DB.outcomes.unshift(outcome);
+  return { outcome, created: true };
+}
+
+function updateOutcomeRecord(project, spec) {
+  ensureOutcomeStore();
+  if (!spec || !spec.id) return { error: 'update_outcome 需要 id' };
+  const outcome = DB.outcomes.find(o => o.id === spec.id);
+  if (!outcome) return { error: `未找到成果 ${spec.id}` };
+  if (spec.title != null) outcome.title = String(spec.title).trim().slice(0, 200);
+  if (spec.file != null || spec.path != null) outcome.file = String(spec.file != null ? spec.file : spec.path).trim();
+  if (spec.type != null) {
+    const type = OUTCOME_TYPES[String(spec.type)];
+    if (!type) return { error: '成果类型无法识别' };
+    outcome.type = type;
+  }
+  if (spec.status != null) {
+    const status = OUTCOME_STATUS[String(spec.status)];
+    if (!status) return { error: '成果状态只能是草稿、待复核、已确认、已提交' };
+    outcome.status = status;
+  }
+  if (spec.version != null) outcome.version = String(spec.version).slice(0, 80);
+  if (spec.note != null) outcome.note = String(spec.note).slice(0, 500);
+  if (spec.current != null) outcome.current = !!spec.current;
+  if (spec.previous_id != null) outcome.previous_id = String(spec.previous_id || '');
+  if (outcome.current && outcome.previous_id) {
+    const prev = DB.outcomes.find(o => o.id === outcome.previous_id);
+    if (prev) prev.current = false;
+  }
+  if (!(outcome.project_ids || []).includes(project.id)) outcome.project_ids.push(project.id);
+  outcome.updated_at = new Date().toISOString();
+  return { outcome, created: false };
+}
+
+function unlinkOutcomeRecord(project, spec) {
+  ensureOutcomeStore();
+  const id = spec && (spec.id || spec);
+  const outcome = DB.outcomes.find(o => o.id === id);
+  if (!outcome) return { error: `未找到成果 ${id}` };
+  outcome.project_ids = (outcome.project_ids || []).filter(x => x !== project.id);
+  return { outcome, unlinked: true, file_kept: true, file: outcome.file || '' };
+}
+
+function bindSoftwareRecord(project, spec) {
+  if (!spec || typeof spec !== 'object') return { error: 'bind_software 必须是对象' };
+  const name = String(spec.name || '').trim();
+  if (!name) return { error: 'bind_software 需要 name' };
+  if (!Array.isArray(DB.apps)) DB.apps = [];
+  let app = DB.apps.find(a => a && (a.n === name || a.displayName === name));
+  if (!app) {
+    app = {
+      n: name, displayName: name, ico: name.slice(0, 2),
+      kind: 'ref', args: [], cwd: '', path: '', icon: '',
+      source: 'binding', run: null, bound: project.id, pending: false,
+      available: 'unknown'
+    };
+    DB.apps.push(app);
+  }
+  app.bound = project.id;
+  app.run = null;
+  if (spec.path != null) app.path = String(spec.path);
+  if (spec.available != null) {
+    const ok = ['unknown', 'ready', 'missing'].includes(spec.available) ? spec.available : '';
+    if (!ok) return { error: 'software.available 只能是 unknown、ready、missing' };
+    app.available = ok;
+  } else if (!app.available) app.available = 'unknown';
+  return { app, launched: false };
+}
+
+function normalizeMaterialScan(project, raw) {
+  if (!raw || typeof raw !== 'object') return { error: 'material_scan 必须是对象' };
+  const state = String(raw.state || '');
+  if (!SCAN_STATES.has(state) || state === 'unscanned') {
+    return { error: 'material_scan.state 只能是 scanning、ok、empty、failed、junction_broken、excluded、stale' };
+  }
+  const filesIn = Array.isArray(raw.dirs) ? raw.dirs : [];
+  let files = 0;
+  let excluded = 0;
+  const seen = new Set();
+  filesIn.forEach(d => {
+    const name = String((d && (d.dir || d.name)) || '');
+    if (materialDirExcluded(name) || (d && d.excluded)) { excluded += 1; return; }
+    const target = String((d && (d.target || d.real)) || name);
+    if (target && seen.has(target)) return;
+    if (target) seen.add(target);
+    if (d && d.junction_broken) return;
+    files += Number(d && (d.count != null ? d.count : (Array.isArray(d.files) ? d.files.length : 0))) || 0;
+  });
+  if (!filesIn.length && raw.files != null) files = Math.max(0, Number(raw.files) || 0);
+  let nextState = state;
+  if ((state === 'ok' || state === 'scanning') && files === 0 && excluded > 0 && !raw.error) nextState = 'excluded';
+  else if ((state === 'ok' || state === 'scanning') && files === 0 && excluded === 0 && !raw.error) nextState = 'empty';
+  if (state === 'failed' && !raw.error) return { error: '扫描失败时必须给出 error' };
+  return {
+    scan: {
+      state: nextState,
+      files,
+      dirs: filesIn.length,
+      excluded,
+      error: String(raw.error || ''),
+      target: String(raw.target || ''),
+      at: new Date().toISOString()
+    }
+  };
+}
+
+function milestoneProgressChange(before, after) {
+  if (!before || !after || before.unknown || after.unknown) return null;
+  if (before.done === after.done && before.total === after.total) return null;
+  const direction = after.percent < before.percent ? '比例下降' : (after.percent > before.percent ? '比例上升' : '比例不变');
+  return {
+    from: { done: before.done, total: before.total, percent: before.percent },
+    to: { done: after.done, total: after.total, percent: after.percent },
+    reason: `节点由 ${before.total} 个变为 ${after.total} 个，已完成 ${before.done} → ${after.done}。等权${direction}（${before.percent}% → ${after.percent}%）。这是里程碑口径变化，不是科研结论倒退或推进。`
+  };
+}
+
+function applyProjectPatch(p, args, opts) {
+  const dry = !!(opts && opts.dryRun);
+  if (!p) return { ok: false, code: 'not_found', error: '项目不存在' };
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return { ok: false, error: '请求体必须是对象' };
+  const unknown = Object.keys(args).filter(k => !PROJECT_PATCH_KEYS.has(k));
+  if (unknown.length) {
+    return { ok: false, code: 'invalid', error: `未识别字段：${unknown.join('、')}。未写入`, unknown_fields: unknown };
+  }
+  if (hasOwn(args, 'revision')) {
+    const cur = p.revision || 1;
+    if (String(args.revision) !== String(cur)) {
+      return {
+        ok: false, code: 'conflict', saved: false,
+        error: `修订冲突：当前修订是 ${cur}，请求写的是 ${args.revision}。未覆盖新内容`,
+        revision: cur
+      };
+    }
+  }
+  const errors = [];
+  const has = (k) => hasOwn(args, k);
+  let progressRejected = false;
+  let nextProgress = null;
+  if (has('progress')) {
+    if (args.progress == null) {
+      progressRejected = true;
+      errors.push('进度 null 不能当清空。要回到自动里程碑请传 progress_mode:"auto"；要写百分比请传 0–100 的整数');
+    } else {
+      const v = parseProjectProgress(args.progress);
+      if (v == null) {
+        progressRejected = true;
+        errors.push('进度不是 0–100 的有效数字，未保存（不会改成 50%）');
+      } else nextProgress = v;
+    }
+  }
+  let settled = null;
+  if (has('nodes')) {
+    const parsed = parseFlowNodes(args.nodes);
+    if (parsed.error) errors.push(parsed.error);
+    else settled = settleFlowNodes(p.nodes, parsed.nodes);
+  }
+  let nextFolder = null;
+  if (has('folder') || has('folder_name')) {
+    const fromFolder = has('folder') ? parseProjectFolder(args.folder) : null;
+    const fromName = has('folder_name') ? parseProjectFolder(args.folder_name) : null;
+    if (fromFolder && fromFolder.error) errors.push(fromFolder.error);
+    if (fromName && fromName.error) errors.push(fromName.error);
+    if (fromFolder && fromName && !fromFolder.error && !fromName.error && fromFolder.folder !== fromName.folder) {
+      errors.push('folder 与 folder_name 不一致');
+    }
+    if (fromFolder && !fromFolder.error || fromName && !fromName.error) {
+      nextFolder = ((fromFolder && !fromFolder.error) ? fromFolder : fromName).folder;
+      if (DB.projects.some(x => x.id !== p.id && (x.folder || x.name) === nextFolder)) {
+        errors.push(`工作区里已有文件夹「${nextFolder}」，请换一个相对名`);
+      }
+    }
+  }
+  let nextPlan = null;
+  if (has('plan') || has('detailed_plan')) {
+    const fromPlan = has('plan') ? parseProjectPlan(args.plan) : null;
+    const fromAlias = has('detailed_plan') ? parseProjectPlan(args.detailed_plan) : null;
+    if (fromPlan && fromPlan.error) errors.push(fromPlan.error);
+    if (fromAlias && fromAlias.error) errors.push(fromAlias.error);
+    if (fromPlan && fromAlias && !fromPlan.error && !fromAlias.error && JSON.stringify(fromPlan.plan) !== JSON.stringify(fromAlias.plan)) {
+      errors.push('plan 与 detailed_plan 不一致');
+    }
+    if ((fromPlan && !fromPlan.error) || (fromAlias && !fromAlias.error)) nextPlan = (fromPlan && !fromPlan.error ? fromPlan : fromAlias).plan;
+  }
+  let nextSchedule = null;
+  if (has('schedule')) {
+    const parsed = normalizeSchedule(args.schedule, p.schedule);
+    if (parsed.error) errors.push(parsed.error);
+    else nextSchedule = parsed.schedule;
+  }
+  let clearPeriod = false;
+  let nextPeriod = null;
+  if (has('period')) {
+    if (args.period == null || String(args.period).trim() === '' || String(args.period).trim() === '—') {
+      clearPeriod = true;
+      if (!nextSchedule) nextSchedule = emptySchedule();
+    } else {
+      nextPeriod = String(args.period).trim().slice(0, 80);
+      if (!has('schedule')) {
+        errors.push('period 文本不能当成已核定周期。请改传 schedule（state 与 YYYY-MM-DD），或传空字符串只做清空');
+      }
+    }
+  }
+  let nextCover = null;
+  if (has('cover')) {
+    const parsed = normalizeCover(args.cover);
+    if (parsed.error) errors.push(parsed.error);
+    else nextCover = parsed.cover;
+  }
+  let progressMode = null;
+  let progressNote = null;
+  if (has('progress_mode')) {
+    if (args.progress_mode !== 'auto' && args.progress_mode !== 'manual') errors.push('progress_mode 只能是 auto 或 manual');
+    else progressMode = args.progress_mode;
+  }
+  if (has('progress_note')) progressNote = String(args.progress_note == null ? '' : args.progress_note).trim().slice(0, 400);
+  if (progressMode === 'manual') {
+    const note = progressNote != null ? progressNote : String(p.progressNote || '').trim();
+    if (!note) errors.push('手动进度必须填写 progress_note，不能无说明覆盖自动里程碑');
+    if (nextProgress == null && !(typeof p.progress === 'number' && Number.isFinite(p.progress))) {
+      errors.push('手动进度需要一个 0–100 的整数');
+    }
+  }
+  let nextOwner = null;
+  if (has('owner')) {
+    if (args.owner === null) nextOwner = { n: '', r: '', agent: '', confirmed: false };
+    else if (!args.owner || typeof args.owner !== 'object') errors.push('owner 必须是对象或 null');
+    else {
+      const name = String(args.owner.name != null ? args.owner.name : (args.owner.n || '')).trim();
+      nextOwner = {
+        n: name,
+        r: String(args.owner.role != null ? args.owner.role : (args.owner.r || '')).trim(),
+        agent: String(args.owner.agent || '').trim(),
+        confirmed: args.owner.confirmed === true && !!name && !OWNER_PLACEHOLDERS.has(name)
+      };
+    }
+  }
+  let nextTools = null;
+  if (has('suggested_tools')) {
+    if (!Array.isArray(args.suggested_tools)) errors.push('suggested_tools 必须是字符串数组');
+    else nextTools = args.suggested_tools.map(x => String(x || '').trim()).filter(Boolean).slice(0, 40);
+  }
+  let junction = null;
+  if (has('junction_target')) {
+    if (args.junction_target == null || String(args.junction_target).trim() === '') junction = '';
+    else junction = String(args.junction_target).trim().slice(0, 260);
+  }
+  const stageText = has('stage') ? String(args.stage == null ? '' : args.stage).trim() : '';
+  if (has('stage') && !stageText) errors.push('stage 为空不会改当前阶段。要改节点请传 nodes');
+
+  if (errors.length || progressRejected) {
+    return {
+      ok: false,
+      code: 'invalid',
+      saved: false,
+      error: errors[0] || '进度不是 0–100 的有效数字，未保存（不会改成 50%）',
+      errors,
+      progress_unchanged: progressRejected,
+      unknown_fields: []
+    };
+  }
+
+  const beforeMile = milestoneStats(p);
+  const changed = [];
+  const changes = [];
+  const warnings = [];
+  let outcomeResult = null;
+  let softwareResult = null;
+  let scanResult = null;
+
+  const will = settled || nextFolder != null || nextPlan != null || nextProgress != null
+    || stageText || has('next_stage') || has('goal') || has('subtitle') || has('intro')
+    || has('display_name') || has('short_name') || nextSchedule || nextCover || nextOwner
+    || nextTools || junction != null || progressMode
+    || has('link_outcome') || has('update_outcome') || has('unlink_outcome')
+    || has('bind_software') || has('unbind_software') || has('material_scan')
+    || clearPeriod;
+  if (!will) return { ok: false, saved: false, error: '没有提供任何要修改的字段' };
+
+  if (has('link_outcome')) {
+    const spec = args.link_outcome;
+    if (!spec || typeof spec !== 'object' || !String(spec.title || '').trim() || !String(spec.file || spec.path || '').trim()) {
+      return { ok: false, code: 'invalid', saved: false, error: '关联成果需要 title 和原位 file，不会复制或上传' };
+    }
+  }
+  if (has('update_outcome')) {
+    if (!args.update_outcome || !args.update_outcome.id) return { ok: false, code: 'invalid', saved: false, error: 'update_outcome 需要 id' };
+    ensureOutcomeStore();
+    if (!DB.outcomes.find(o => o.id === args.update_outcome.id)) {
+      return { ok: false, code: 'invalid', saved: false, error: `未找到成果 ${args.update_outcome.id}` };
+    }
+  }
+  if (has('unlink_outcome')) {
+    const id = args.unlink_outcome && (args.unlink_outcome.id || args.unlink_outcome);
+    if (!id) return { ok: false, code: 'invalid', saved: false, error: 'unlink_outcome 需要 id' };
+    ensureOutcomeStore();
+    if (!DB.outcomes.find(o => o.id === id)) return { ok: false, code: 'invalid', saved: false, error: `未找到成果 ${id}` };
+  }
+  if (has('bind_software')) {
+    if (!args.bind_software || !String(args.bind_software.name || '').trim()) {
+      return { ok: false, code: 'invalid', saved: false, error: 'bind_software 需要 name。绑定不会启动程序' };
+    }
+  }
+  if (has('unbind_software')) {
+    const name = String((args.unbind_software && args.unbind_software.name) || args.unbind_software || '').trim();
+    const app = (DB.apps || []).find(a => a && (a.n === name || a.displayName === name) && a.bound === p.id);
+    if (!app) return { ok: false, code: 'invalid', saved: false, error: `本项目没有绑定软件「${name}」` };
+  }
+  if (has('material_scan')) {
+    scanResult = normalizeMaterialScan(p, args.material_scan);
+    if (scanResult.error) return { ok: false, code: 'invalid', saved: false, error: scanResult.error };
+  }
+
+  if (dry) {
+    const diff = {};
+    if (settled) diff.nodes = settled.nodes.map(n => n.l);
+    if (nextFolder != null) diff.folder = nextFolder;
+    if (nextPlan != null) diff.plan = nextPlan;
+    if (nextProgress != null) diff.progress = nextProgress;
+    if (stageText) diff.stage = stageText;
+    if (has('next_stage')) diff.next_stage = String(args.next_stage == null ? '' : args.next_stage);
+    if (has('goal')) diff.goal = String(args.goal == null ? '' : args.goal);
+    if (has('subtitle')) diff.subtitle = String(args.subtitle == null ? '' : args.subtitle);
+    if (has('intro')) diff.intro = String(args.intro == null ? '' : args.intro);
+    if (has('display_name')) diff.display_name = String(args.display_name == null ? '' : args.display_name);
+    if (has('short_name')) diff.short_name = String(args.short_name == null ? '' : args.short_name);
+    if (nextSchedule) diff.schedule = nextSchedule;
+    if (nextCover) diff.cover = nextCover;
+    if (nextOwner) diff.owner = nextOwner;
+    if (nextTools) diff.suggested_tools = nextTools;
+    if (junction != null) diff.junction_target = junction;
+    if (progressMode) diff.progress_mode = progressMode;
+    if (outcomeResult) diff.outcome = publicOutcome(outcomeResult.outcome);
+    if (softwareResult) diff.software = { name: softwareResult.app.n, bound: has('unbind_software') ? '' : p.id, launched: false };
+    if (scanResult) diff.material_scan = scanResult.scan;
+    if (has('link_outcome')) diff.link_outcome = { title: String(args.link_outcome.title || ''), file: String(args.link_outcome.file || args.link_outcome.path || '') };
+    if (has('update_outcome')) diff.update_outcome = args.update_outcome.id;
+    if (has('unlink_outcome')) diff.unlink_outcome = (args.unlink_outcome && args.unlink_outcome.id) || args.unlink_outcome;
+    if (has('bind_software')) diff.bind_software = { name: String(args.bind_software.name), launched: false };
+    if (has('unbind_software')) diff.unbind_software = String((args.unbind_software && args.unbind_software.name) || args.unbind_software || '');
+    return {
+      ok: true, dryRun: true, saved: false, project_id: p.id,
+      changed_fields: Object.keys(diff),
+      diff, warnings, revision: p.revision || 1,
+      message: '预览：已完成校验和差异计算，项目、任务、修订和磁盘都没有改'
+    };
+  }
+
+  const beforeProgress = p.progress;
+  if (has('link_outcome')) {
+    outcomeResult = linkOutcomeRecord(p, args.link_outcome);
+    if (outcomeResult.error) return { ok: false, code: 'invalid', saved: false, error: outcomeResult.error };
+  }
+  if (has('update_outcome')) {
+    outcomeResult = updateOutcomeRecord(p, args.update_outcome);
+    if (outcomeResult.error) return { ok: false, code: 'invalid', saved: false, error: outcomeResult.error };
+  }
+  if (has('unlink_outcome')) {
+    outcomeResult = unlinkOutcomeRecord(p, args.unlink_outcome);
+    if (outcomeResult.error) return { ok: false, code: 'invalid', saved: false, error: outcomeResult.error };
+  }
+  if (has('bind_software')) {
+    softwareResult = bindSoftwareRecord(p, args.bind_software);
+    if (softwareResult.error) return { ok: false, code: 'invalid', saved: false, error: softwareResult.error };
+  }
+  if (has('unbind_software')) {
+    const name = String((args.unbind_software && args.unbind_software.name) || args.unbind_software || '').trim();
+    const app = (DB.apps || []).find(a => a && (a.n === name || a.displayName === name) && a.bound === p.id);
+    softwareResult = { app, name };
+  }
+  if (settled) {
+    p.nodes = settled.nodes;
+    p.flow = settled.flow;
+    p.stage = settled.stage || p.stage;
+    const modeNow = progressMode || p.progressMode || 'auto';
+    if (modeNow !== 'manual' && nextProgress == null) p.progress = settled.progress;
+    changed.push('nodes');
+    changes.push(`流程节点→${settled.nodes.length} 个`);
+  }
+  if (stageText) {
+    const renamed = renameCurrentFlowNode(p, stageText);
+    if (!renamed) p.stage = stageText;
+    changed.push('stage');
+    changes.push(`当前阶段→${p.stage}`);
+  }
+  if (progressMode === 'auto') {
+    p.progressMode = 'auto';
+    p.progressNote = '';
+    if (nextProgress == null && !settled) {
+      const mile = milestoneStats(p);
+      if (!mile.unknown && mile.percent != null) p.progress = mile.percent;
+    }
+    changed.push('progress_mode');
+    changes.push('进度改为自动里程碑');
+  }
+  if (progressMode === 'manual') {
+    p.progressMode = 'manual';
+    p.progressNote = progressNote != null ? progressNote : String(p.progressNote || '');
+    changed.push('progress_mode');
+    changes.push('进度改为手动');
+  } else if (progressNote != null && p.progressMode === 'manual') {
+    p.progressNote = progressNote;
+    changed.push('progress_note');
+  }
+  if (nextProgress != null) {
+    p.progress = nextProgress;
+    changed.push('progress');
+    changes.push(`进度→${nextProgress}%`);
+    if (!progressMode && p.progressMode !== 'manual') {
+      warnings.push('写入了显式百分比，但没有 progress_mode:"manual"。下次只改节点时，自动模式仍会按里程碑重算');
+    }
+  }
+  if (has('next_stage')) {
+    p.next = String(args.next_stage == null ? '' : args.next_stage).trim().slice(0, 200);
+    changed.push('next_stage');
+    changes.push(`下一阶段→${p.next || '（空）'}`);
+  }
+  if (has('goal')) {
+    p.goal = String(args.goal == null ? '' : args.goal).trim().slice(0, 2000);
+    changed.push('goal');
+    changes.push('研究目标已更新');
+  }
+  if (has('subtitle')) {
+    p.subtitle = String(args.subtitle == null ? '' : args.subtitle).trim().slice(0, 400);
+    changed.push('subtitle');
+    changes.push('描述已更新');
+  }
+  if (has('intro')) {
+    p.intro = String(args.intro == null ? '' : args.intro).trim().slice(0, 4000);
+    changed.push('intro');
+    changes.push('长简介已更新');
+  }
+  if (nextFolder != null) {
+    p.folder = nextFolder;
+    changed.push('folder');
+    changes.push(`文件夹→${nextFolder}`);
+  }
+  if (nextPlan != null) {
+    p.plan = nextPlan;
+    changed.push('plan');
+    changes.push(nextPlan.length ? `详细计划→${nextPlan.length} 条` : '详细计划已清空');
+  }
+  if (has('display_name')) {
+    const dn = String(args.display_name == null ? '' : args.display_name).trim().slice(0, 80);
+    if (!dn || dn === p.name) { delete p.displayName; changes.push('显示名恢复为项目名称'); }
+    else { p.displayName = dn; changes.push('显示名已更新'); }
+    changed.push('display_name');
+  }
+  if (has('short_name')) {
+    const sn = String(args.short_name == null ? '' : args.short_name).trim().slice(0, 40);
+    if (!sn) delete p.shortName;
+    else p.shortName = sn;
+    changed.push('short_name');
+    changes.push(sn ? '短名称已更新' : '短名称已清空');
+  }
+  if (nextSchedule) {
+    p.schedule = nextSchedule;
+    changed.push('schedule');
+    changes.push(scheduleView(p).label);
+  }
+  if (clearPeriod) {
+    p.period = '';
+    p.periodLegacy = '';
+    changed.push('period');
+  } else if (nextPeriod != null) {
+    p.periodLegacy = nextPeriod;
+    p.period = nextPeriod;
+    changed.push('period');
+    warnings.push('period 只作为历史文本保留，界面以 schedule 为准');
+  }
+  if (nextCover) {
+    p.cover = nextCover;
+    changed.push('cover');
+    changes.push(nextCover.kind === 'builtin' ? '封面恢复为类型占位' : '封面已更新');
+  }
+  if (nextOwner) {
+    p.owner = nextOwner;
+    changed.push('owner');
+    changes.push(nextOwner.confirmed ? `负责人→${nextOwner.n}` : '负责人改为待指定');
+  }
+  if (nextTools) {
+    p.tools = nextTools;
+    changed.push('suggested_tools');
+    changes.push(nextTools.length ? `建议软件→${nextTools.length} 个（未绑定、未启动）` : '建议软件已清空');
+  }
+  if (junction != null) {
+    p.junctionTarget = junction;
+    changed.push('junction_target');
+    changes.push(junction ? '记录了联接目标（不复制文件）' : '联接目标已清空');
+  }
+  if (outcomeResult) {
+    changed.push(has('unlink_outcome') ? 'unlink_outcome' : 'outcome');
+    changes.push(outcomeResult.unlinked ? '已取消成果关联（磁盘文件保留）' : (outcomeResult.created ? '已关联成果' : '成果关联已存在'));
+  }
+  if (softwareResult && has('unbind_software')) {
+    softwareResult.app.bound = '';
+    softwareResult.app.run = null;
+    changed.push('unbind_software');
+    changes.push(`已解除软件绑定「${softwareResult.app.n}」（未启动）`);
+  } else if (softwareResult) {
+    changed.push('bind_software');
+    changes.push(`已绑定软件「${softwareResult.app.n}」（未启动）`);
+  }
+  if (scanResult) {
+    ensureOutcomeStore();
+    DB.materialScans[p.id] = scanResult.scan;
+    if (scanResult.scan.target && !p.junctionTarget) p.junctionTarget = scanResult.scan.target;
+    changed.push('material_scan');
+    changes.push(materialStatusView(p.id).label);
+  }
+
+  const afterMile = milestoneStats(p);
+  let progressChange = null;
+  if (settled || progressMode === 'auto') progressChange = milestoneProgressChange(beforeMile, afterMile);
+  if (progressChange) {
+    p.progressChange = progressChange.reason;
+    warnings.push(progressChange.reason);
+    if ((progressMode || p.progressMode) === 'manual' && beforeProgress === p.progress) {
+      warnings.push('手动百分比未改。上面的比例变化只说明里程碑口径，不是工作倒退。');
+    }
+  }
+
+  p.revision = (p.revision || 1) + 1;
+  return {
+    ok: true,
+    saved: false,
+    project_id: p.id,
+    changed_fields: [...new Set(changed)],
+    changes,
+    warnings,
+    revision: p.revision,
+    progress_change: progressChange,
+    outcome: outcomeResult ? publicOutcome(outcomeResult.outcome) : undefined,
+    launched: false
+  };
+}
+
 /* 用一个模板生成项目对象（不写盘，由调用方决定何时保存） */
 function makeProject(input = {}) {
   const name = String(input.name || '').trim() || '未命名项目';
@@ -816,7 +1775,6 @@ function makeProject(input = {}) {
   const displayName = String(input.displayName || '').trim().slice(0, 60);
   const id = input.id || ('p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
   const now = new Date();
-  const owner = (DB.user && DB.user.name) || '研究员';
   return {
     id, name, folder,
     ...(displayName && displayName !== name ? { displayName } : {}),
@@ -829,14 +1787,21 @@ function makeProject(input = {}) {
     tools: [], agents: [],
     nodes: tpl ? tpl.nodes.map(n => ({ ...n })) : [{ l: '开始', s: 'current', d: '—' }],
     goal: String(input.goal || '').trim(),
-    period: String(input.period || '').trim() || ('—'),
-    tags: [], members: [{ n: owner, r: '负责人' }],
+    tags: [], members: [],
     intro: String(input.goal || '').trim(),
     points: [], plan: [],
-    owner: { n: owner, r: '项目负责人', agent: 'Architect' },
+    owner: { n: '', r: '', agent: '', confirmed: false },
     files: [], git: '', kb: name + '知识库',
     flow: tpl ? (tpl.flow || []).slice() : ['开始', '推进', '收尾'],
-    createdAt: now.toISOString().slice(0, 10)
+    createdAt: now.toISOString().slice(0, 10),
+    schedule: emptySchedule(),
+    period: '',
+    periodLegacy: String(input.period || '').trim(),
+    cover: { kind: 'builtin', resource: '', alt: '', fit: 'contain', focus: '' },
+    progressMode: 'auto',
+    progressNote: '',
+    revision: 1,
+    junctionTarget: ''
   };
 }
 
@@ -973,7 +1938,7 @@ function freshData() {
     user: { name: '研究员', initial: '研', greet: '', mode: '本地工作台' },
     rootDir: '',
     projects: [], tasks: [], todos: [], timeline: [], kbDocs: [], resources: [], automations: [], templates: [], tombstones: [],
-    activities: [], chats: {}, audit: [],
+    activities: [], chats: {}, audit: [], outcomes: [], materialScans: {},
     ai: {
       enabled: false, provider: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat',
@@ -1203,7 +2168,12 @@ function migrate(d) {
     if (!p || typeof p !== 'object') return;
     const nodes = (Array.isArray(p.nodes) ? p.nodes : [])
       .filter(n => n && n.l)
-      .map(n => ({ l: String(n.l), s: ['done', 'current', 'todo'].includes(n.s) ? n.s : 'todo', d: String(n.d || '') }));
+      .map((n, i) => {
+        const o = copyFlowNode(n);
+        if (o && !o.id) o.id = 'n' + hashKey(String(p.id || '') + '|' + o.l + '#' + i);
+        return o;
+      })
+      .filter(Boolean);
     if (nodes.length) {
       p.nodes = nodes;
       p.flow = nodes.map(n => n.l);
@@ -1268,6 +2238,36 @@ function migrate(d) {
     });
     if (typeof p.progress !== 'number' || !isFinite(p.progress)) p.progress = 0;
     if (typeof p.seed !== 'number') p.seed = 1;
+    if (!p.schedule || typeof p.schedule !== 'object') {
+      p.periodLegacy = String(p.period || '').trim();
+      p.schedule = emptySchedule();
+      p.period = '';
+    } else {
+      p.schedule = cloneSchedule(p.schedule);
+    }
+    if (!p.cover || typeof p.cover !== 'object') p.cover = { kind: 'builtin', resource: '', alt: '', fit: 'contain', focus: '' };
+    if (p.progressMode !== 'manual') p.progressMode = 'auto';
+    if (typeof p.revision !== 'number' || !Number.isFinite(p.revision)) p.revision = 1;
+    if (typeof p.junctionTarget !== 'string') p.junctionTarget = '';
+    if (!p.owner || typeof p.owner !== 'object') p.owner = { n: '', r: '', agent: '', confirmed: false };
+    if (typeof p.owner.confirmed !== 'boolean') {
+      const nm = String(p.owner.n || '').trim();
+      p.owner.confirmed = !!nm && !OWNER_PLACEHOLDERS.has(nm);
+    }
+    if (OWNER_PLACEHOLDERS.has(String(p.owner.n || '').trim())) p.owner.confirmed = false;
+    (Array.isArray(p.nodes) ? p.nodes : []).forEach((n, i) => {
+      if (n && !n.id) n.id = 'n' + hashKey(String(p.id || '') + '|' + n.l + '#' + i);
+    });
+  });
+  if (!Array.isArray(d.outcomes)) d.outcomes = [];
+  if (!d.materialScans || typeof d.materialScans !== 'object') d.materialScans = {};
+  (d.activities || []).forEach(a => {
+    if (!a || typeof a !== 'object') return;
+    if (typeof a.projectId !== 'string') a.projectId = '';
+    if (typeof a.batchId !== 'string') a.batchId = '';
+  });
+  (d.todos || []).forEach(t => {
+    if (t && typeof t.projectId !== 'string') t.projectId = '';
   });
 
   /* 早期版本预置了 6 个演示 Agent（Architect/Researcher/...）和一个简版「科研写作」，
@@ -1410,32 +2410,59 @@ function projectDir(p) { return rootDir() + '\\' + (typeof p === 'string' ? p : 
 function projectContent(p) {
   if (!p) return null;
   const nodes = Array.isArray(p.nodes)
-    ? p.nodes.filter(n => n && n.l).map(n => ({
-      l: String(n.l),
-      s: n.s === 'done' || n.s === 'current' || n.s === 'todo' ? n.s : 'todo',
-      d: String(n.d || '')
-    }))
+    ? p.nodes.filter(n => n && n.l).map(n => {
+      const o = {
+        l: String(n.l),
+        s: n.s === 'done' || n.s === 'current' || n.s === 'todo' ? n.s : 'todo',
+        d: String(n.d || '')
+      };
+      if (n.id) o.id = String(n.id);
+      if (n.criterion) o.criterion = String(n.criterion);
+      if (Array.isArray(n.evidence) && n.evidence.length) o.evidence = n.evidence.map(x => String(x));
+      if (n.dateKind === 'done' || n.dateKind === 'planned') o.date_kind = n.dateKind;
+      return o;
+    })
     : [];
+  const mile = milestoneStats(p);
+  const sched = scheduleView(p);
+  const cover = coverView(p);
+  const who = ownerView(p);
+  const index = materialStatusView(p.id);
   return {
     id: p.id,
     name: p.name,
     display_name: p.displayName || p.name,
+    short_name: p.shortName || '',
     folder: p.folder || p.name,
     folder_kind: 'relative',
     project_folder: projectDir(p),
+    junction_target: p.junctionTarget || '',
     subtitle: p.subtitle || '',
     intro: p.intro || '',
     goal: p.goal || '',
     stage: p.stage || '',
     next_stage: p.next || '',
     progress: p.progress,
-    period: p.period || '',
+    progress_mode: p.progressMode === 'manual' ? 'manual' : 'auto',
+    progress_note: p.progressNote || '',
+    progress_basis: mile.basis,
+    milestone: { done: mile.done, total: mile.total, percent: mile.percent, label: mile.label, unknown: !!mile.unknown },
+    period: sched.confirmed ? sched.label : '',
+    period_legacy: sched.legacy,
+    schedule: sched.schedule,
+    schedule_label: sched.label,
     nodes,
     flow: Array.isArray(p.flow) ? p.flow.map(x => String(x)) : nodes.map(n => n.l),
     plan: Array.isArray(p.plan) ? p.plan.map(x => String(x)) : [],
     tools: Array.isArray(p.tools) ? p.tools.slice() : [],
     agents: Array.isArray(p.agents) ? p.agents.slice() : [],
-    owner: (p.owner && p.owner.n) || ''
+    owner: who.label,
+    owner_confirmed: who.confirmed,
+    owner_agent: who.agent,
+    cover,
+    material_index: index,
+    revision: p.revision || 1,
+    progress_change: p.progressChange || ''
   };
 }
 function taskDir(task) { const p = P(task.p); return p ? projectDir(p) + '\\' + (task.dir || '') : rootDir(); }
