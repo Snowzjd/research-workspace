@@ -41,13 +41,19 @@ function findTodo(content) {
 const dirsOf = pid => Object.keys(MATERIALS[pid] || {});
 
 /* 项目解析：ID → 全名 → 唯一部分匹配。找不到时返回 null，由调用方给出可用列表 */
-function resolveProject(q) {
+function resolveProject(q, opts) {
   const key = String(q || '').trim();
   if (!key) return null;
-  return DB.projects.find(x => x.id === key)
-    || DB.projects.find(x => x.name === key || x.displayName === key)
+  const byId = DB.projects.find(x => x.id === key);
+  if (byId) return byId;
+  if (opts && opts.idOnly) return null;
+  return DB.projects.find(x => x.name === key || x.displayName === key)
     || DB.projects.find(x => x.name.includes(key) || (x.displayName || '').includes(key) || key.includes(x.name))
     || null;
+}
+function wantsExactId(args) {
+  const v = args && args.id_only;
+  return v === true || v === 1 || v === 'true' || v === '1';
 }
 const projectHint = () => DB.projects.length ? DB.projects.map(x => x.name).join('、') : '（还没有项目）';
 
@@ -59,8 +65,15 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'get_project_context',
-      description: '获取当前科研项目的完整上下文：项目信息、全部任务、待办事项、材料目录结构。开始回答或执行任何操作前，应先调用本工具掌握现状。',
-      parameters: { type: 'object', properties: {}, required: [] }
+      description: '获取科研项目的完整上下文：目标、简介、阶段、进度、显示名、相对文件夹、流程节点、详细计划、任务、待办与材料目录。传 project 为项目 ID 可精确读取；id_only 为 true 时不按名称匹配。',
+      parameters: {
+        type: 'object',
+        properties: {
+          project: { type: 'string', description: '项目 ID 或名称。省略则读当前项目' },
+          id_only: { type: 'boolean', description: '为 true 时 project 只按 ID 精确匹配' }
+        },
+        required: []
+      }
     }
   },
   {
@@ -190,16 +203,30 @@ const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'update_project',
-      description: '更新当前项目的进度、当前阶段、下一阶段、研究目标、一句话描述或界面显示名。显示名与文件夹名互相独立。',
+      description: '按项目部分更新：进度、阶段、下一阶段、研究目标、一句话简介、长简介、显示名、相对文件夹、完整流程节点、详细计划。只改请求里出现的字段。folder 是工作区根目录下的相对名，不移动、不复制文件；外部目录用 junction 链到这个名字。nodes 会同步 flow，并按已完成节点重算进度，除非同时传入了有效的 progress。无效进度保持原值，不会写成 50。',
       parameters: {
         type: 'object',
         properties: {
-          progress: { type: 'number', description: '整体进度百分比 0-100' },
-          stage: { type: 'string', description: '当前阶段' },
+          project: { type: 'string', description: '项目 ID 或名称。省略则改当前项目。精确按 ID 时同时传 id_only:true' },
+          id_only: { type: 'boolean', description: '为 true 时 project 只按 ID 精确匹配，不按名称' },
+          progress: { type: 'number', description: '整体进度百分比 0-100。非数字、空串、NaN 会被拒绝并保持原值' },
+          stage: { type: 'string', description: '当前阶段。若已有流程节点，会改当前节点的名称，这样重启后仍一致' },
           next_stage: { type: 'string', description: '下一阶段' },
           goal: { type: 'string', description: '研究目标' },
-          subtitle: { type: 'string', description: '一句话描述' },
-          display_name: { type: 'string', description: '界面显示名。不改项目名称，也不改磁盘文件夹名' }
+          subtitle: { type: 'string', description: '一句话简介' },
+          intro: { type: 'string', description: '长简介（intro）。不传则保持原样，传空串会清空' },
+          display_name: { type: 'string', description: '界面显示名。不改项目名称，也不改磁盘文件夹名' },
+          folder: { type: 'string', description: '相对文件夹名（也可用 folder_name）。不是绝对路径，不会移动磁盘上的目录' },
+          nodes: {
+            type: 'array',
+            description: '完整流程节点，替换原列表。每项是字符串，或 {l,s,d} / {label,state,date}。s：todo、current、done，或待开始、进行中、已完成',
+            items: { type: 'object' }
+          },
+          plan: {
+            type: 'array',
+            description: '详细计划，字符串数组（也可用 detailed_plan，或一行一条的文本）。不传则保持原样；空数组会清空',
+            items: { type: 'string' }
+          }
         },
         required: []
       }
@@ -574,8 +601,25 @@ const AI_TOOL_IMPL_RAW = {
       note: note || undefined
     };
   },
-  async get_project_context() {
-    const p = P(state.project);
+  async get_project_context(args = {}) {
+    const idOnly = wantsExactId(args);
+    let p = null;
+    if (args.project) {
+      p = resolveProject(args.project, { idOnly });
+      if (!p) {
+        return {
+          ok: false,
+          error: idOnly
+            ? `未找到项目 id「${args.project}」`
+            : `未找到项目「${args.project}」。可用项目：${projectHint()}`,
+          projects: DB.projects.map(x => ({ id: x.id, name: x.name }))
+        };
+      }
+    } else if (idOnly) {
+      return { ok: false, error: 'id_only 需要同时提供项目 id' };
+    } else {
+      p = P(state.project);
+    }
     if (!p) {
       return {
         ok: false,
@@ -586,17 +630,12 @@ const AI_TOOL_IMPL_RAW = {
       };
     }
     const materialDirs = dirsOf(p.id);
+    const record = projectContent(p);
     const out = {
       ok: true,
-      project: {
-        id: p.id, name: p.name, display_name: p.displayName || p.name,
-        folder: p.folder || p.name,
-        subtitle: p.subtitle, goal: p.goal,
-        stage: p.stage, next_stage: p.next, progress: p.progress,
-        period: p.period, tools: p.tools, agents: p.agents, owner: p.owner.n
-      },
+      project: record,
       material_dirs: materialDirs,
-      project_folder: projectDir(p),
+      project_folder: record.project_folder,
       tasks: DB.tasks.filter(t => t.p === p.id).map(t => ({
         task_id: t.id || '', id: t.id || '',
         title: t.t, agent: t.agent, tool: t.tool, due: t.due,
@@ -777,27 +816,132 @@ const AI_TOOL_IMPL_RAW = {
   },
 
   async update_project(args = {}) {
-    const p = args.project ? resolveProject(args.project) : P(state.project);
-    if (args.project && !p) return { ok: false, error: `未找到项目「${args.project}」。可用项目：${projectHint()}` };
-    if (!p) return { ok: false, error: DB.projects.length ? '当前没有选中项目，请带上 project 参数' : '还没有项目，先用 create_project 建一个' };
-    const changes = [];
-    if (args.progress != null) {
-      const v = Math.max(0, Math.min(100, Math.round(+args.progress)));
-      if (Number.isFinite(v)) { p.progress = v; changes.push(`进度→${v}%`); }
+    const idOnly = wantsExactId(args);
+    const p = args.project ? resolveProject(args.project, { idOnly }) : P(state.project);
+    if (args.project && !p) {
+      return {
+        ok: false,
+        error: idOnly
+          ? `未找到项目 id「${args.project}」`
+          : `未找到项目「${args.project}」。可用项目：${projectHint()}`
+      };
     }
-    if (args.stage) { p.stage = args.stage; changes.push(`当前阶段→${args.stage}`); }
+    if (!p) return { ok: false, error: DB.projects.length ? '当前没有选中项目，请带上 project 参数' : '还没有项目，先用 create_project 建一个' };
+
+    const has = (k) => Object.prototype.hasOwnProperty.call(args, k);
+    const changes = [];
+    let progressRejected = false;
+    let nextProgress = null;
+    if (has('progress') && args.progress != null) {
+      const v = parseProjectProgress(args.progress);
+      if (v == null) progressRejected = true;
+      else nextProgress = v;
+    }
+
+    let settled = null;
+    if (has('nodes')) {
+      const parsed = parseFlowNodes(args.nodes);
+      if (parsed.error) return { ok: false, error: parsed.error };
+      settled = settleFlowNodes(p.nodes, parsed.nodes);
+    }
+
+    let nextFolder = null;
+    if (has('folder') || has('folder_name')) {
+      const fromFolder = has('folder') ? parseProjectFolder(args.folder) : null;
+      const fromName = has('folder_name') ? parseProjectFolder(args.folder_name) : null;
+      if (fromFolder && fromFolder.error) return { ok: false, error: fromFolder.error };
+      if (fromName && fromName.error) return { ok: false, error: fromName.error };
+      if (fromFolder && fromName && fromFolder.folder !== fromName.folder) {
+        return { ok: false, error: 'folder 与 folder_name 不一致' };
+      }
+      nextFolder = (fromFolder || fromName).folder;
+      if (DB.projects.some(x => x.id !== p.id && (x.folder || x.name) === nextFolder)) {
+        return { ok: false, error: `工作区里已有文件夹「${nextFolder}」，请换一个相对名` };
+      }
+    }
+
+    let nextPlan = null;
+    if (has('plan') || has('detailed_plan')) {
+      const fromPlan = has('plan') ? parseProjectPlan(args.plan) : null;
+      const fromAlias = has('detailed_plan') ? parseProjectPlan(args.detailed_plan) : null;
+      if (fromPlan && fromPlan.error) return { ok: false, error: fromPlan.error };
+      if (fromAlias && fromAlias.error) return { ok: false, error: fromAlias.error };
+      if (fromPlan && fromAlias && JSON.stringify(fromPlan.plan) !== JSON.stringify(fromAlias.plan)) {
+        return { ok: false, error: 'plan 与 detailed_plan 不一致' };
+      }
+      nextPlan = (fromPlan || fromAlias).plan;
+    }
+
+    const stageText = args.stage ? String(args.stage).trim() : '';
+    const willChange = settled || nextFolder != null || nextPlan != null || nextProgress != null
+      || stageText || args.next_stage || args.goal || args.subtitle
+      || has('intro') || args.display_name != null;
+    if (!willChange) {
+      if (progressRejected) {
+        return {
+          ok: false,
+          error: '进度不是 0–100 的有效数字，未保存（不会改成 50%）',
+          progress_unchanged: true
+        };
+      }
+      return { ok: false, error: '没有提供任何要修改的字段' };
+    }
+
+    if (settled) {
+      p.nodes = settled.nodes;
+      p.flow = settled.flow;
+      p.stage = settled.stage || p.stage;
+      p.progress = settled.progress;
+      changes.push(`流程节点→${settled.nodes.length} 个`);
+    }
+    if (stageText) {
+      const renamed = renameCurrentFlowNode(p, stageText);
+      if (!renamed) p.stage = stageText;
+      changes.push(`当前阶段→${p.stage}`);
+    }
+    if (nextProgress != null) {
+      p.progress = nextProgress;
+      changes.push(`进度→${nextProgress}%`);
+    }
     if (args.next_stage) { p.next = args.next_stage; changes.push(`下一阶段→${args.next_stage}`); }
     if (args.goal) { p.goal = args.goal; changes.push('研究目标已更新'); }
     if (args.subtitle) { p.subtitle = args.subtitle; changes.push('描述已更新'); }
+    if (has('intro')) {
+      p.intro = String(args.intro == null ? '' : args.intro).trim().slice(0, 4000);
+      changes.push('长简介已更新');
+    }
+    if (nextFolder != null) {
+      p.folder = nextFolder;
+      changes.push(`文件夹→${nextFolder}`);
+    }
+    if (nextPlan != null) {
+      p.plan = nextPlan;
+      changes.push(nextPlan.length ? `详细计划→${nextPlan.length} 条` : '详细计划已清空');
+    }
     if (args.display_name != null) {
       const dn = String(args.display_name).trim().slice(0, 60);
       if (!dn || dn === p.name) { delete p.displayName; changes.push('显示名恢复为项目名称'); }
       else { p.displayName = dn; changes.push('显示名已更新'); }
     }
-    if (!changes.length) return { ok: false, error: '没有提供任何要修改的字段' };
     logActivity(`<b>AI</b> 更新项目「${esc(p.name)}」：${esc(changes.join('、'))}`, 'edit', '#6E56CF');
     persist();
-    return { ok: true, project: p.name, changes };
+    const record = projectContent(p);
+    const out = {
+      ok: true,
+      saved: true,
+      project_id: p.id,
+      project: p.name,
+      changes,
+      record
+    };
+    if (progressRejected) {
+      out.progress_rejected = true;
+      out.progress_unchanged = !settled;
+      out.warning = settled
+        ? '请求里的进度不是有效百分比，已按流程节点完成比例写入，没有改成 50%'
+        : '进度不是 0–100 的有效数字，已保持原值（没有写成 50%）';
+    }
+    return out;
   },
 
   async list_templates() {
@@ -1098,6 +1242,9 @@ const AI_TOOL_IMPL_RAW = {
         owner: p.owner.n,
         agents: p.agents,
         tools: p.tools,
+        nodes: (Array.isArray(p.nodes) ? p.nodes : []).filter(n => n && n.l).map(n => ({ l: n.l, s: n.s, d: n.d || '' })),
+        flow: Array.isArray(p.flow) ? p.flow.slice() : [],
+        plan: Array.isArray(p.plan) ? p.plan.slice() : [],
         task_count: DB.tasks.filter(t => t.p === p.id).length,
         open_tasks: DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length,
         material_dirs: dirsOf(p.id),
@@ -1160,7 +1307,13 @@ function describeToolCall(name, args = {}) {
     case 'delete_task':        pick('task_title'); break;
     case 'create_todo':        pick('content'); pick('due', '时间'); break;
     case 'update_todo':        pick('todo_content'); if (args.done === true) bits.push('→ 完成'); if (args.done === false) bits.push('→ 未完成'); break;
-    case 'update_project':     if (args.progress != null) bits.push(`进度 → ${args.progress}%`); pick('stage', '阶段'); break;
+    case 'update_project':
+      if (args.progress != null) bits.push(`进度 → ${args.progress}%`);
+      pick('stage', '阶段');
+      pick('folder', '文件夹');
+      if (Array.isArray(args.nodes)) bits.push(`流程 ${args.nodes.length} 个`);
+      if (Array.isArray(args.plan)) bits.push(`计划 ${args.plan.length} 条`);
+      break;
     case 'list_materials':     pick('dir', '目录'); break;
     case 'open_project_folder':pick('dir', '目录'); break;
     case 'search_knowledge':   pick('query', '关键词'); pick('mode', '模式'); break;

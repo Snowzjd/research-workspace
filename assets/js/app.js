@@ -407,37 +407,18 @@ function flowCurrentIndex(nodes) {
 
 const FLOW_STATE_TEXT = { done: '已完成', current: '进行中', todo: '待开始' };
 
-/* 流程节点写回的唯一入口：nodes / flow / stage / progress 一次同步，避免各入口各写一套。
+/* 流程节点写回的唯一入口：归一规则在 settleFlowNodes，界面和 Agent API 共用。
    推进语义：原来有「进行中」，保存后没有（通常是把它标成已完成）→ 自动把下一个未完成阶段接为进行中，
    否则流程会断在「没人正在做」。用户主动把所有阶段设成待开始的情况也走这条，同样补上第一个。 */
 function applyFlowNodes(p, nodes, activityText) {
-  const list = nodes.map(n => ({ l: String(n.l || ''), s: n.s || 'todo', d: String(n.d || '') }));
-  const hadCurrent = (p.nodes || []).some(n => n && n.s === 'current');
-  const curCount = list.filter(n => n.s === 'current').length;
-
-  let advanced = '';
-  if (curCount === 0) {
-    const firstOpen = list.find(n => n.s !== 'done');
-    if (firstOpen) { firstOpen.s = 'current'; if (hadCurrent) advanced = firstOpen.l; }
-  } else if (curCount > 1) {
-    /* 只留第一个进行中 */
-    let seen = false;
-    list.forEach(n => { if (n.s === 'current') { if (seen) n.s = 'todo'; seen = true; } });
-  }
-
-  const total = list.length || 1;
-  const done = list.filter(n => n.s === 'done').length;
-  const cur = list.find(n => n.s === 'current');
-  const last = list[list.length - 1] || {};
-
+  const settled = settleFlowNodes(p.nodes, nodes);
   mutate(() => {
-    p.nodes = list;
-    p.flow = list.map(n => n.l);
-    p.stage = cur ? cur.l : (last.l || p.stage);
-    p.progress = Math.round(done / total * 100);
+    p.nodes = settled.nodes;
+    p.flow = settled.flow;
+    p.stage = settled.stage || p.stage;
+    p.progress = settled.progress;
   }, { activity: { text: activityText, kind: 'flow', color: '#0D7485' } });
-
-  return { advanced, total, done };
+  return { advanced: settled.advanced, total: settled.total, done: settled.done };
 }
 
 function flowCard(p) {

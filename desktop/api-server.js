@@ -206,6 +206,24 @@ function buildOpenApi(tools) {
       '/api/projects': {
         get: { summary: '项目列表', tags: ['rest'], responses: { 200: { description: 'projects[]' } } }
       },
+      '/api/projects/{id}': {
+        get: {
+          summary: '按项目 ID 精确读取（目标、简介、阶段、进度、显示名、相对文件夹、流程节点、详细计划）',
+          tags: ['rest'],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: { 200: { description: 'project 与 GET /api/context 的 project 同形' }, 404: { description: '没有这个 ID' } }
+        },
+        patch: {
+          summary: '按项目 ID 部分更新。只改请求体里出现的字段。folder 为相对文件夹名。',
+          tags: ['rest'],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'saved、changes、record。record 与随后的 GET 一致' },
+            400: { description: '字段不合法，或没有要改的字段' },
+            403: { description: '只读令牌' }
+          }
+        }
+      },
       '/api/context': {
         get: {
           summary: '当前（或指定）项目全量上下文', tags: ['rest'],
@@ -324,11 +342,23 @@ POST ${base}/api/tools/create_todo
 {"content":"复核试验台标定数据","category":"任务","priority":"高","due":"明天 10:00"}
 \`\`\`
 
-更新项目进度与阶段：
+更新项目进度与阶段（原有字段，仍可用）：
 \`\`\`
 POST ${base}/api/tools/update_project
-{"progress":80,"stage":"多目标优化"}
+{"project":"<项目ID>","progress":80,"stage":"多目标优化"}
 \`\`\`
+
+按项目 ID 读完整内容（相对文件夹、流程节点、详细计划）：
+\`\`\`
+GET ${base}/api/projects/<项目ID>
+\`\`\`
+
+只改出现的字段。folder 是工作区根目录下的相对名，不移动文件；外部目录用目录联接（junction）指到这个名字。
+\`\`\`
+PATCH ${base}/api/projects/<项目ID>
+{"folder":"tpms_disk","nodes":[{"label":"建模","state":"done","date":"10.05"},{"label":"仿真","state":"current","date":"10.20"}],"plan":["补一组工况","写方法章"],"goal":"把压降降下来"}
+\`\`\`
+保存结果在 \`record\`。再用同一个 ID GET 一次，应与 \`record\` 一致。数据写在本机 \`workspace-data.json\`（与界面同一份）。
 
 在文件管理器中打开材料目录：
 \`\`\`
@@ -598,6 +628,38 @@ async function handle(req, res) {
       return send(res, r.ok === false ? 500 : 200, r);
     }
 
+    /* 按项目 ID 精确读 / 部分更新。folder 仍是相对名，不另建一份目录存储。 */
+    const oneProject = p.match(/^\/api\/projects\/([^/]+)$/);
+    if (oneProject) {
+      const id = decodeURIComponent(oneProject[1]);
+      if (req.method === 'GET') {
+        const r = await invokeInRenderer('get_project_context', { project: id, id_only: true }, clientName(req));
+        return send(res, r.ok === false ? 404 : 200, r);
+      }
+      if (req.method === 'PATCH') {
+        if (scope !== 'write') {
+          audit('denied', { tool: 'update_project', client: clientName(req), scope });
+          return send(res, 403, { ok: false, error: '只读令牌不能修改项目。请使用完整权限令牌。', scope });
+        }
+        const body = await readBody(req);
+        if (body && body.__error) return send(res, 400, { ok: false, error: body.__error });
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+          return send(res, 400, { ok: false, error: '请求体必须是 JSON 对象' });
+        }
+        const who = clientName(req);
+        const r = await invokeInRenderer('update_project', Object.assign({}, body, { project: id, id_only: true }), who);
+        audit('tool', {
+          tool: 'update_project', client: who, scope,
+          access: 'write',
+          ok: r && r.ok !== false,
+          dryRun: !!(r && r.dryRun),
+          project_id: id
+        });
+        return send(res, r.ok === false ? 400 : 200, r);
+      }
+      return send(res, 405, { ok: false, error: '请使用 GET 或 PATCH' });
+    }
+
     /* 任务列表：稳定 task_id，和工具 list_tasks 同一份数据 */
     if (p === '/api/tasks' && req.method === 'GET') {
       const args = {};
@@ -653,6 +715,8 @@ async function handle(req, res) {
           'GET  /api/health': '服务与窗口状态（无需鉴权）',
           'GET  /api/tools': '可用工具清单',
           'GET  /api/projects': '项目列表',
+          'GET  /api/projects/<id>': '按项目 ID 精确读取（含 folder / nodes / plan）',
+          'PATCH /api/projects/<id>': '按项目 ID 部分更新。body 里没写的字段保持不变',
           'GET  /api/tasks?project=<id>': '任务列表（含稳定 task_id）',
           'GET  /api/context?project=<id>': '项目全量上下文（任务/待办/材料目录）',
           'GET  /api/openapi.json': 'OpenAPI 描述',

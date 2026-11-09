@@ -53,7 +53,7 @@ async function apiCall(name, args) {
 /* ---------- 内置回退工具清单（软件未运行时也能让 Agent 看到能力范围） ---------- */
 const fallback = (name, description) => ({ name, description, inputSchema: { type: 'object', properties: {}, additionalProperties: true } });
 const FALLBACK_TOOLS = [
-  fallback('get_project_context', '获取当前项目全量上下文：项目信息、任务、待办、材料目录。'),
+  fallback('get_project_context', '读取项目：目标、简介、阶段、进度、显示名、相对文件夹、流程节点、详细计划。参数 project 为项目 ID。'),
   fallback('list_projects', '列出全部科研项目及其进度、阶段与负责 Agent。'),
   fallback('switch_project', '切换当前工作区，之后的操作默认作用于该项目。参数：project（项目名或 ID）。'),
   fallback('list_tasks', '列出当前项目的任务，可按状态筛选。参数：status。'),
@@ -62,7 +62,7 @@ const FALLBACK_TOOLS = [
   fallback('delete_task', '删除任务。参数：task_title。'),
   fallback('create_todo', '新增待办。参数：content、category、priority、due。'),
   fallback('update_todo', '修改待办（含标记完成）。参数：todo_content 加要改的字段。'),
-  fallback('update_project', '更新项目进度、阶段、研究目标。参数：progress、stage、next_stage、goal、subtitle。'),
+  fallback('update_project', '部分更新项目。参数：progress、stage、next_stage、goal、subtitle、display_name、intro、folder（相对文件夹名）、nodes（流程节点）、plan（详细计划）、project（项目 ID）。未出现的字段不变。'),
   fallback('list_materials', '列出项目材料目录与文件。参数：dir（可选）。'),
   fallback('open_project_folder', '在文件管理器中打开项目材料目录。参数：dir（可选）。'),
   fallback('search_knowledge', '在科研知识库中检索资料。参数：query。'),
