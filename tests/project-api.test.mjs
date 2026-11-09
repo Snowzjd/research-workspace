@@ -317,4 +317,194 @@ test('HTTP routes forward exact id reads and partial patches', () => {
   assert.match(src, /method === 'PATCH'/);
   assert.match(src, /get_project_context/);
   assert.match(src, /update_project/);
+  assert.match(src, /conflict/);
+});
+
+test('API-03 invalid progress rejects the whole patch and never becomes 50', async () => {
+  const ctx = loadTools();
+  seedProject(ctx);
+  const id = runInContext('state.project', ctx);
+  const bad = await tool(ctx, 'update_project', {
+    project: id, id_only: true, subtitle: '不该写上', progress: '50%', folder: 'elsewhere'
+  });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.progress_unchanged, true);
+  assert.equal(runInContext('P(state.project).subtitle', ctx), '原来的简介');
+  assert.equal(runInContext('P(state.project).folder', ctx), 'alpha_dir');
+  assert.equal(runInContext('P(state.project).progress', ctx), 33);
+  assert.notEqual(runInContext('P(state.project).progress', ctx), 50);
+});
+
+test('API-03 omitted fields stay, unknown fields fail closed, revision conflicts', async () => {
+  const ctx = loadTools();
+  seedProject(ctx);
+  const id = runInContext('state.project', ctx);
+  const rev = runInContext('P(state.project).revision', ctx);
+  const unknown = await tool(ctx, 'update_project', { project: id, id_only: true, nickname: '偷偷' });
+  assert.equal(unknown.ok, false);
+  assert.match(unknown.error, /未识别字段/);
+  assert.equal(runInContext('P(state.project).revision', ctx), rev);
+
+  const preview = await tool(ctx, 'update_project', { project: id, id_only: true, short_name: '甲短', dry_run: true });
+  assert.equal(preview.ok, true);
+  assert.equal(preview.dryRun, true);
+  assert.equal(preview.saved, false);
+  assert.equal(preview.diff.short_name, '甲短');
+  assert.equal(runInContext('P(state.project).shortName', ctx), undefined);
+  assert.equal(runInContext('P(state.project).revision', ctx), rev);
+
+  const saved = await tool(ctx, 'update_project', { project: id, id_only: true, short_name: '甲短', revision: rev });
+  assert.equal(saved.ok, true);
+  assert.equal(saved.saved, true);
+  assert.equal(saved.record.short_name, '甲短');
+  assert.equal(saved.record.folder, 'alpha_dir');
+  assert.equal(saved.record.goal, '原来的目标');
+  assert.equal(saved.record.progress, 33);
+  assert.equal(saved.record.display_name, '甲项目');
+  const nextRev = saved.revision;
+  assert.notEqual(nextRev, rev);
+  const clash = await tool(ctx, 'update_project', { project: id, id_only: true, goal: '旧修订', revision: rev });
+  assert.equal(clash.ok, false);
+  assert.equal(clash.code, 'conflict');
+  assert.equal(runInContext('P(state.project).goal', ctx), '原来的目标');
+  assert.equal(runInContext('P(state.project).revision', ctx), nextRev);
+});
+
+test('schedule, cover, and outcomes do not invent dates or delete files', async () => {
+  const ctx = loadTools();
+  seedProject(ctx);
+  const id = runInContext('state.project', ctx);
+  runInContext(`
+    const host = P(state.project);
+    delete host.schedule;
+    host.period = '2026.10 - 2027.06';
+  `, ctx);
+  const legacy = ctx.migrate(JSON.parse(JSON.stringify(runInContext('DB', ctx))));
+  const migrated = legacy.projects.find(p => p.id === id);
+  assert.equal(migrated.schedule.state, 'unconfirmed');
+  assert.equal(migrated.period, '');
+  assert.match(migrated.periodLegacy, /2026\.10/);
+
+  ctx.setDB(legacy);
+  ctx.state.project = id;
+  const badPeriod = await tool(ctx, 'update_project', { project: id, id_only: true, period: '2026.10 - 2027.06' });
+  assert.equal(badPeriod.ok, false);
+  const cleared = await tool(ctx, 'update_project', { project: id, id_only: true, schedule: null });
+  assert.equal(cleared.ok, true);
+  assert.equal(cleared.record.schedule.state, 'unconfirmed');
+  assert.equal(cleared.record.schedule_label, '周期待确认');
+  assert.equal(cleared.record.period, '');
+
+  const cover = await tool(ctx, 'update_project', {
+    project: id, id_only: true,
+    cover: { kind: 'local_reference', resource: 'G:\\\\SN2\\\\fig\\\\a.jpg', alt: '翅片', fit: 'contain' }
+  });
+  assert.equal(cover.ok, true);
+  assert.equal(cover.record.cover.kind, 'local_reference');
+  assert.equal(cover.record.cover.fit, 'contain');
+  assert.equal(cover.record.goal, '原来的目标');
+  const upload = await tool(ctx, 'update_project', {
+    project: id, id_only: true, cover: { kind: 'local_reference', resource: 'https://example.com/a.jpg' }
+  });
+  assert.equal(upload.ok, false);
+  assert.equal(runInContext('P(state.project).cover.resource', ctx).includes('a.jpg'), true);
+
+  const linked = await tool(ctx, 'update_project', {
+    project: id, id_only: true,
+    link_outcome: { title: '论文稿', file: 'G:\\\\SN2\\\\写作\\\\稿.docx', type: '论文', status: '草稿', idempotency_key: 'batch-oc-1' }
+  });
+  assert.equal(linked.ok, true);
+  assert.equal(linked.record.folder, cleared.record.folder);
+  const again = await tool(ctx, 'update_project', {
+    project: id, id_only: true,
+    link_outcome: { title: '论文稿', file: 'G:\\\\SN2\\\\写作\\\\稿.docx', type: '论文', status: '已确认', idempotency_key: 'batch-oc-1' }
+  });
+  assert.equal(again.outcome.id, linked.outcome.id);
+  assert.equal(runInContext('DB.outcomes.length', ctx), 1);
+  assert.equal(again.outcome.status, 'draft');
+  const oid = linked.outcome.id;
+  const dropped = await tool(ctx, 'update_project', { project: id, id_only: true, unlink_outcome: { id: oid } });
+  assert.equal(dropped.ok, true);
+  assert.equal(dropped.outcome.file.includes('稿.docx'), true);
+  assert.equal(runInContext(`DB.outcomes.find(o => o.id === ${JSON.stringify(oid)}).file`, ctx).includes('稿.docx'), true);
+  assert.equal(runInContext(`DB.outcomes.find(o => o.id === ${JSON.stringify(oid)}).project_ids.includes(${JSON.stringify(id)})`, ctx), false);
+});
+
+test('activities and todos stay on their project id', async () => {
+  const ctx = loadTools();
+  seedProject(ctx);
+  const id = runInContext('state.project', ctx);
+  runInContext(`
+    const other = makeProject({ name: 'beta', folder: 'beta_dir', displayName: '乙项目' });
+    DB.projects.push(other);
+    DB.todos.push({ t: '111', cat: 'other', pri: 'low', due: '', done: true, projectId: '' });
+    DB.activities.unshift({ t: '扩展通用原生CAD网格验证案例', kind: 'create', projectId: other.id, c: '#000', i: 'plus', time: '01:00', at: 1 });
+    DB.activities.unshift({ t: '没有项目的旧动态', kind: 'edit', c: '#000', i: 'pencil', time: '01:01', at: 2 });
+  `, ctx);
+  const otherId = runInContext(`DB.projects.find(p => p.name === 'beta').id`, ctx);
+  await tool(ctx, 'create_task', { project: id, title: 'SN2 自己的任务', idempotency_key: 'same-task', batch_id: 'b-sn2' });
+  await tool(ctx, 'create_task', { project: id, title: 'SN2 第二条', idempotency_key: 'same-task-2', batch_id: 'b-sn2' });
+  const dup = await tool(ctx, 'create_task', { project: id, title: 'SN2 自己的任务', idempotency_key: 'same-task', batch_id: 'b-sn2' });
+  assert.equal(dup.duplicate, true);
+  assert.equal(runInContext(`DB.tasks.filter(t => t.p === ${JSON.stringify(id)}).length`, ctx), 2);
+  runInContext(`
+    DB.activities.unshift(
+      { t: 'AI 新建任务 SN2 自己的任务', kind: 'create', projectId: ${JSON.stringify(id)}, batchId: 'b-sn2', c: '#218358', i: 'plus', time: '01:02', at: 3 },
+      { t: 'AI 新建任务 SN2 第二条', kind: 'create', projectId: ${JSON.stringify(id)}, batchId: 'b-sn2', c: '#218358', i: 'plus', time: '01:03', at: 4 }
+    );
+  `, ctx);
+  const mine = runInContext(`activitiesForProject(${JSON.stringify(id)}).map(a => a.projectId)`, ctx);
+  assert.ok(mine.length >= 1);
+  assert.ok(mine.every(x => x === id));
+  const foreign = runInContext(`activitiesForProject(${JSON.stringify(id)}).some(a => String(a.t).includes('CAD'))`, ctx);
+  assert.equal(foreign, false);
+  const groups = runInContext(`groupActivities(activitiesForProject(${JSON.stringify(id)}))`, ctx);
+  assert.equal(groups[0].batchId, 'b-sn2');
+  assert.match(groups[0].summary, /新增/);
+  const scoped = runInContext(`todosForProject(${JSON.stringify(id)}).map(t => t.t)`, ctx);
+  assert.equal(scoped.includes('111'), false);
+  assert.equal(runInContext(`globalTodos().some(t => t.t === '111')`, ctx), true);
+  const stats = runInContext(`taskScheduleStats(DB.tasks.filter(t => t.p === ${JSON.stringify(id)}))`, ctx);
+  assert.equal(stats.open, 2);
+  assert.equal(stats.unscheduled, 2);
+  assert.equal(stats.dueToday, 0);
+  const ctxRes = await tool(ctx, 'get_project_context', { project: id, id_only: true });
+  assert.equal(ctxRes.todos.some(t => t.content === '111'), false);
+  assert.equal(ctxRes.global_todos.some(t => t.content === '111'), true);
+  assert.equal(ctxRes.activities.some(a => String(a.text).includes('CAD')), false);
+  assert.equal(ctxRes.project.milestone.total, 3);
+  const bound = await tool(ctx, 'update_project', { project: otherId, id_only: true, bind_software: { name: 'Fluent', path: 'C:\\\\Fluent\\\\fluent.exe', available: 'unknown' } });
+  assert.equal(bound.ok, true);
+  assert.equal(bound.launched, false);
+  assert.equal(runInContext(`DB.apps.find(a => a.n === 'Fluent').run`, ctx), null);
+  assert.equal(runInContext(`DB.apps.find(a => a.n === 'Fluent').bound`, ctx), otherId);
+});
+
+test('node ids keep evidence when labels move, and manual progress needs a note', async () => {
+  const ctx = loadData();
+  const settled = ctx.settleFlowNodes(
+    [{ id: 'n1', l: '论文大修与证据复核', s: 'current', d: '', criterion: '修回意见关闭', evidence: ['oc1'] }],
+    [{ id: 'n1', l: '终稿与投稿材料验收', s: 'done', d: '2026-11-01', dateKind: 'done', criterion: '修回意见关闭' }]
+  );
+  assert.equal(settled.nodes[0].id, 'n1');
+  assert.deepEqual(settled.nodes[0].evidence, ['oc1']);
+  assert.equal(settled.nodes[0].criterion, '修回意见关闭');
+  const tools = loadTools();
+  seedProject(tools);
+  const id = runInContext('state.project', tools);
+  const noNote = await tool(tools, 'update_project', { project: id, progress_mode: 'manual', progress: 12 });
+  assert.equal(noNote.ok, false);
+  assert.equal(runInContext('P(state.project).progress', tools), 33);
+  const manual = await tool(tools, 'update_project', {
+    project: id, progress_mode: 'manual', progress: 12, progress_note: '等实验复核，暂不按节点'
+  });
+  assert.equal(manual.ok, true);
+  assert.equal(manual.record.progress, 12);
+  assert.equal(manual.record.progress_mode, 'manual');
+  const nodesOnly = await tool(tools, 'update_project', {
+    project: id,
+    nodes: [{ l: '建模', s: 'done' }, { l: '写作', s: 'todo' }]
+  });
+  assert.equal(nodesOnly.record.progress, 12);
+  assert.match(nodesOnly.warnings.join(' '), /口径|手动|里程碑/);
 });

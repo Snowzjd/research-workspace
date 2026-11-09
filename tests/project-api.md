@@ -43,6 +43,31 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 只读令牌可以 GET，PATCH 返回 403。
 
+## 清空和拒绝
+
+| 字段 | 未传 | 空值 | 非法值 |
+| --- | --- | --- | --- |
+| `progress` | 保持 | `null`、空串、`50%`、NaN：整单拒绝，不写成 50 | 同上 |
+| `progress_mode` | 保持 | — | 只能是 `auto` 或 `manual`。`manual` 必须有 `progress_note` |
+| `schedule` | 保持 | `null`：状态改为 `unconfirmed`，日期全部清空 | 日期必须是 `YYYY-MM-DD` 或 `null`。未核定不能带日期 |
+| `period` | 保持 | 空串或 `null`：清空未核定周期 | 非空文本拒绝。正式区间走 `schedule` |
+| `cover` | 保持 | `null`：回到类型占位 | `http(s)` 路径拒绝。本地路径不上传 |
+| `intro` / `goal` / `subtitle` / `short_name` | 保持 | 空串清空 | — |
+| `display_name` | 保持 | 空串恢复成项目名，不改 `id` 和 `folder` | — |
+| `plan` | 保持 | `[]` 清空 | 非数组拒绝 |
+| `folder` | 保持 | 空串拒绝 | 带斜杠或盘符拒绝 |
+| 未知字段 | — | — | 整单拒绝，并列出字段名 |
+
+`revision` 与当前修订不一致时返回 `code: "conflict"`，HTTP 409，不覆盖。`dry_run: true` 做校验和差异，不改修订、不落盘。
+
+## 迁移
+
+- 没有 `schedule` 的旧项目：原 `period` 文本抄到 `periodLegacy`，周期状态标为 `unconfirmed`，界面显示「周期待确认」，不猜测起止日期。
+- 没有 `projectId` 的活动和待办保持未归属，不按当前项目补写。
+- 节点补稳定 `id`。重排或改名时按 id 保留完成标准和证据。
+- 负责人名字若是「研究员 / 我 / 空」，标成未确认，界面显示「待指定」，不计入已确认成员。
+- 材料扫描默认「未扫描」。曹妃甸目录和 RAG 引擎目录只保留是否存在，不建立内容索引。
+
 ## 进度编辑窗
 
 范围滑块在值为空或非法时，浏览器会把读数报成中点 **50**。保存时若用户没有拖动滑块，进度保持原值；拖动之后才把 0–100 的整数写回去。无效输入不会被自动存成 50%。
@@ -51,6 +76,6 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 退出再打开软件，或直接看 `workspace-data.json` 里该 `id` 的 `folder`、`nodes`、`plan`、`progress`、`goal`、`subtitle`。这就是界面读取的那份文件，不另有一份 Agent 存储。
 
-自动化覆盖：`node --test tests/project-api.test.mjs`（含部分更新、保存后再读、migrate 往返、进度不落成 50）。
+自动化覆盖：`node --test tests/project-api.test.mjs tests/project-preview.test.mjs`（含部分更新、保存后再读、migrate 往返、非法进度整单拒绝且不落成 50、未知字段、修订冲突、dry_run、周期清空、封面、成果不删文件、活动/待办按项目隔离、卡片不再画完整流程、项目页纵向步骤）。
 
 便携包要带上这次改动时，按仓库原有流程重新打 `app-update` / portable，不必改打包脚本。

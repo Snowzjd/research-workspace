@@ -751,28 +751,64 @@ ipcMain.handle('materials:scan', (_e, payload) => {
     const dir = path.join(root, folder);
     if (!fs.existsSync(dir)) return { ok: false, error: '项目目录不存在：' + dir };
 
+    let linkTarget = '';
+    try {
+      if (fs.lstatSync(dir).isSymbolicLink()) linkTarget = fs.realpathSync(dir);
+    } catch (_) { linkTarget = ''; }
+    const excludedName = (name) => /曹妃甸|rag[_-]?snowz|RAG引擎|知识库引擎/i.test(String(name || ''));
     const out = [];
+    const seen = new Set();
+    let projectReal = dir;
+    try { projectReal = fs.realpathSync(dir); } catch (_) {}
+    seen.add(projectReal);
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (!ent.isDirectory()) continue;
+      if (!ent.isDirectory() && !ent.isSymbolicLink()) continue;
       if (ent.name.startsWith('.')) continue;
       const sub = path.join(dir, ent.name);
+      let st;
+      try { st = fs.lstatSync(sub); } catch (_) { continue; }
+      let real = '';
+      try { real = fs.realpathSync(sub); } catch (_) { real = ''; }
+      if (!real || !fs.existsSync(real)) {
+        out.push({ dir: ent.name, files: [], junction_broken: true, count: 0 });
+        continue;
+      }
+      if (seen.has(real)) continue;
+      seen.add(real);
+      if (excludedName(ent.name)) {
+        out.push({ dir: ent.name, files: [], excluded: true, exists: true, count: 0 });
+        continue;
+      }
       const files = [];
-      for (const f of fs.readdirSync(sub, { withFileTypes: true })) {
+      let listing;
+      try { listing = fs.readdirSync(real, { withFileTypes: true }); }
+      catch (_) {
+        out.push({ dir: ent.name, files: [], junction_broken: !!st.isSymbolicLink(), count: 0 });
+        continue;
+      }
+      for (const f of listing) {
         if (!f.isFile() || f.name.startsWith('.')) continue;
+        const filePath = path.join(real, f.name);
         let size = 0;
-        try { size = fs.statSync(path.join(sub, f.name)).size; } catch (_) {}
+        let mtime = '';
+        try {
+          const fst = fs.statSync(filePath);
+          size = fst.size;
+          mtime = fst.mtime ? fst.mtime.toISOString() : '';
+        } catch (_) {}
         files.push({
           n: f.name,
           bytes: size,
           size: fmtSize(size),
+          mtime,
           ext: path.extname(f.name).replace('.', '').toLowerCase() || 'file'
         });
       }
-      out.push({ dir: ent.name, files });
+      out.push({ dir: ent.name, files, count: files.length, target: st.isSymbolicLink() ? real : '', excluded: false });
     }
-    const count = out.reduce((n, d) => n + d.files.length, 0);
+    const count = out.reduce((n, d) => n + (d.excluded || d.junction_broken ? 0 : d.files.length), 0);
     return {
-      ok: true, root: dir, dirs: out, count,
+      ok: true, root: dir, dirs: out, count, link_target: linkTarget,
       note: out.length ? undefined : '项目目录下没有材料子目录。'
     };
   } catch (err) {

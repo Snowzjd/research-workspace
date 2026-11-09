@@ -7,8 +7,9 @@ const PROJECT_TABS = [
   ['overview', '概览', 'grid'],
   ['tasks', '任务', 'tasks'],
   ['materials', '材料', 'folder'],
-  ['software', '本项目软件', 'rocket'],
-  ['docs', '文档', 'pencil']
+  ['software', '软件', 'rocket'],
+  ['outcomes', '成果', 'pencil'],
+  ['docs', '文档', 'file']
 ];
 
 function projectView() {
@@ -16,60 +17,47 @@ function projectView() {
   if (!p) return emptyWorkspace({ title: '还没有项目', desc: '新建一个项目，任务、材料与软件都会收在它里面。', full: true });
   const tab = PROJECT_TABS.some(t => t[0] === state.projectTab) ? state.projectTab : 'overview';
   const openTasks = DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length;
-  const openLabel = incompleteLabel(openTasks);
-  const headBits = [p.stage || '未设置阶段', `进度 ${p.progress || 0}%`];
-  if (openLabel) headBits.push(openLabel);
+  const mile = milestoneStats(p);
+  const counts = {
+    tasks: openTasks,
+    outcomes: outcomesForProject(p.id).length,
+    software: (DB.apps || []).filter(a => a.bound === p.id).length
+  };
 
   return `<div class="page">
     <div class="page-head">
-      <h2>${esc(projName(p))}</h2>
+      <h2 title="${esc(projName(p))}">${esc(p.shortName || projName(p))}</h2>
       <span class="page-stage">${esc(p.stage || '未设置阶段')}</span>
-      <span class="page-sub">${headBits.slice(1).join(' · ')}</span>
+      <span class="page-sub">${esc(mile.label)}</span>
       <span class="ph-right">
         <button class="btn sm" data-act="project-back">${icon('grid')}全部项目</button>
+        <button class="btn sm" data-act="edit-project" data-id="${p.id}">${icon('pencil')}编辑</button>
         <button class="btn sm" data-act="open-project-folder" data-id="${p.id}">${icon('folderOpen')}打开目录</button>
         <button class="btn sm" data-act="ai-open-project" data-id="${p.id}">${icon('sparkles')}AI 助手</button>
       </span>
     </div>
+    <p class="context-line">当前项目：<b>${esc(projName(p))}</b> · ID <span class="mono">${esc(p.id)}</span></p>
 
-    <div class="proj-tabs seg" style="margin-bottom:var(--gap)">
-      ${PROJECT_TABS.map(([k, label, ico]) =>
-        `<button class="${k === tab ? 'active' : ''}" data-act="project-tab" data-v="${k}">${icon(ico)}${label}${k === 'tasks' && openLabel ? ` <span class="pinfo">${openTasks}</span>` : ''}</button>`).join('')}
+    <div class="proj-tabs seg" role="tablist">
+      ${PROJECT_TABS.map(([k, label, ico]) => {
+        const n = counts[k];
+        const badge = n ? `<span class="tab-count">${n}</span>` : '';
+        return `<button type="button" role="tab" aria-selected="${k === tab ? 'true' : 'false'}" class="${k === tab ? 'active' : ''}" data-act="project-tab" data-v="${k}">${icon(ico)}<span class="tab-label">${label}</span>${badge}</button>`;
+      }).join('')}
     </div>
 
     ${tab === 'overview' ? `<div class="detail-grid">
-        <div class="detail-main">${detailCard(p)}</div>
-        <div class="detail-side">${flowCard(p)}</div>
+        <div class="detail-main">${detailCard(p)}${previewTasksHTML(p)}</div>
+        <div class="detail-side">${flowStepsCard(p)}</div>
       </div>
-      ${(() => {
-        /* S1：新项目从概览就能去任务 / 材料 / 软件 */
-        const openHere = DB.tasks.filter(t => t.p === p.id && t.st !== 'done').length;
-        const matCount = materialsIn(p.id).length;
-        const appCount = (DB.apps || []).filter(a => a.bound === p.id).length;
-        const taskTitle = openHere ? `任务 · ${incompleteLabel(openHere)}` : '任务';
-        return `<div class="ov-guides">
-          <button class="ov-guide" data-act="project-tab" data-v="tasks">
-            <span class="og-ico">${icon('tasks')}</span>
-            <div><div class="og-title">${taskTitle}</div>
-              <div class="og-sub">${openHere ? '继续推进当前任务' : '拆出第一个任务'}</div></div>
-          </button>
-          <button class="ov-guide" data-act="project-tab" data-v="materials">
-            <span class="og-ico">${icon('folder')}</span>
-            <div><div class="og-title">材料 · 登记 ${matCount} 个</div>
-              <div class="og-sub">与磁盘同步，把文件纳入项目</div></div>
-          </button>
-          <button class="ov-guide" data-act="project-tab" data-v="software">
-            <span class="og-ico">${icon('rocket')}</span>
-            <div><div class="og-title">软件 · 绑定 ${appCount} 个</div>
-              <div class="og-sub">拖入 Fluent 等快捷方式</div></div>
-          </button>
-        </div>`;
-      })()}
-      <div class="bottom-grid">${activityCard()}${todoCard()}${resourceCard()}</div>`
+      <div class="bottom-grid bottom-grid-2">${outcomesCard(p)}${resourceCard(p.id)}</div>
+      ${activityCard(p.id)}
+      ${todoCard(p.id)}`
     : ''}
     ${tab === 'tasks' ? projectTasksHTML(p) : ''}
     ${tab === 'materials' ? projectMaterialsHTML(p) : ''}
     ${tab === 'software' ? projectSoftwareHTML(p) : ''}
+    ${tab === 'outcomes' ? outcomesCard(p) : ''}
     ${tab === 'docs' ? projectDocsHTML(p) : ''}
   </div>`;
 }
@@ -96,14 +84,14 @@ function projectTasksHTML(p) {
         `<button class="chip ${k === filter ? 'accent' : 'gray'}" data-act="proj-task-filter" data-v="${k}" style="cursor:pointer">${label} ${n}</button>`).join('')}
     </div>
     ${sorted.length ? `<div class="table-wrap"><table class="table">
-      <thead><tr><th style="width:34%">任务</th><th>负责 Agent</th><th>工具</th><th>截止</th><th>优先级</th><th>状态</th><th></th></tr></thead>
+      <thead><tr><th style="width:34%">任务</th><th>负责人</th><th>建议工具</th><th>截止日期</th><th>优先级</th><th>状态</th><th></th></tr></thead>
       <tbody>${sorted.map(t => {
         const idx = DB.tasks.indexOf(t);
         return `<tr data-act="open-task" data-idx="${idx}" title="点击打开任务">
           <td><div class="t-title">${esc(t.t)}</div><div class="t-sub">${icon('folder', 'width:10px;height:10px')} ${esc(t.dir || '—')}</div></td>
-          <td><span class="row" style="gap:6px">${agentTile(t.agent, 20)}<span>${esc(t.agent || '—')}</span></span></td>
+          <td><span class="row" style="gap:6px">${t.agent ? agentTile(t.agent, 20) : ''}<span>${esc(t.agent || '待指定')}</span></span></td>
           <td><span class="row" style="gap:5px">${appTile(t.tool, 16)}<span class="muted">${esc(t.tool || '—')}</span></span></td>
-          <td class="mono muted">${esc(t.due || '—')}</td>
+          <td class="mono">${esc(parseTaskDate(t.due).label)}</td>
           <td>${priTag(t.pri)}</td>
           <td>${stChip(t.st)}</td>
           <td class="row-actions"><button class="btn sm ghost" data-act="open-task-folder" data-idx="${idx}" title="打开材料文件夹">${icon('folderOpen')}</button></td>
@@ -127,9 +115,7 @@ function projectMaterialsHTML(p) {
   return `<div class="card panel">
     <div class="panel-head">
       <h3>${icon('folder')}材料</h3>
-      <span class="head-sub">
-        登记表 ${files.length} 个文件${scan ? `　·　磁盘 ${scan.count} 个` : ''}
-      </span>
+      <span class="head-sub">${esc(materialStatusView(p.id).label)}</span>
       <span class="grow"></span>
       <button class="btn sm primary" data-act="mat-scan" data-id="${p.id}">${icon('refresh')}与磁盘同步</button>
       <button class="btn sm" data-act="open-project-folder" data-id="${p.id}">${icon('folderOpen')}打开目录</button>
@@ -146,9 +132,9 @@ function projectMaterialsHTML(p) {
         </div>`;
       }).join('') : emptyState({
         icon: 'folder',
-        title: '还没有材料目录',
-        sub: '先把文件放进项目目录，再与磁盘同步。同步只读磁盘，不会改你的文件。',
-        primary: { act: 'mat-scan', label: '与磁盘同步', ico: 'refresh', data: { id: p.id } },
+        title: materialStatusView(p.id).state === 'unscanned' ? '已关联目录，尚未建立材料索引' : materialStatusView(p.id).label,
+        sub: '登记表为空不等于磁盘没有文件。同步只读文件名、大小和修改时间，不复制、不上传。曹妃甸目录和 RAG 引擎目录只记录是否存在，不展开正文。',
+        primary: { act: 'mat-scan', label: '建立索引', ico: 'refresh', data: { id: p.id } },
         secondary: { act: 'open-project-folder', label: '打开目录', ico: 'folderOpen', data: { id: p.id } }
       })}
     </div>
@@ -159,10 +145,11 @@ function projectMaterialsHTML(p) {
 function projectSoftwareHTML(p) {
   const bound = (DB.apps || []).filter(a => a.bound === p.id);
   const others = (DB.apps || []).filter(a => a.bound !== p.id);
+  const suggested = [...new Set((DB.tasks || []).filter(t => t.p === p.id).map(t => String(t.tool || '').trim()).filter(Boolean))];
   return `<div class="card panel">
     <div class="panel-head">
-      <h3>${icon('rocket')}本项目软件</h3>
-      <span class="head-sub">${bound.length} 个已绑定</span>
+      <h3>${icon('rocket')}已绑定软件</h3>
+      <span class="head-sub">${bound.length} 个已绑定程序。读取状态不会启动它们</span>
       <span class="grow"></span>
       <button class="btn sm" data-act="goto-dock">${icon('settings')}管理全部软件</button>
     </div>
@@ -184,13 +171,15 @@ function projectSoftwareHTML(p) {
           <button class="icon-btn" data-act="proj-app-unbind" data-n="${esc(a.n)}" data-id="${p.id}" title="从本项目移除">${icon('x')}</button>
         </div>
       </div>`).join('')}</div>`
-      : emptyState({
+      : `<p class="meta-note">任务里写到的软件只是建议，不能当成已经安装或已经绑定。</p>
+        ${suggested.length ? `<div class="suggest-row">${suggested.map(n => `<span class="chip gray">建议 ${esc(n)} · 未绑定</span>`).join('')}</div>` : '<p class="meta-note">任务里也没有填写建议工具。</p>'}
+        ${emptyState({
         icon: 'rocket',
         title: '还没有绑定到本项目的软件',
-        sub: '把 Fluent / SpaceClaim 的快捷方式拖进上面的框，或从下面未绑定的程序里绑过来。绑定不会把程序标成正在运行。',
+        sub: '绑定只记录程序引用和可用状态，不会启动 CAD、求解器或 Agent。',
         primary: { act: 'import-launch', label: '导入快捷方式', ico: 'link', data: { mode: 'shortcut' } },
         secondary: { act: 'rescan-apps', label: '扫描已安装', ico: 'search' }
-      })}
+      })}`}
 
     ${others.length ? `<div class="panel-head" style="padding:12px 12px 4px"><h3 style="font-size:11px">其它已登记软件（可绑定到本项目）</h3></div>
       <div class="proj-app-grid">${others.map(a => `<div class="proj-app">
@@ -338,15 +327,33 @@ async function scanProjectMaterials(pid) {
   const p = P(pid);
   if (!p) return toast('项目不存在', 'err');
   if (!Bridge.desktop || !window.workspace.scanMaterials) return toast('材料扫描只在桌面端可用', 'err');
+  const gen = state.viewGen || 0;
+  if (!DB.materialScans) DB.materialScans = {};
+  DB.materialScans[pid] = { state: 'scanning', files: 0, error: '', at: new Date().toISOString() };
+  render();
   const r = await window.workspace.scanMaterials({ folder: p.folder || p.name });
+  if ((state.viewGen || 0) !== gen || state.project !== pid) return;
   if (!r || !r.ok) {
+    const broken = /不存在|不可用|junction|联接/i.test(String((r && r.error) || ''));
+    DB.materialScans[pid] = {
+      state: broken ? 'junction_broken' : 'failed',
+      files: 0,
+      error: (r && r.error) || '无法读取目录',
+      at: new Date().toISOString()
+    };
     state.matScan = null;
     render();
-    return toast(`扫描失败：${esc((r && r.error) || '未知错误')}`, 'err');
+    return toast(esc(materialStatusView(pid).label), 'err');
   }
+  const parsed = normalizeMaterialScan(p, {
+    state: 'ok', files: r.count, dirs: r.dirs || [], target: r.link_target || ''
+  });
+  DB.materialScans[pid] = parsed.scan || { state: 'failed', error: parsed.error || '索引失败', files: 0 };
+  if (r.link_target && !p.junctionTarget) p.junctionTarget = r.link_target;
   state.matScan = { pid, count: r.count || 0, dirs: r.dirs || [], root: r.root || '', at: Date.now(), note: r.note || '' };
+  persist();
   render();
-  toast(r.note || `磁盘上扫到 ${r.count || 0} 个文件（尚未写入登记）`, 'ok');
+  toast(materialStatusView(pid).label, 'ok');
 }
 
 /* 确认后按磁盘重建登记表 */
