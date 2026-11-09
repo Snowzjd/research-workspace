@@ -186,7 +186,7 @@ function buildOpenApi(tools) {
     openapi: '3.0.3',
     info: {
       title: '个人科研工作台 本地 Agent API',
-      version: '3.2.0',
+      version: '3.2.1',
       description: '仅监听 127.0.0.1；请求需带 Authorization: Bearer <token>（完整权限）或只读令牌。'
     },
     servers: [{ url: `http://127.0.0.1:${listenPort}` }],
@@ -535,7 +535,7 @@ async function handle(req, res) {
     return sendBare(res, 200, {
       ok: true,
       app: '个人 AI 科研工程工作台',
-      version: diag.version || '3.2.0',
+      version: diag.version || '3.2.1',
       port: listenPort,
       windowReady: ready,
       tools_count: diag.tools_count || 0,
