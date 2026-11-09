@@ -658,6 +658,156 @@ function safeFolderName(name) {
     .slice(0, 80) || '未命名项目';
 }
 
+/* 进度：只接受有限数字，夹到 0–100 后取整。
+   空串、NaN、Infinity、非数字一律返回 null，调用方保持原值。
+   不要用范围滑块的缺省中点（min 0 / max 100 → 50）当回退。 */
+function parseProjectProgress(raw) {
+  if (typeof raw === 'boolean' || raw == null) return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
+  const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+/* 编辑窗滑块的初始状态。无效进度不写 value=""，否则浏览器会把 .value 报成 50。 */
+function editorProgressControl(stored) {
+  if (typeof stored === 'number' && Number.isFinite(stored)) {
+    const value = Math.max(0, Math.min(100, Math.round(stored)));
+    return { value, unset: false, label: value + '%' };
+  }
+  return { value: 0, unset: true, label: '—' };
+}
+
+/* touched 为假时忽略滑块读数（可能是浏览器补的 50，或 step 吸附）。 */
+function progressFromEditor(stored, inputValue, touched) {
+  if (!touched) return { progress: stored, changed: false, rejected: false };
+  const parsed = parseProjectProgress(inputValue);
+  if (parsed == null) return { progress: stored, changed: false, rejected: true };
+  return { progress: parsed, changed: parsed !== stored, rejected: false };
+}
+
+/* folder 只记录工作区根目录下的相对名。绝对路径不收；外部目录用 junction 链到这个名字。 */
+function parseProjectFolder(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return { error: 'folder 不能为空。请填工作区根目录下的相对文件夹名，不要填绝对路径' };
+  if (/[\\/]/.test(s) || /^[a-zA-Z]:/.test(s) || s.startsWith('\\\\')) {
+    return { error: 'folder 只能是工作区根目录下的相对文件夹名。外部目录请在该位置建立目录联接（junction），接口不复制文件，也不保存绝对路径' };
+  }
+  if (s === '.' || s === '..') return { error: 'folder 不能是 . 或 ..' };
+  const folder = safeFolderName(s);
+  if (!folder) return { error: 'folder 不是合法的文件夹名' };
+  return { folder };
+}
+
+const FLOW_STATE_IN = {
+  done: 'done', current: 'current', todo: 'todo',
+  '已完成': 'done', '进行中': 'current', '待开始': 'todo'
+};
+
+function parseFlowNodes(raw) {
+  if (!Array.isArray(raw)) return { error: 'nodes 必须是流程节点数组' };
+  const nodes = [];
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      const l = item.trim();
+      if (l) nodes.push({ l: l.slice(0, 80), s: 'todo', d: '' });
+      continue;
+    }
+    if (!item || typeof item !== 'object') return { error: '流程节点必须是对象或阶段名称' };
+    const l = String(item.l != null ? item.l : (item.label != null ? item.label : (item.name != null ? item.name : ''))).trim();
+    if (!l) continue;
+    const rawS = String(item.s != null ? item.s : (item.state != null ? item.state : (item.status != null ? item.status : 'todo'))).trim();
+    const s = FLOW_STATE_IN[rawS] || 'todo';
+    const d = String(item.d != null ? item.d : (item.date != null ? item.date : '')).trim().slice(0, 40);
+    nodes.push({ l: l.slice(0, 80), s, d });
+  }
+  if (!nodes.length) return { error: '至少要有一个有名字的流程节点' };
+  if (nodes.length > 40) return { error: '流程节点最多 40 个' };
+  return { nodes };
+}
+
+/* 与界面「保存流程」同一套推进规则：至多一个进行中；一个都没有时把第一个未完成接上。
+   不写盘。progress 按已完成节点占比计算，调用方可以再用显式进度盖掉。 */
+function settleFlowNodes(previousNodes, incoming) {
+  const list = (incoming || []).map(n => ({
+    l: String((n && n.l) || ''),
+    s: n && (n.s === 'done' || n.s === 'current' || n.s === 'todo') ? n.s : 'todo',
+    d: String((n && n.d) || '')
+  }));
+  const hadCurrent = (previousNodes || []).some(n => n && n.s === 'current');
+  const curCount = list.filter(n => n.s === 'current').length;
+  let advanced = '';
+  if (curCount === 0) {
+    const firstOpen = list.find(n => n.s !== 'done');
+    if (firstOpen) {
+      firstOpen.s = 'current';
+      if (hadCurrent) advanced = firstOpen.l;
+    }
+  } else if (curCount > 1) {
+    let seen = false;
+    list.forEach(n => {
+      if (n.s !== 'current') return;
+      if (seen) n.s = 'todo';
+      seen = true;
+    });
+  }
+  const total = list.length || 1;
+  const done = list.filter(n => n.s === 'done').length;
+  const cur = list.find(n => n.s === 'current');
+  const last = list[list.length - 1] || {};
+  return {
+    nodes: list,
+    flow: list.map(n => n.l),
+    stage: cur ? cur.l : (last.l || ''),
+    progress: Math.round(done / total * 100),
+    advanced,
+    total,
+    done
+  };
+}
+
+/* 阶段文案写回 migrate 会当成当前阶段的那个节点，避免重启后 stage 被旧节点名盖掉。
+   已有「进行中」就只改它的名字。全是已完成时只改最后一个名字，不把完成态改回去。 */
+function renameCurrentFlowNode(p, stage) {
+  const label = String(stage || '').trim().slice(0, 80);
+  if (!p || !label) return false;
+  const nodes = (Array.isArray(p.nodes) ? p.nodes : [])
+    .filter(n => n && n.l)
+    .map(n => ({ l: String(n.l), s: n.s || 'todo', d: String(n.d || '') }));
+  if (!nodes.length) return false;
+  const cur = nodes.find(n => n.s === 'current');
+  if (cur) {
+    cur.l = label;
+  } else {
+    const firstOpen = nodes.find(n => n.s !== 'done');
+    if (firstOpen) {
+      firstOpen.l = label;
+      firstOpen.s = 'current';
+    } else {
+      nodes[nodes.length - 1].l = label;
+    }
+  }
+  p.nodes = nodes;
+  p.flow = nodes.map(n => n.l);
+  p.stage = label;
+  return true;
+}
+
+function parseProjectPlan(raw) {
+  let items;
+  if (typeof raw === 'string') items = raw.split(/\r?\n/);
+  else if (Array.isArray(raw)) items = raw;
+  else return { error: 'plan 必须是字符串数组，或按行分隔的文本' };
+  const plan = [];
+  for (const item of items) {
+    const s = String(item == null ? '' : item).trim();
+    if (!s) continue;
+    plan.push(s.slice(0, 200));
+  }
+  if (plan.length > 40) return { error: '详细计划最多 40 条' };
+  return { plan };
+}
+
 /* 用一个模板生成项目对象（不写盘，由调用方决定何时保存） */
 function makeProject(input = {}) {
   const name = String(input.name || '').trim() || '未命名项目';
@@ -1254,6 +1404,40 @@ function incompleteLabel(n, unit) {
   return c + ' ' + (unit || '个未完成');
 }
 function projectDir(p) { return rootDir() + '\\' + (typeof p === 'string' ? p : (p.folder || p.name)); }
+
+/* Agent 读项目与保存回执共用这一份字段，避免写完再读对不上。
+   folder 是相对名；project_folder 只是 rootDir 拼出来的位置，磁盘上可以是 junction。 */
+function projectContent(p) {
+  if (!p) return null;
+  const nodes = Array.isArray(p.nodes)
+    ? p.nodes.filter(n => n && n.l).map(n => ({
+      l: String(n.l),
+      s: n.s === 'done' || n.s === 'current' || n.s === 'todo' ? n.s : 'todo',
+      d: String(n.d || '')
+    }))
+    : [];
+  return {
+    id: p.id,
+    name: p.name,
+    display_name: p.displayName || p.name,
+    folder: p.folder || p.name,
+    folder_kind: 'relative',
+    project_folder: projectDir(p),
+    subtitle: p.subtitle || '',
+    intro: p.intro || '',
+    goal: p.goal || '',
+    stage: p.stage || '',
+    next_stage: p.next || '',
+    progress: p.progress,
+    period: p.period || '',
+    nodes,
+    flow: Array.isArray(p.flow) ? p.flow.map(x => String(x)) : nodes.map(n => n.l),
+    plan: Array.isArray(p.plan) ? p.plan.map(x => String(x)) : [],
+    tools: Array.isArray(p.tools) ? p.tools.slice() : [],
+    agents: Array.isArray(p.agents) ? p.agents.slice() : [],
+    owner: (p.owner && p.owner.n) || ''
+  };
+}
 function taskDir(task) { const p = P(task.p); return p ? projectDir(p) + '\\' + (task.dir || '') : rootDir(); }
 /* 项目材料索引：DB.materialIndex 是真实登记（可持久化、可同步），
    MATERIALS 仅作内置演示项目的兜底示例 */

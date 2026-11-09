@@ -284,10 +284,14 @@ function openProjectForm(id, draft) {
       ${fText('next', '下一阶段', p.next, { ph: '优化结构参数' })}
     </div>
     ${fText('tools', '使用软件（逗号分隔）', (p.tools || []).join(', '), { ph: 'Fluent, Python, Tecplot' })}
-    <div class="field">
-      <label>项目进度：<b id="pv">${p.progress}%</b></label>
-      <input class="input" type="range" min="0" max="100" step="5" name="progress" value="${p.progress}" style="padding:0;height:22px">
+    ${(() => {
+      const prog = editorProgressControl(p.progress);
+      return `<div class="field" data-field="progress">
+      <label>项目进度：<b id="pv">${prog.label}</b></label>
+      <input class="input" type="range" min="0" max="100" step="1" name="progress" value="${prog.value}"${prog.unset ? ' data-progress-unset="1"' : ''} style="padding:0;height:22px">
+      ${prog.unset ? '<div class="field-hint">当前进度不是 0–100 的有效数字。滑块停在 0 只是占位，不拖动就不会保存，也不会被写成 50%。</div>' : ''}
     </div>`;
+    })()}`;
 
   openModal({
     title: isNew ? '新建科研项目' : '编辑项目',
@@ -299,7 +303,13 @@ function openProjectForm(id, draft) {
     onMount(modal) {
       const r = modal.querySelector('[name="progress"]');
       const v = modal.querySelector('#pv');
-      r && r.addEventListener('input', () => { v.textContent = r.value + '%'; });
+      if (r) {
+        r.addEventListener('input', () => {
+          r.dataset.progressTouched = '1';
+          r.removeAttribute('data-progress-unset');
+          if (v) v.textContent = r.value + '%';
+        });
+      }
 
       const sel = modal.querySelector('[name="template"]');
       const hint = modal.querySelector('#tpl-hint');
@@ -1109,13 +1119,22 @@ document.addEventListener('click', async e => {
     case 'project-update': {
       const m = document.querySelector('.modal'); if (!validate(m, ['name'])) return;
       const v = formValues(m); const p = P(t.dataset.id);
+      const progressInput = m.querySelector('[name="progress"]');
+      const progressTouched = !!(progressInput && progressInput.dataset.progressTouched === '1');
+      const progressDecision = progressFromEditor(
+        p.progress,
+        progressInput ? progressInput.value : '',
+        progressTouched
+      );
       mutate(() => {
         Object.assign(p, {
           name: v.name, subtitle: v.subtitle, goal: v.goal, period: v.period,
-          stage: v.stage, next: v.next, thumb: v.thumb, progress: +v.progress,
+          stage: v.stage, next: v.next, thumb: v.thumb,
           folder: v.folder ? safeFolderName(v.folder) : (p.folder || p.name),
           tools: (v.tools || '').split(/[,，]/).map(s => s.trim()).filter(Boolean)
         });
+        if (v.stage) renameCurrentFlowNode(p, v.stage);
+        if (progressTouched && !progressDecision.rejected) p.progress = progressDecision.progress;
         const dn = String(v.displayName || '').trim().slice(0, 60);
         if (dn && dn !== p.name) p.displayName = dn;
         else delete p.displayName;
