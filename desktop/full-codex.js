@@ -374,7 +374,7 @@ function createCodexActivity({ onUpdate, pollIntervalMs = 400, disconnectMs = 12
         if (!child.kill()) finish(run, 'disconnected', 'fixture_timeout');
       }, 10000);
       send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
-        clientInfo: { name: 'research-workspace-fixture', version: '3.2.3' }
+        clientInfo: { name: 'research-workspace-fixture', version: '4.0.0-rc.1' }
       } });
       return { ok: true, runId: run.record.id };
     } catch {

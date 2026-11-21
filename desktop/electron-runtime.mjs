@@ -1,9 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Electron 44 and newer link ANGLE into the executable. The 45.4.1 Windows
+// x64 distribution does not ship libEGL.dll or libGLESv2.dll.
 export const runtimeFiles = [
-  'chrome_100_percent.pak', 'chrome_200_percent.pak', 'd3dcompiler_47.dll',
-  'ffmpeg.dll', 'icudtl.dat', 'libEGL.dll', 'libGLESv2.dll',
+  'LICENSE', 'LICENSES.chromium.html',
+  'chrome_100_percent.pak', 'chrome_200_percent.pak', 'd3dcompiler_47.dll', 'dxcompiler.dll',
+  'ffmpeg.dll', 'icudtl.dat',
   'resources.pak', 'snapshot_blob.bin', 'v8_context_snapshot.bin', 'version',
   'vk_swiftshader.dll', 'vk_swiftshader_icd.json', 'vulkan-1.dll', 'locales/en-US.pak'
 ];

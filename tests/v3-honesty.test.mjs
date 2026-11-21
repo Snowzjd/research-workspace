@@ -197,8 +197,8 @@ test('read token cannot call write tools, including switch_project', () => {
   assert.equal(readAllowed('launch_software'), false);
   const src = readFileSync(new URL('./desktop/api-server.js', root), 'utf8');
   assert.match(src, /'\/api\/tasks'/);
-  assert.match(src, /version: '3\.2\.1'/);
-  assert.match(src, /diag\.version \|\| '3\.2\.1'/);
+  assert.match(src, /version: APP_VERSION/);
+  assert.match(src, /diag\.version \|\| APP_VERSION/);
 });
 
 test('sidebar end-state and empty-state template are in the UI sources', () => {

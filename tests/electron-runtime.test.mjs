@@ -11,8 +11,8 @@ function fixture(t) {
   const dist = path.join(root, 'dist');
   fs.mkdirSync(path.join(dist, 'locales'), { recursive: true });
   for (const file of runtimeFiles) fs.writeFileSync(path.join(dist, file), 'fixture');
-  fs.writeFileSync(path.join(root, 'package.json'), '{"version":"32.2.0"}');
-  fs.writeFileSync(path.join(dist, 'version'), 'v32.2.0\n');
+  fs.writeFileSync(path.join(root, 'package.json'), '{"version":"45.4.1"}');
+  fs.writeFileSync(path.join(dist, 'version'), '45.4.1');
   const pe = Buffer.alloc(70);
   pe.write('MZ');
   pe.writeUInt32LE(64, 60);
@@ -24,14 +24,16 @@ function fixture(t) {
 
 test('packaging rejects a missing GPU runtime despite a matching executable and version', t => {
   const { root, dist } = fixture(t);
-  assert.equal(verifyElectronDistribution(root, '32.2.0', '32.2.0'), dist);
+  assert.equal(runtimeFiles.includes('libEGL.dll'), false);
+  assert.equal(runtimeFiles.includes('libGLESv2.dll'), false);
+  assert.equal(verifyElectronDistribution(root, '45.4.1', '45.4.1'), dist);
   fs.unlinkSync(path.join(dist, 'vk_swiftshader.dll'));
-  assert.throws(() => verifyElectronDistribution(root, '32.2.0', '32.2.0'), /vk_swiftshader\.dll/);
+  assert.throws(() => verifyElectronDistribution(root, '45.4.1', '45.4.1'), /vk_swiftshader\.dll/);
 });
 
 test('packaging rejects wrong version locks and non-x64 staged binaries', t => {
   const { root, dist, pe } = fixture(t);
-  assert.throws(() => verifyElectronDistribution(root, '32.2.0', '32.2.1'), /versions must match/);
+  assert.throws(() => verifyElectronDistribution(root, '45.4.1', '45.4.2'), /versions must match/);
   pe.writeUInt16LE(0xaa64, 68);
   fs.writeFileSync(path.join(dist, 'ResearchWorkspace.exe'), pe);
   assert.throws(() => verifyRuntimeFiles(dist, 'ResearchWorkspace.exe'), /Windows x64/);

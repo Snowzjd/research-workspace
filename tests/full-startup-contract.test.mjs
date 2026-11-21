@@ -29,7 +29,7 @@ function windowFixture(onLoad = () => {}) {
   const createWindow = runInNewContext(
     source.slice(start, end >= 0 ? end : source.indexOf("app.on('web-contents-created'", start)) + '\ncreateWindow',
     { BrowserWindow, fullCandidate: true, isDemoPortable: false, isDev: false,
-      process: { platform: 'win32', argv: [], versions: { electron: '32' } },
+      process: { platform: 'win32', argv: [], versions: { electron: '45.4.1' } },
       fs: { existsSync: () => false }, path, __dirname: 'desktop', ROOT: '.', ICON_PATH: 'icon.ico',
       setTimeout: callback => timers.push(callback),
       resetBootLog() {}, logBoot: line => calls.push(line),
@@ -45,6 +45,10 @@ test('candidate exposes and shows the window only after load and stops on a fail
   assert.equal(failed.options.webPreferences.sandbox, true);
   assert.equal(failed.options.webPreferences.contextIsolation, true);
   assert.equal(failed.options.webPreferences.nodeIntegration, false);
+  assert.equal(failed.options.webPreferences.nodeIntegrationInWorker, false);
+  assert.equal(failed.options.webPreferences.nodeIntegrationInSubFrames, false);
+  assert.equal(failed.options.webPreferences.webSecurity, true);
+  assert.equal(failed.options.webPreferences.webviewTag, false);
   assert.ok(!calls.includes(failed));
   failed.webContents.emit('render-process-gone', {}, { reason: 'launch-failed', exitCode: 49 });
   assert.ok(calls.some(line => typeof line === 'string' && line.includes('could not create a restricted renderer token')));
@@ -99,4 +103,7 @@ test('sandboxed preload exposes only the scoped candidate interface', () => {
   assert.equal(bridge.ragSearch, undefined);
   assert.equal(bridge.openPath, undefined);
   assert.equal(bridge.webview, false);
+  assert.doesNotMatch(source, /require\(\s*['"](?!electron['"])/);
+  assert.doesNotMatch(source, /\b(setImmediate|clearImmediate)\b/);
+  assert.doesNotMatch(source, /\bBuffer\b/);
 });

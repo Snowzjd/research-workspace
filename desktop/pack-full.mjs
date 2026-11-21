@@ -18,7 +18,11 @@ if (packageData.version !== full.VERSION) throw new Error('Unexpected candidate 
 if (fs.existsSync(output)) throw new Error('Candidate already exists. Keep it and use a fresh output parent for another build.');
 const lock = JSON.parse(fs.readFileSync(path.join(desktop, 'package-lock.json'), 'utf8'));
 if (lock.version !== full.VERSION || lock.packages['']?.version !== full.VERSION) throw new Error('Lockfile version mismatch');
-const electron = verifyElectronDistribution(path.join(desktop, 'node_modules', 'electron'),
+const electronPackage = path.join(desktop, 'node_modules', 'electron');
+if (!fs.existsSync(path.join(electronPackage, 'dist', 'electron.exe'))) {
+  throw new Error('Windows x64 Electron runtime is missing. From desktop/, run npm ci and then npx install-electron on the Windows build machine.');
+}
+const electron = verifyElectronDistribution(electronPackage,
   packageData.devDependencies.electron, lock.packages['node_modules/electron']?.version);
 fs.mkdirSync(release, { recursive: true });
 if (fs.realpathSync.native(release).toLowerCase() !== release.toLowerCase()) {
@@ -53,6 +57,9 @@ const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
   .replace('<meta charset="UTF-8">', '<meta charset="UTF-8">\n<meta http-equiv="Content-Security-Policy" content="' + csp + '">');
 fs.writeFileSync(path.join(app, 'index.html'), index);
 fs.cpSync(path.join(root, 'icon.ico'), path.join(app, 'icon.ico'));
+const firstPartyLicense = path.join(root, 'LICENSE');
+if (!fs.existsSync(firstPartyLicense)) throw new Error('First-party LICENSE is missing');
+fs.copyFileSync(firstPartyLicense, path.join(app, 'LICENSE'));
 fs.cpSync(path.join(root, 'assets'), path.join(app, 'assets'), { recursive: true });
 const dataFile = path.join(app, 'assets', 'js', 'data.js');
 const dataSource = fs.readFileSync(dataFile, 'utf8');

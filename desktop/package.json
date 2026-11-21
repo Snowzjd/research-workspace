@@ -7,8 +7,11 @@
   "author": "researcher",
   "license": "MIT",
   "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "devDependencies": {
-    "electron": "32.2.0"
+    "electron": "45.4.1"
   },
   "scripts": {
     "portable:full": "node pack-full.mjs",

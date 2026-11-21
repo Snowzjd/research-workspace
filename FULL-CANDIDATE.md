@@ -26,16 +26,17 @@ Execution status, structured change records, test-command exit codes and workben
 
 ## Build from source
 
-Use Windows x64 and Node.js 22 or newer. For a fresh build, install the pinned Electron runtime from the lockfile. Provide the already installed RPM Skill and Python for RPM integration; both come from the existing local environment. The candidate resolves the installed RPM defaults or trusted launch-environment `RPM_PYTHON`, `RPM_SCRIPT`, and `RPM_SETTINGS`.
+Use Windows x64 and Node.js 22.12 or newer. The pinned runtime is Electron 45.4.1. Electron 42 and newer do not download that runtime during `npm ci`; run `npx install-electron` on the Windows build machine before packaging. Provide the already installed RPM Skill and Python for RPM integration; both come from the existing local environment. The candidate resolves the installed RPM defaults or trusted launch-environment `RPM_PYTHON`, `RPM_SCRIPT`, and `RPM_SETTINGS`.
 
 ```powershell
 Push-Location desktop
 npm.cmd ci
-npm.cmd run portable:full -- 'F:\path\to\an\output-parent'
+npx.cmd install-electron
+npm.cmd run portable:full -- 'D:\path\to\a\fresh-output-parent'
 Pop-Location
 ```
 
-An existing Electron 32.2.0 installation under `desktop/node_modules/electron/dist` can be reused for an offline build. When an approved local Windows resource editor is available, set `RW_RCEDIT` to its absolute executable path before packaging to embed Windows icon and version metadata. The packer creates a fresh `portable-4.0.0-rc.1` directory. It stops if that name already exists in the chosen parent.
+The output parent must be a new writable directory. Do not use the installed 3.2.x directory, `%APPDATA%\个人科研工作台`, `G:\TPMS`, or the Obsidian vault. An existing Electron 45.4.1 installation under `desktop/node_modules/electron/dist` can be reused for an offline build only when its `dist\version` file says `45.4.1`. When an approved local Windows resource editor is available, set `RW_RCEDIT` to its absolute executable path before packaging to embed Windows icon and version metadata. The packer creates a fresh `portable-4.0.0-rc.1` directory. It stops if that name already exists in the chosen parent. The Windows rebuild steps and the evidence to record are in `docs/release-review/WINDOWS-REBUILD-4.0.0-rc.1.md`. This source revision has not itself been packed on Windows.
 
 ## Rollback
 

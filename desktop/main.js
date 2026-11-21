@@ -211,10 +211,13 @@ function createWindow(opts = {}) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      nodeIntegrationInWorker: false,
+      nodeIntegrationInSubFrames: false,
       sandbox: fullCandidate,
+      webSecurity: true,
       additionalArguments: fullCandidate ? ['--rw-full-bridge', '--rw-full-version=' + app.getVersion()] : [],
       spellcheck: false,
-      /* 内置浏览器用 <webview> 渲染真实网页 */
+      /* 内置浏览器用 <webview> 渲染真实网页。候选便携包关闭 webview。 */
       webviewTag: !fullCandidate
     }
   });
@@ -690,7 +693,7 @@ if (fullCandidate) {
         resolveReferences: codexReferences
       });
       if (!draft.ok) return draft;
-      clipboard.writeText(draft.text);
+      await clipboard.writeText(draft.text);
       return { ok: true, mode: 'copy' };
     } catch (_) {
       return { ok: false, code: 'handoff_unavailable', error: '无法核对项目或写入本机剪贴板' };
