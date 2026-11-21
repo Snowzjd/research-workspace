@@ -71,6 +71,7 @@ function ensureStructure(payload) {
   try {
     fs.mkdirSync(root, { recursive: true });
     (projects || []).forEach(p => {
+      if (!p || p.skipStructure || p.rpmBound || p.rpmRoot || p.rpmProjectId) return;
       const pdir = path.resolve(root, String(p.folder || p.name || '').replace(/[\\/]+/g, '-'));
       /* 防御路径穿越：项目目录必须真的在根目录之下 */
       if (path.dirname(pdir) !== path.resolve(root) && !pdir.startsWith(path.resolve(root) + path.sep)) return;

@@ -1,0 +1,1510 @@
+===== personally observed cloud test log =====
+date: 2026-11-21T01:12:31Z
+host: linux cloud agent; this is not a Windows portable launch
+pwd: /workspace
+node: /home/ubuntu/.nvm/versions/node/v22.23.4/bin/node
+
+$ node --version
+v22.23.4
+$ python3 --version
+Python 3.12.3
+$ command -v codex || true
+codex_present=0
+$ command -v powershell.exe || true
+$ command -v cmd.exe || true
+
+RPM_TEST_PYTHON=<unset>
+RESEARCH_WORKSPACE_QA_CODEX=<unset>
+Real Codex, model tasks, Windows portable EXE/CMD, and host project directories were not invoked.
+
+===== node --check =====
+$ find source js/mjs/cjs | node --check
+syntax_files=99 syntax_failures=0
+
+===== python3 -m py_compile =====
+$ python3 -m py_compile rpm-integration/rpm_knowledge_api.py rpm-integration/tests/fixture.py rpm-integration/tests/test_interface.py tests/full-fixture-session.py tests/rc-specialized-fixture.py
+py_compile_exit=0
+
+===== node --test --test-concurrency=1 tests/*.test.mjs =====
+$ node --test --test-concurrency=1 tests/*.test.mjs
+TAP version 13
+# Subtest: preset version string is unchanged
+ok 1 - preset version string is unchanged
+  ---
+  duration_ms: 3.202039
+  type: 'test'
+  ...
+# Subtest: writing presets share a compact whitelist 成稿清理 before save_document
+ok 2 - writing presets share a compact whitelist 成稿清理 before save_document
+  ---
+  duration_ms: 10.086782
+  type: 'test'
+  ...
+# Subtest: edited preset role, tags, and prompt survive reload
+ok 3 - edited preset role, tags, and prompt survive reload
+  ---
+  duration_ms: 4.73333
+  type: 'test'
+  ...
+# Subtest: clearing a preset prompt stays empty across reload
+ok 4 - clearing a preset prompt stays empty across reload
+  ---
+  duration_ms: 2.389865
+  type: 'test'
+  ...
+# Subtest: old data without presetKey keeps the edited prompt and only gains the key
+ok 5 - old data without presetKey keeps the edited prompt and only gains the key
+  ---
+  duration_ms: 2.57198
+  type: 'test'
+  ...
+# Subtest: first upgrade injects a missing preset but does not overwrite one already edited
+ok 6 - first upgrade injects a missing preset but does not overwrite one already edited
+  ---
+  duration_ms: 2.81944
+  type: 'test'
+  ...
+# Subtest: deleted preset is not put back once the version mark is set
+ok 7 - deleted preset is not put back once the version mark is set
+  ---
+  duration_ms: 3.441057
+  type: 'test'
+  ...
+# Subtest: renamed preset is not duplicated on reload
+ok 8 - renamed preset is not duplicated on reload
+  ---
+  duration_ms: 2.228465
+  type: 'test'
+  ...
+# Subtest: rename cascades tasks, project links, jobs, templates, and chats
+ok 9 - rename cascades tasks, project links, jobs, templates, and chats
+  ---
+  duration_ms: 3.057204
+  type: 'test'
+  ...
+# Subtest: renaming the review preset updates the builtin template in this session
+ok 10 - renaming the review preset updates the builtin template in this session
+  ---
+  duration_ms: 2.833774
+  type: 'test'
+  ...
+# Subtest: new dispatch system prompt uses the updated role, tags, and prompt
+ok 11 - new dispatch system prompt uses the updated role, tags, and prompt
+  ---
+  duration_ms: 2.942541
+  type: 'test'
+  ...
+# Subtest: detail footer says 派任务 and edit is wired from detail and staff cards
+ok 12 - detail footer says 派任务 and edit is wired from detail and staff cards
+  ---
+  duration_ms: 1.808205
+  type: 'test'
+  ...
+# Subtest: knowledge health keeps a real zero and does not coerce unknown to 0
+ok 13 - knowledge health keeps a real zero and does not coerce unknown to 0
+  ---
+  duration_ms: 2.471946
+  type: 'test'
+  ...
+# Subtest: destructive tools stay behind confirm even when autoApprove is on
+ok 14 - destructive tools stay behind confirm even when autoApprove is on
+  ---
+  duration_ms: 1.814324
+  type: 'test'
+  ...
+# Subtest: POST /api/ai/chat
+    # Subtest: health reports fetched RAG docs and unknown stays null
+    ok 1 - health reports fetched RAG docs and unknown stays null
+      ---
+      duration_ms: 43.421619
+      type: 'test'
+      ...
+    # Subtest: chat requires the full token and drives probe B
+    ok 2 - chat requires the full token and drives probe B
+      ---
+      duration_ms: 24.474994
+      type: 'test'
+      ...
+    1..2
+ok 15 - POST /api/ai/chat
+  ---
+  duration_ms: 87.810078
+  type: 'suite'
+  ...
+# Subtest: scoped discovery and binding reject wrong projects, repository subfolders and duplicate registration
+ok 16 - scoped discovery and binding reject wrong projects, repository subfolders and duplicate registration
+  ---
+  duration_ms: 25.181888
+  type: 'test'
+  ...
+# Subtest: project evidence has structured provenance and never includes raw content or out-of-scope paths
+ok 17 - project evidence has structured provenance and never includes raw content or out-of-scope paths
+  ---
+  duration_ms: 6.791139
+  type: 'test'
+  ...
+# Subtest: disconnect, restart and out-of-order history preserve the last observed outcome
+ok 18 - disconnect, restart and out-of-order history preserve the last observed outcome
+  ---
+  duration_ms: 8.657113
+  type: 'test'
+  ...
+# Subtest: damaged history stays untouched and unapproved paths cannot start recording
+ok 19 - damaged history stays untouched and unapproved paths cannot start recording
+  ---
+  duration_ms: 1.454092
+  type: 'test'
+  ...
+# Subtest: execution history cannot be loaded from or written through a linked path
+ok 20 - execution history cannot be loaded from or written through a linked path
+  ---
+  duration_ms: 1.667082
+  type: 'test'
+  ...
+# Subtest: native session-directory hints refresh concurrent pending scopes and a bound run before the periodic poll
+ok 21 - native session-directory hints refresh concurrent pending scopes and a bound run before the periodic poll
+  ---
+  duration_ms: 25.777789
+  type: 'test'
+  ...
+# Subtest: signals during a reconcile and an unavailable watcher keep updates recoverable
+ok 22 - signals during a reconcile and an unavailable watcher keep updates recoverable
+  ---
+  duration_ms: 285.021991
+  type: 'test'
+  ...
+# Subtest: discovers in-project sessions and projects only scoped names and relative working directories
+ok 23 - discovers in-project sessions and projects only scoped names and relative working directories
+  ---
+  duration_ms: 5.454955
+  type: 'test'
+  ...
+# Subtest: descendant file and command evidence use the approved directory and stop at nested ownership boundaries
+ok 24 - descendant file and command evidence use the approved directory and stop at nested ownership boundaries
+  ---
+  duration_ms: 9.566916
+  type: 'test'
+  ...
+# Subtest: relocated Codex home supplies a canonical watch root while a redirected sessions child is refused
+ok 25 - relocated Codex home supplies a canonical watch root while a redirected sessions child is refused
+  ---
+  duration_ms: 1.522076
+  type: 'test'
+  ...
+# Subtest: handoff copies canonical task context with no command or file execution
+ok 26 - handoff copies canonical task context with no command or file execution
+  ---
+  duration_ms: 2.165948
+  type: 'test'
+  ...
+# Subtest: handoff refuses mismatched tasks and metadata-only or unbound project roots
+ok 27 - handoff refuses mismatched tasks and metadata-only or unbound project roots
+  ---
+  duration_ms: 0.289567
+  type: 'test'
+  ...
+# Subtest: packaging rejects a missing GPU runtime despite a matching executable and version
+ok 28 - packaging rejects a missing GPU runtime despite a matching executable and version
+  ---
+  duration_ms: 5.425935
+  type: 'test'
+  ...
+# Subtest: packaging rejects wrong version locks and non-x64 staged binaries
+ok 29 - packaging rejects wrong version locks and non-x64 staged binaries
+  ---
+  duration_ms: 2.101534
+  type: 'test'
+  ...
+# Subtest: engineDownNotice names the endpoint and says nothing was saved
+ok 30 - engineDownNotice names the endpoint and says nothing was saved
+  ---
+  duration_ms: 6.671939
+  type: 'test'
+  ...
+# Subtest: chat loop stops on engine_down without asking the model again
+ok 31 - chat loop stops on engine_down without asking the model again
+  ---
+  duration_ms: 0.70945
+  type: 'test'
+  ...
+# Subtest: claims of saved drafts or old errors without this turn evidence get a note
+ok 32 - claims of saved drafts or old errors without this turn evidence get a note
+  ---
+  duration_ms: 2.834363
+  type: 'test'
+  ...
+# Subtest: search_knowledge returns stop + user_message when RAG is unreachable
+ok 33 - search_knowledge returns stop + user_message when RAG is unreachable
+  ---
+  duration_ms: 5.833453
+  type: 'test'
+  ...
+# Subtest: start failure becomes a start-failed notice and still stops the loop
+ok 34 - start failure becomes a start-failed notice and still stops the loop
+  ---
+  duration_ms: 2.844558
+  type: 'test'
+  ...
+# Subtest: Codex JSONL normalization keeps only allowed event kinds and a bounded file count
+ok 35 - Codex JSONL normalization keeps only allowed event kinds and a bounded file count
+  ---
+  duration_ms: 1.363786
+  type: 'test'
+  ...
+# Subtest: attachment follows live appends and keeps reported events distinct from observed file metadata
+ok 36 - attachment follows live appends and keeps reported events distinct from observed file metadata
+  ---
+  duration_ms: 1596.83728
+  type: 'test'
+  ...
+# Subtest: an idle or detached external stream stays distinguishable from cancelling an owned process
+ok 37 - an idle or detached external stream stays distinguishable from cancelling an owned process
+  ---
+  duration_ms: 158.618272
+  type: 'test'
+  ...
+# Subtest: rejects credential-shaped inputs and safely disconnects when a capture is replaced
+ok 38 - rejects credential-shaped inputs and safely disconnects when a capture is replaced
+  ---
+  duration_ms: 55.1474
+  type: 'test'
+  ...
+# Subtest: installed Codex accepts bounded offline App Server handshake and owned cancellation
+ok 39 - installed Codex accepts bounded offline App Server handshake and owned cancellation # SKIP cli_missing
+  ---
+  duration_ms: 2.210987
+  type: 'test'
+  ...
+# Subtest: lists Vault and registered project originals independently without reading payloads
+ok 40 - lists Vault and registered project originals independently without reading payloads
+  ---
+  duration_ms: 26.983227
+  type: 'test'
+  ...
+# Subtest: saves, backs up and restores exact UTF-8 BOM + CRLF bytes
+ok 41 - saves, backs up and restores exact UTF-8 BOM + CRLF bytes
+  ---
+  duration_ms: 26.523063
+  type: 'test'
+  ...
+# Subtest: preserves LF, CR and mixed newline styles through existing tracked files
+ok 42 - preserves LF, CR and mixed newline styles through existing tracked files
+  ---
+  duration_ms: 23.277061
+  type: 'test'
+  ...
+# Subtest: rejects stale edits and serializes simultaneous candidate saves
+ok 43 - rejects stale edits and serializes simultaneous candidate saves
+  ---
+  duration_ms: 9.575163
+  type: 'test'
+  ...
+# Subtest: watches external replacement, deletion, and reappearance and supports unwatch
+ok 44 - watches external replacement, deletion, and reappearance and supports unwatch
+  ---
+  duration_ms: 485.405916
+  type: 'test'
+  ...
+# Subtest: rejects traversal, special names, blocked roots, bad encoding, and readonly writes
+ok 45 - rejects traversal, special names, blocked roots, bad encoding, and readonly writes
+  ---
+  duration_ms: 6.153928
+  type: 'test'
+  ...
+# Subtest: rejects directory junctions, hard links and symlinked backup roots
+ok 46 - rejects directory junctions, hard links and symlinked backup roots
+  ---
+  duration_ms: 6.11871
+  type: 'test'
+  ...
+# Subtest: rejects a linked Markdown file or reports platform link privilege
+ok 47 - rejects a linked Markdown file or reports platform link privilege
+  ---
+  duration_ms: 1.778903
+  type: 'test'
+  ...
+# Subtest: candidate requires both markers and refuses a redirected user-data directory
+ok 48 - candidate requires both markers and refuses a redirected user-data directory
+  ---
+  duration_ms: 3.075431
+  type: 'test'
+  ...
+# Subtest: opt-in migration keeps source bytes and IDs, removes credential-like fields and backs up the candidate
+ok 49 - opt-in migration keeps source bytes and IDs, removes credential-like fields and backs up the candidate
+  ---
+  duration_ms: 4.059082
+  type: 'test'
+  ...
+# Subtest: candidate opens only real supported originals and keeps protected RPM evidence metadata-only
+ok 50 - candidate opens only real supported originals and keeps protected RPM evidence metadata-only
+  ---
+  duration_ms: 1.30281
+  type: 'test'
+  ...
+# Subtest: migration rejects a redirected destination before reading or backing it up
+ok 51 - migration rejects a redirected destination before reading or backing it up
+  ---
+  duration_ms: 0.712425
+  type: 'test'
+  ...
+# Subtest: structured search combines workbench, RPM and note titles with isolated source status
+ok 52 - structured search combines workbench, RPM and note titles with isolated source status
+  ---
+  duration_ms: 1.288503
+  type: 'test'
+  ...
+# Subtest: candidate exposes and shows the window only after load and stops on a failed sandbox launch
+ok 53 - candidate exposes and shows the window only after load and stops on a failed sandbox launch
+  ---
+  duration_ms: 4.076927
+  type: 'test'
+  ...
+# Subtest: missing main page or failed sandbox preload stops startup before the window or API is exposed
+ok 54 - missing main page or failed sandbox preload stops startup before the window or API is exposed
+  ---
+  duration_ms: 2.164744
+  type: 'test'
+  ...
+# Subtest: sandboxed preload exposes only the scoped candidate interface
+ok 55 - sandboxed preload exposes only the scoped candidate interface
+  ---
+  duration_ms: 1.206193
+  type: 'test'
+  ...
+# Subtest: candidate shell and views render structured synthetic state with one class attribute
+ok 56 - candidate shell and views render structured synthetic state with one class attribute
+  ---
+  duration_ms: 6.400106
+  type: 'test'
+  ...
+# Subtest: candidate Markdown callbacks exercise safe service on disposable original file
+ok 57 - candidate Markdown callbacks exercise safe service on disposable original file
+  ---
+  duration_ms: 118.390916
+  type: 'test'
+  ...
+# Subtest: commands are split without a shell and unsafe forms are refused
+ok 58 - commands are split without a shell and unsafe forms are refused
+  ---
+  duration_ms: 2.565589
+  type: 'test'
+  ...
+# Subtest: concurrent searches share one start, then retry and succeed
+ok 59 - concurrent searches share one start, then retry and succeed
+  ---
+  duration_ms: 242.29836
+  type: 'test'
+  ...
+# Subtest: script failure reports 知识库启动失败 with the reason
+ok 60 - script failure reports 知识库启动失败 with the reason
+  ---
+  duration_ms: 211.335199
+  type: 'test'
+  ...
+# Subtest: timeout is reported, not hidden
+ok 61 - timeout is reported, not hidden
+  ---
+  duration_ms: 6217.740389
+  type: 'test'
+  ...
+# Subtest: unconfigured start command does not spawn anything
+ok 62 - unconfigured start command does not spawn anything
+  ---
+  duration_ms: 0.904925
+  type: 'test'
+  ...
+# Subtest: idle stop only touches a service this app started
+ok 63 - idle stop only touches a service this app started
+  ---
+  duration_ms: 211.371457
+  type: 'test'
+  ...
+# Subtest: indexSnapshot keeps schema fields and original IDs
+ok 64 - indexSnapshot keeps schema fields and original IDs
+  ---
+  duration_ms: 1.66123
+  type: 'test'
+  ...
+# Subtest: duplicate IDs are rejected
+ok 65 - duplicate IDs are rejected
+  ---
+  duration_ms: 0.490644
+  type: 'test'
+  ...
+# Subtest: method_usage null stays undetermined and is not adopted
+ok 66 - method_usage null stays undetermined and is not adopted
+  ---
+  duration_ms: 0.131021
+  type: 'test'
+  ...
+# Subtest: tasks are identified by project_id plus task.id
+ok 67 - tasks are identified by project_id plus task.id
+  ---
+  duration_ms: 0.129783
+  type: 'test'
+  ...
+# Subtest: store keeps graph on not_modified and replaces atomically on new revision
+ok 68 - store keeps graph on not_modified and replaces atomically on new revision
+  ---
+  duration_ms: 0.499436
+  type: 'test'
+  ...
+# Subtest: unreadable / failed refresh keeps previous graph and marks stale
+ok 69 - unreadable / failed refresh keeps previous graph and marks stale
+  ---
+  duration_ms: 0.190005
+  type: 'test'
+  ...
+# Subtest: registry_complete=false is marked incomplete and stale, not deleted
+ok 70 - registry_complete=false is marked incomplete and stale, not deleted
+  ---
+  duration_ms: 0.248343
+  type: 'test'
+  ...
+# Subtest: search covers nodes, tasks and files without using titles as IDs
+ok 71 - search covers nodes, tasks and files without using titles as IDs
+  ---
+  duration_ms: 0.257914
+  type: 'test'
+  ...
+# Subtest: membership edges are foldable by origin and relation_type
+ok 72 - membership edges are foldable by origin and relation_type
+  ---
+  duration_ms: 0.306095
+  type: 'test'
+  ...
+# Subtest: bound project uses RPM files only and ignores historical index and demo MATERIALS
+ok 73 - bound project uses RPM files only and ignores historical index and demo MATERIALS
+  ---
+  duration_ms: 1.315551
+  type: 'test'
+  ...
+# Subtest: unbound real project does not fall back to demo MATERIALS or fake RPM data
+ok 74 - unbound real project does not fall back to demo MATERIALS or fake RPM data
+  ---
+  duration_ms: 0.509813
+  type: 'test'
+  ...
+# Subtest: historical materialIndex is shown only for unbound/legacy and labeled non-RPM
+ok 75 - historical materialIndex is shown only for unbound/legacy and labeled non-RPM
+  ---
+  duration_ms: 0.291877
+  type: 'test'
+  ...
+# Subtest: demo MATERIALS only match demo ids and never a real project id
+ok 76 - demo MATERIALS only match demo ids and never a real project id
+  ---
+  duration_ms: 0.147389
+  type: 'test'
+  ...
+# Subtest: wrapper-style workbench folder is not used as open root when RPM root is resolved
+ok 77 - wrapper-style workbench folder is not used as open root when RPM root is resolved
+  ---
+  duration_ms: 0.158198
+  type: 'test'
+  ...
+# Subtest: ensureStructure payload skips bound projects and does not apply demo folders to them
+ok 78 - ensureStructure payload skips bound projects and does not apply demo folders to them
+  ---
+  duration_ms: 0.312533
+  type: 'test'
+  ...
+# Subtest: old workspace-data fields still load and are not back-filled from RPM
+ok 79 - old workspace-data fields still load and are not back-filled from RPM
+  ---
+  duration_ms: 0.222242
+  type: 'test'
+  ...
+# Subtest: outcome path helpers do not imply deleting files; unlink keeps the path record separate
+ok 80 - outcome path helpers do not imply deleting files; unlink keeps the path record separate
+  ---
+  duration_ms: 0.756809
+  type: 'test'
+  ...
+# Subtest: invalid progress is not the range midpoint 50
+ok 81 - invalid progress is not the range midpoint 50
+  ---
+  duration_ms: 5.133927
+  type: 'test'
+  ...
+# Subtest: edit dialog does not assign the range default on save
+ok 82 - edit dialog does not assign the range default on save
+  ---
+  duration_ms: 1.334739
+  type: 'test'
+  ...
+# Subtest: agent can set folder, nodes, and plan by project id, then re-read the same record
+ok 83 - agent can set folder, nodes, and plan by project id, then re-read the same record
+  ---
+  duration_ms: 20.913158
+  type: 'test'
+  ...
+# Subtest: partial update leaves folder, nodes, plan, goal, and progress unchanged
+ok 84 - partial update leaves folder, nodes, plan, goal, and progress unchanged
+  ---
+  duration_ms: 3.142386
+  type: 'test'
+  ...
+# Subtest: invalid progress does not become 0 or 50, and a real progress still saves
+ok 85 - invalid progress does not become 0 or 50, and a real progress still saves
+  ---
+  duration_ms: 3.716216
+  type: 'test'
+  ...
+# Subtest: explicit progress wins over the node completion ratio
+ok 86 - explicit progress wins over the node completion ratio
+  ---
+  duration_ms: 3.124487
+  type: 'test'
+  ...
+# Subtest: empty plan clears only the plan, and folder_name is the same relative field
+ok 87 - empty plan clears only the plan, and folder_name is the same relative field
+  ---
+  duration_ms: 2.986169
+  type: 'test'
+  ...
+# Subtest: absolute folder is rejected and does not copy or retarget the project
+ok 88 - absolute folder is rejected and does not copy or retarget the project
+  ---
+  duration_ms: 2.846389
+  type: 'test'
+  ...
+# Subtest: id_only does not update a different project by display name
+ok 89 - id_only does not update a different project by display name
+  ---
+  duration_ms: 3.285747
+  type: 'test'
+  ...
+# Subtest: save survives the same migrate path the app uses on startup
+ok 90 - save survives the same migrate path the app uses on startup
+  ---
+  duration_ms: 5.628052
+  type: 'test'
+  ...
+# Subtest: flow settlement promotes one current and does not invent 50
+ok 91 - flow settlement promotes one current and does not invent 50
+  ---
+  duration_ms: 1.916438
+  type: 'test'
+  ...
+# Subtest: HTTP routes forward exact id reads and partial patches
+ok 92 - HTTP routes forward exact id reads and partial patches
+  ---
+  duration_ms: 0.442982
+  type: 'test'
+  ...
+# Subtest: API-03 invalid progress rejects the whole patch and never becomes 50
+ok 93 - API-03 invalid progress rejects the whole patch and never becomes 50
+  ---
+  duration_ms: 2.663179
+  type: 'test'
+  ...
+# Subtest: API-03 omitted fields stay, unknown fields fail closed, revision conflicts
+ok 94 - API-03 omitted fields stay, unknown fields fail closed, revision conflicts
+  ---
+  duration_ms: 3.021506
+  type: 'test'
+  ...
+# Subtest: schedule, cover, and outcomes do not invent dates or delete files
+ok 95 - schedule, cover, and outcomes do not invent dates or delete files
+  ---
+  duration_ms: 5.166694
+  type: 'test'
+  ...
+# Subtest: activities and todos stay on their project id
+ok 96 - activities and todos stay on their project id
+  ---
+  duration_ms: 4.549021
+  type: 'test'
+  ...
+# Subtest: node ids keep evidence when labels move, and manual progress needs a note
+ok 97 - node ids keep evidence when labels move, and manual progress needs a note
+  ---
+  duration_ms: 4.867145
+  type: 'test'
+  ...
+# Subtest: home shows the selected project preview without leaving home
+ok 98 - home shows the selected project preview without leaving home
+  ---
+  duration_ms: 27.758949
+  type: 'test'
+  ...
+# Subtest: home preview still renders a project that is missing optional fields
+ok 99 - home preview still renders a project that is missing optional fields
+  ---
+  duration_ms: 5.546393
+  type: 'test'
+  ...
+# Subtest: feed folds stuck work and finished agents; outputs open real files only
+ok 100 - feed folds stuck work and finished agents; outputs open real files only
+  ---
+  duration_ms: 9.070141
+  type: 'test'
+  ...
+# Subtest: cards drop the full stepper and the project page uses one vertical flow
+ok 101 - cards drop the full stepper and the project page uses one vertical flow
+  ---
+  duration_ms: 7.039388
+  type: 'test'
+  ...
+# Subtest: project card click stays on home and does not open the project route
+ok 102 - project card click stays on home and does not open the project route
+  ---
+  duration_ms: 1.146597
+  type: 'test'
+  ...
+# Subtest: detects Windows junctions on the synthetic main link
+not ok 103 - detects Windows junctions on the synthetic main link
+  ---
+  duration_ms: 0.395238
+  type: 'test'
+  location: '/workspace/tests/project-root.test.mjs:66:1'
+  failureType: 'hookFailed'
+  error: 'spawnSync cmd.exe ENOENT'
+  code: 'ENOENT'
+  stack: |-
+    Object.spawnSync (node:internal/child_process:1120:20)
+    spawnSync (node:child_process:902:24)
+    execFileSync (node:child_process:945:15)
+    joinJ (file:///workspace/tests/project-root.test.mjs:30:3)
+    TestContext.<anonymous> (file:///workspace/tests/project-root.test.mjs:54:3)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+  ...
+# Subtest: does not treat the wrapper directory as the RPM root or guess child junctions
+not ok 104 - does not treat the wrapper directory as the RPM root or guess child junctions
+  ---
+  duration_ms: 0.056247
+  type: 'test'
+  location: '/workspace/tests/project-root.test.mjs:76:1'
+  failureType: 'hookFailed'
+  error: 'spawnSync cmd.exe ENOENT'
+  code: 'ENOENT'
+  stack: |-
+    Object.spawnSync (node:internal/child_process:1120:20)
+    spawnSync (node:child_process:902:24)
+    execFileSync (node:child_process:945:15)
+    joinJ (file:///workspace/tests/project-root.test.mjs:30:3)
+    TestContext.<anonymous> (file:///workspace/tests/project-root.test.mjs:54:3)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+  ...
+# Subtest: refuses a binding that points at the wrapper or at the main junction
+not ok 105 - refuses a binding that points at the wrapper or at the main junction
+  ---
+  duration_ms: 0.042254
+  type: 'test'
+  location: '/workspace/tests/project-root.test.mjs:93:1'
+  failureType: 'hookFailed'
+  error: 'spawnSync cmd.exe ENOENT'
+  code: 'ENOENT'
+  stack: |-
+    Object.spawnSync (node:internal/child_process:1120:20)
+    spawnSync (node:child_process:902:24)
+    execFileSync (node:child_process:945:15)
+    joinJ (file:///workspace/tests/project-root.test.mjs:30:3)
+    TestContext.<anonymous> (file:///workspace/tests/project-root.test.mjs:54:3)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+  ...
+# Subtest: expands a first-level project folder that is itself a junction
+not ok 106 - expands a first-level project folder that is itself a junction
+  ---
+  duration_ms: 0.073859
+  type: 'test'
+  location: '/workspace/tests/project-root.test.mjs:111:1'
+  failureType: 'hookFailed'
+  error: 'spawnSync cmd.exe ENOENT'
+  code: 'ENOENT'
+  stack: |-
+    Object.spawnSync (node:internal/child_process:1120:20)
+    spawnSync (node:child_process:902:24)
+    execFileSync (node:child_process:945:15)
+    joinJ (file:///workspace/tests/project-root.test.mjs:30:3)
+    TestContext.<anonymous> (file:///workspace/tests/project-root.test.mjs:54:3)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+  ...
+# Subtest: accepts an explicit binding to the real, junction-free root
+not ok 107 - accepts an explicit binding to the real, junction-free root
+  ---
+  duration_ms: 0.060427
+  type: 'test'
+  location: '/workspace/tests/project-root.test.mjs:124:1'
+  failureType: 'hookFailed'
+  error: 'spawnSync cmd.exe ENOENT'
+  code: 'ENOENT'
+  stack: |-
+    Object.spawnSync (node:internal/child_process:1120:20)
+    spawnSync (node:child_process:902:24)
+    execFileSync (node:child_process:945:15)
+    joinJ (file:///workspace/tests/project-root.test.mjs:30:3)
+    TestContext.<anonymous> (file:///workspace/tests/project-root.test.mjs:54:3)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+  ...
+# Subtest: normalizePath is case-insensitive on Windows drive letters
+not ok 108 - normalizePath is case-insensitive on Windows drive letters
+  ---
+  duration_ms: 0.040091
+  type: 'test'
+  location: '/workspace/tests/project-root.test.mjs:139:1'
+  failureType: 'hookFailed'
+  error: 'spawnSync cmd.exe ENOENT'
+  code: 'ENOENT'
+  stack: |-
+    Object.spawnSync (node:internal/child_process:1120:20)
+    spawnSync (node:child_process:902:24)
+    execFileSync (node:child_process:945:15)
+    joinJ (file:///workspace/tests/project-root.test.mjs:30:3)
+    TestContext.<anonymous> (file:///workspace/tests/project-root.test.mjs:54:3)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+  ...
+# Subtest: health index aligns with snowz docs and does not pretend a failed probe is zero
+ok 109 - health index aligns with snowz docs and does not pretend a failed probe is zero
+  ---
+  duration_ms: 6.633412
+  type: 'test'
+  ...
+# Subtest: snowz health reads docs and chunks and does not call them a vector index
+ok 110 - snowz health reads docs and chunks and does not call them a vector index
+  ---
+  duration_ms: 2.49073
+  type: 'test'
+  ...
+# Subtest: snowz health reads nested pg.documents and pg.chunks_fixed_length
+ok 111 - snowz health reads nested pg.documents and pg.chunks_fixed_length
+  ---
+  duration_ms: 2.968183
+  type: 'test'
+  ...
+# Subtest: snowz search posts /v1/search without a bearer token
+ok 112 - snowz search posts /v1/search without a bearer token
+  ---
+  duration_ms: 1.706312
+  type: 'test'
+  ...
+# Subtest: snowz ask is extractive and requires citations
+ok 113 - snowz ask is extractive and requires citations
+  ---
+  duration_ms: 0.886122
+  type: 'test'
+  ...
+# Subtest: snowz reindex does not hit the network
+ok 114 - snowz reindex does not hit the network
+  ---
+  duration_ms: 0.301832
+  type: 'test'
+  ...
+# Subtest: unreachable snowz returns a readable error
+ok 115 - unreachable snowz returns a readable error
+  ---
+  duration_ms: 0.452634
+  type: 'test'
+  ...
+# Subtest: generic http engine still uses /search and can send a stored bearer
+ok 116 - generic http engine still uses /search and can send a stored bearer
+  ---
+  duration_ms: 1.215717
+  type: 'test'
+  ...
+# Subtest: fresh settings point at loopback RAG_Snowz and old untouched installs migrate
+ok 117 - fresh settings point at loopback RAG_Snowz and old untouched installs migrate
+  ---
+  duration_ms: 4.758149
+  type: 'test'
+  ...
+# Subtest: assistant prefers ask and keeps citation paths; search is the fallback
+ok 118 - assistant prefers ask and keeps citation paths; search is the fallback
+  ---
+  duration_ms: 4.34269
+  type: 'test'
+  ...
+# Subtest: knowledge page renders ask text, relative path, and block ids
+ok 119 - knowledge page renders ask text, relative path, and block ids
+  ---
+  duration_ms: 8.832764
+  type: 'test'
+  ...
+# Subtest: hard-rejects write and unknown commands without spawning
+ok 120 - hard-rejects write and unknown commands without spawning
+  ---
+  duration_ms: 0.739594
+  type: 'test'
+  ...
+# Subtest: spawns with an argument array and shell=false
+not ok 121 - spawns with an argument array and shell=false
+  ---
+  duration_ms: 4.356538
+  type: 'test'
+  location: '/workspace/tests/rpm-adapter.test.mjs:62:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    无法启动 RPM CLI：spawn D:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe ENOENT
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-adapter.test.mjs:73:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: enforces timeout
+not ok 122 - enforces timeout
+  ---
+  duration_ms: 3.054178
+  type: 'test'
+  location: '/workspace/tests/rpm-adapter.test.mjs:88:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'spawn_failed'
+    - 'timeout'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'timeout'
+  actual: 'spawn_failed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-adapter.test.mjs:97:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: enforces stdout size limit
+not ok 123 - enforces stdout size limit
+  ---
+  duration_ms: 1.959932
+  type: 'test'
+  location: '/workspace/tests/rpm-adapter.test.mjs:100:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'spawn_failed'
+    - 'output_too_large'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'output_too_large'
+  actual: 'spawn_failed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-adapter.test.mjs:110:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: skill hash matches the recorded fingerprint only for the live skill when unchanged
+ok 124 - skill hash matches the recorded fingerprint only for the live skill when unchanged
+  ---
+  duration_ms: 1.728187
+  type: 'test'
+  ...
+# Subtest: status and list routes work against the isolated vault
+not ok 125 - status and list routes work against the isolated vault
+  ---
+  duration_ms: 0.497422
+  type: 'test'
+  location: '/workspace/tests/rpm-api.test.mjs:145:1'
+  failureType: 'hookFailed'
+  error: |-
+    live RPM CLI missing
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-api.test.mjs:65:10)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+    node:internal/test_runner/harness:335:12
+    file:///workspace/tests/rpm-api.test.mjs:64:1
+    ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+  ...
+# Subtest: files, relations and rpm-audit match direct CLI JSON
+not ok 126 - files, relations and rpm-audit match direct CLI JSON
+  ---
+  duration_ms: 0.068284
+  type: 'test'
+  location: '/workspace/tests/rpm-api.test.mjs:164:1'
+  failureType: 'hookFailed'
+  error: |-
+    live RPM CLI missing
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-api.test.mjs:65:10)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+    node:internal/test_runner/harness:335:12
+    file:///workspace/tests/rpm-api.test.mjs:64:1
+    ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+  ...
+# Subtest: root route reports bound real path and unbound project without init
+not ok 127 - root route reports bound real path and unbound project without init
+  ---
+  duration_ms: 0.037782
+  type: 'test'
+  location: '/workspace/tests/rpm-api.test.mjs:200:1'
+  failureType: 'hookFailed'
+  error: |-
+    live RPM CLI missing
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-api.test.mjs:65:10)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+    node:internal/test_runner/harness:335:12
+    file:///workspace/tests/rpm-api.test.mjs:64:1
+    ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+  ...
+# Subtest: existing /api/audit path is not occupied by RPM audit
+not ok 128 - existing /api/audit path is not occupied by RPM audit
+  ---
+  duration_ms: 0.032691
+  type: 'test'
+  location: '/workspace/tests/rpm-api.test.mjs:226:1'
+  failureType: 'hookFailed'
+  error: |-
+    live RPM CLI missing
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-api.test.mjs:65:10)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+    node:internal/test_runner/harness:335:12
+    file:///workspace/tests/rpm-api.test.mjs:64:1
+    ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+  ...
+# Subtest: arbitrary python scripts are rejected before spawn
+ok 129 - arbitrary python scripts are rejected before spawn
+  ---
+  duration_ms: 1.26705
+  type: 'test'
+  ...
+# Subtest: bundled knowledge script is on the allowlist
+ok 130 - bundled knowledge script is on the allowlist
+  ---
+  duration_ms: 0.160683
+  type: 'test'
+  ...
+# Subtest: openResolvedFile does not open a fallback path when resolve fails
+ok 131 - openResolvedFile does not open a fallback path when resolve fails
+  ---
+  duration_ms: 0.267061
+  type: 'test'
+  ...
+# Subtest: openResolvedFile does not open when the resolved file has already vanished
+ok 132 - openResolvedFile does not open when the resolved file has already vanished
+  ---
+  duration_ms: 0.177346
+  type: 'test'
+  ...
+# Subtest: openResolvedFile opens only the resolved path, including Chinese, spaces and hash
+ok 133 - openResolvedFile opens only the resolved path, including Chinese, spaces and hash
+  ---
+  duration_ms: 0.390989
+  type: 'test'
+  ...
+# Subtest: materials list matches RPM CLI and shows category, purpose, absolute path
+not ok 134 - materials list matches RPM CLI and shows category, purpose, absolute path
+  ---
+  duration_ms: 0.438661
+  type: 'test'
+  location: '/workspace/tests/rpm-materials.test.mjs:149:1'
+  failureType: 'hookFailed'
+  error: |-
+    live RPM CLI missing
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-materials.test.mjs:69:10)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+    node:internal/test_runner/harness:335:12
+    file:///workspace/tests/rpm-materials.test.mjs:68:1
+    ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+  ...
+# Subtest: relations and audit match CLI; unbound stays 409; writes rejected before spawn
+not ok 135 - relations and audit match CLI; unbound stays 409; writes rejected before spawn
+  ---
+  duration_ms: 0.056319
+  type: 'test'
+  location: '/workspace/tests/rpm-materials.test.mjs:177:1'
+  failureType: 'hookFailed'
+  error: |-
+    live RPM CLI missing
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-materials.test.mjs:69:10)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+    node:internal/test_runner/harness:335:12
+    file:///workspace/tests/rpm-materials.test.mjs:68:1
+    ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+  ...
+# Subtest: outcome associate/unassociate does not delete disk files
+not ok 136 - outcome associate/unassociate does not delete disk files
+  ---
+  duration_ms: 0.037893
+  type: 'test'
+  location: '/workspace/tests/rpm-materials.test.mjs:205:1'
+  failureType: 'hookFailed'
+  error: |-
+    live RPM CLI missing
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-materials.test.mjs:69:10)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+    node:internal/test_runner/harness:335:12
+    file:///workspace/tests/rpm-materials.test.mjs:68:1
+    ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+  ...
+# Subtest: legacy workspace-data still has material fields after compat, and renderer-like APIs are not taken over
+not ok 137 - legacy workspace-data still has material fields after compat, and renderer-like APIs are not taken over
+  ---
+  duration_ms: 0.032093
+  type: 'test'
+  location: '/workspace/tests/rpm-materials.test.mjs:218:1'
+  failureType: 'hookFailed'
+  error: |-
+    live RPM CLI missing
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/tests/rpm-materials.test.mjs:69:10)
+    TestHook.runInAsyncScope (node:async_hooks:214:14)
+    TestHook.run (node:internal/test_runner/test:1047:25)
+    TestHook.run (node:internal/test_runner/test:1354:18)
+    TestHook.run (node:internal/util:580:20)
+    Test.createHook (node:internal/test_runner/test:872:33)
+    node:internal/test_runner/harness:335:12
+    file:///workspace/tests/rpm-materials.test.mjs:68:1
+    ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+  ...
+# Subtest: default patterns exclude knowledge-engine folder names only
+ok 138 - default patterns exclude knowledge-engine folder names only
+  ---
+  duration_ms: 1.351627
+  type: 'test'
+  ...
+# Subtest: settings.materialScanExclude replaces defaults when provided
+ok 139 - settings.materialScanExclude replaces defaults when provided
+  ---
+  duration_ms: 0.998917
+  type: 'test'
+  ...
+# Subtest: source module does not hardcode research topic names as default patterns
+ok 140 - source module does not hardcode research topic names as default patterns
+  ---
+  duration_ms: 0.298691
+  type: 'test'
+  ...
+# Subtest: package version stays at the 4.0.0-rc.1 baseline and compact is the default
+ok 141 - package version stays at the 4.0.0-rc.1 baseline and compact is the default
+  ---
+  duration_ms: 9.752709
+  type: 'test'
+  ...
+# Subtest: migrate promotes compact once and splits legacy app binding from run
+ok 142 - migrate promotes compact once and splits legacy app binding from run
+  ---
+  duration_ms: 4.964409
+  type: 'test'
+  ...
+# Subtest: display name, folder, and project name stay independent
+ok 143 - display name, folder, and project name stay independent
+  ---
+  duration_ms: 2.87623
+  type: 'test'
+  ...
+# Subtest: dry_run on write tools does not mutate, including the string "true"
+ok 144 - dry_run on write tools does not mutate, including the string "true"
+  ---
+  duration_ms: 5.382751
+  type: 'test'
+  ...
+# Subtest: create_task returns a stable task_id that list and context echo
+ok 145 - create_task returns a stable task_id that list and context echo
+  ---
+  duration_ms: 18.245593
+  type: 'test'
+  ...
+# Subtest: update_project display_name does not rename the folder
+ok 146 - update_project display_name does not rename the folder
+  ---
+  duration_ms: 2.91796
+  type: 'test'
+  ...
+# Subtest: save_document writes under the folder name, not the display name
+ok 147 - save_document writes under the folder name, not the display name
+  ---
+  duration_ms: 3.001356
+  type: 'test'
+  ...
+# Subtest: builtin knowledge search reports indexed 0
+ok 148 - builtin knowledge search reports indexed 0
+  ---
+  duration_ms: 3.639398
+  type: 'test'
+  ...
+# Subtest: create_project starter tasks get ids and dry_run does not insert a project
+ok 149 - create_project starter tasks get ids and dry_run does not insert a project
+  ---
+  duration_ms: 4.23604
+  type: 'test'
+  ...
+# Subtest: read token cannot call write tools, including switch_project
+ok 150 - read token cannot call write tools, including switch_project
+  ---
+  duration_ms: 6.888378
+  type: 'test'
+  ...
+# Subtest: sidebar end-state and empty-state template are in the UI sources
+ok 151 - sidebar end-state and empty-state template are in the UI sources
+  ---
+  duration_ms: 2.606854
+  type: 'test'
+  ...
+# Subtest: Bridge.saveWritingDoc forwards to the preload mirror
+ok 152 - Bridge.saveWritingDoc forwards to the preload mirror
+  ---
+  duration_ms: 3.036228
+  type: 'test'
+  ...
+# Subtest: save_document refuses an empty root and does not invent a path
+ok 153 - save_document refuses an empty root and does not invent a path
+  ---
+  duration_ms: 8.011357
+  type: 'test'
+  ...
+# Subtest: save_document reaches Bridge.saveWritingDoc once a root is set
+ok 154 - save_document reaches Bridge.saveWritingDoc once a root is set
+  ---
+  duration_ms: 3.179513
+  type: 'test'
+  ...
+# Subtest: save_document reports a disk overwrite even before the catalog knows the file
+ok 155 - save_document reports a disk overwrite even before the catalog knows the file
+  ---
+  duration_ms: 2.559587
+  type: 'test'
+  ...
+# Subtest: search_knowledge mode=search skips ask and warns when unique docs are under 3
+ok 156 - search_knowledge mode=search skips ask and warns when unique docs are under 3
+  ---
+  duration_ms: 3.608347
+  type: 'test'
+  ...
+# Subtest: omitted mode still asks, and the review agent prefers search
+ok 157 - omitted mode still asks, and the review agent prefers search
+  ---
+  duration_ms: 3.731033
+  type: 'test'
+  ...
+# Subtest: writing-review prompt requires multi-query search before a draft
+ok 158 - writing-review prompt requires multi-query search before a draft
+  ---
+  duration_ms: 3.773042
+  type: 'test'
+  ...
+# Subtest: review wording and @agent switch the current identity
+ok 159 - review wording and @agent switch the current identity
+  ---
+  duration_ms: 13.673439
+  type: 'test'
+  ...
+# Subtest: a 1000-字 target is a hard CJK band of 800–1200 and pure English replies in English
+ok 160 - a 1000-字 target is a hard CJK band of 800–1200 and pure English replies in English
+  ---
+  duration_ms: 4.568223
+  type: 'test'
+  ...
+# Subtest: unbound materials report the missing file engine and ignore stale in-memory directories
+ok 161 - unbound materials report the missing file engine and ignore stale in-memory directories
+  ---
+  duration_ms: 16.80629
+  type: 'test'
+  ...
+# Subtest: empty or garbled search warnings are one plain sentence
+ok 162 - empty or garbled search warnings are one plain sentence
+  ---
+  duration_ms: 3.66706
+  type: 'test'
+  ...
+1..162
+# tests 163
+# suites 1
+# pass 145
+# fail 17
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 11541.135681
+node_test_exit=1
+
+===== supplemental safe adapter run =====
+This is not the Windows acceptance command and does not call an installed RPM skill.
+Only tests/rpm-adapter.test.mjs is repeated, with RPM_TEST_PYTHON set to this machine's python3 so the local fake script can start.
+$ RPM_TEST_PYTHON=$(command -v python3) node --test --test-concurrency=1 tests/rpm-adapter.test.mjs
+python3=/usr/bin/python3
+TAP version 13
+# Subtest: hard-rejects write and unknown commands without spawning
+ok 1 - hard-rejects write and unknown commands without spawning
+  ---
+  duration_ms: 0.810931
+  type: 'test'
+  ...
+# Subtest: spawns with an argument array and shell=false
+ok 2 - spawns with an argument array and shell=false
+  ---
+  duration_ms: 21.995717
+  type: 'test'
+  ...
+# Subtest: enforces timeout
+ok 3 - enforces timeout
+  ---
+  duration_ms: 403.805398
+  type: 'test'
+  ...
+# Subtest: enforces stdout size limit
+ok 4 - enforces stdout size limit
+  ---
+  duration_ms: 18.907889
+  type: 'test'
+  ...
+# Subtest: skill hash matches the recorded fingerprint only for the live skill when unchanged
+ok 5 - skill hash matches the recorded fingerprint only for the live skill when unchanged
+  ---
+  duration_ms: 1.994022
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1480.038072
+rpm_adapter_supplement_exit=0
+
+===== static packaging preconditions (no Electron download, no output directory) =====
+$ node --input-type=module -e <inline>
+{
+  "rootVersion": "4.0.0-rc.1",
+  "desktopVersion": "4.0.0-rc.1",
+  "lockVersion": "4.0.0-rc.1",
+  "lockRootVersion": "4.0.0-rc.1",
+  "electronDeclared": "32.2.0",
+  "electronLocked": "32.2.0",
+  "peNumeric": "4.0.0.1",
+  "seedBoundary": true,
+  "materialsBoundary": true
+}
+
+===== npm audit --package-lock-only (desktop dev dependency tree; not the packaged runtime) =====
+$ npm audit --package-lock-only --json
+npm error code ENOLOCK
+npm error audit This command requires an existing lockfile.
+npm error audit Try creating one first with: npm i --package-lock-only
+npm error audit Original error: loadVirtual requires existing shrinkwrap file
+{
+  "error": {
+    "code": "ENOLOCK",
+    "summary": "This command requires an existing lockfile.",
+    "detail": "Try creating one first with: npm i --package-lock-only\nOriginal error: loadVirtual requires existing shrinkwrap file"
+  }
+}
+npm error A complete log of this run can be found in: /home/ubuntu/.npm/_logs/2026-11-21T01_13_10_062Z-debug-0.log
+npm_audit_exit=1
+
+===== not executed =====
+powershell.exe -NoProfile -File tests/full-start-cmd.ps1 : powershell.exe and the Windows candidate ZIP are absent
+node tests/full-packaged.mjs fixture|codex : Windows candidate directory and Codex evidence JSON are absent; real Codex was not started
+node tests/rc-specialized.mjs : Windows candidate, screenshots, and RPM skill are absent
+node tests/rc-live-codex-abort.mjs : real Codex was not invoked
+python rpm-integration/tests/test_interface.py and tests/fixture.py : installed RPM skill path is absent; not pointed at any host directory
+desktop/pack-full.mjs : not run; this host is not the Windows build machine and RW_RCEDIT was not set
+install.ps1 and create-desktop-shortcut.ps1 : not run
+
+===== npm audit retry from desktop/ =====
+$ npm audit --package-lock-only
+# npm audit report
+
+electron  <=42.11.15 || 43.0.0-alpha.1 - 43.0.0-beta.8
+Severity: high
+Electron has ASAR Integrity Bypass via resource modification - https://github.com/advisories/GHSA-vmqv-hx8q-j7mg
+Electron: AppleScript injection in app.moveToApplicationsFolder on macOS - https://github.com/advisories/GHSA-5rqw-r77c-jp79
+Electron: Service worker can spoof executeJavaScript IPC replies - https://github.com/advisories/GHSA-xj5x-m3f3-5x3h
+Electron: Incorrect origin passed to permission request handler for iframe requests - https://github.com/advisories/GHSA-r5p7-gp4j-qhrx
+Electron: Out-of-bounds read in second-instance IPC on macOS and Linux - https://github.com/advisories/GHSA-3c8v-cfp5-9885
+Electron: nodeIntegrationInWorker not correctly scoped in shared renderer processes - https://github.com/advisories/GHSA-xwr5-m59h-vwqr
+Electron: Use-after-free in offscreen child window paint callback - https://github.com/advisories/GHSA-532v-xpq5-8h95
+Electron: Registry key path injection in app.setAsDefaultProtocolClient on Windows - https://github.com/advisories/GHSA-mwmh-mq4g-g6gr
+Electron: Use-after-free in download save dialog callback - https://github.com/advisories/GHSA-9w97-2464-8783
+Electron: Use-after-free in WebContents fullscreen, pointer-lock, and keyboard-lock permission callbacks - https://github.com/advisories/GHSA-8337-3p73-46f4
+Electron: Use-after-free in PowerMonitor on Windows and macOS - https://github.com/advisories/GHSA-jjp3-mq3x-295m
+Electron: Unquoted executable path in app.setLoginItemSettings on Windows - https://github.com/advisories/GHSA-jfqx-fxh3-c62j
+Electron: HTTP Response Header Injection in custom protocol handlers and webRequest - https://github.com/advisories/GHSA-4p4r-m79c-wq3v
+Electron: USB device selection not validated against filtered device list - https://github.com/advisories/GHSA-9899-m83m-qhpj
+Electron: Crash in clipboard.readImage() on malformed clipboard image data - https://github.com/advisories/GHSA-f37v-82c4-4x64
+Electron: Named window.open targets not scoped to the opener's browsing context - https://github.com/advisories/GHSA-f3pv-wv63-48x8
+Electron: Renderer command-line switch injection via undocumented commandLineSwitches webPreference - https://github.com/advisories/GHSA-9wfr-w7mm-pc7f
+Electron: Parent process code-sign check is spoofable - https://github.com/advisories/GHSA-jm7p-cc5g-qwxx
+Electron: Custom protocol with supportFetchAPI but not corsEnabled allows cross-origin reads - https://github.com/advisories/GHSA-v3j7-r9gq-3gjw
+Electron: Extension tab APIs operate across session boundaries - https://github.com/advisories/GHSA-m55f-7gqj-fr98
+Electron: shell.openPath path validation bypass via embedded null byte - https://github.com/advisories/GHSA-5c9j-mhmv-5xgx
+Electron: Context isolation bypass via Function.prototype.bind hijack - https://github.com/advisories/GHSA-h7rp-cf8h-j98x
+Electron: Cross-origin iframe can position native autofill popup - https://github.com/advisories/GHSA-x8rc-wpg4-grpf
+Electron: Permission Check Handler Receives Main Frame Origin Instead of Requesting Iframe Origin - https://github.com/advisories/GHSA-9pf5-hg6p-4pwp
+Electron: Off-screen rendering trusts GPU-supplied geometry over shared-memory size - https://github.com/advisories/GHSA-pfmc-3mgc-p6fp
+Electron: HTTP redirect followed into local file loader - https://github.com/advisories/GHSA-v64r-4m7r-3mvq
+Electron: window.open features string controls some window options considered privileged - https://github.com/advisories/GHSA-v93f-fgjr-hjrj
+Electron: Sandboxed iframe can bypass the allow-popups restriction via the OpenURL navigation path - https://github.com/advisories/GHSA-9f4c-93c8-jc8g
+Electron: Sandboxed iframes can launch external protocol handlers - https://github.com/advisories/GHSA-p2rr-rvmm-c5fp
+Electron: DevTools embedder handler executes arbitrary files via shell open - https://github.com/advisories/GHSA-f2r8-jv7c-xqmp
+Electron: contextBridge object copy honors prototype setters - https://github.com/advisories/GHSA-ff2p-hmqr-hxm4
+Electron: DevTools JavaScript Injection via Unsanitized Dock State Parameter - https://github.com/advisories/GHSA-4f78-qhmw-8j8m
+Electron drops inherited HTML sandbox restrictions for popups opened through OpenURLFromTab - https://github.com/advisories/GHSA-hq2x-r82h-9wj4
+Electron: Windows opened from a sandboxed top-level document do not inherit its sandbox restrictions - https://github.com/advisories/GHSA-gr2m-v5gq-v685
+Electron: File and HTTP protocol handlers allow cross-origin reads without corsEnabled - https://github.com/advisories/GHSA-j84w-jfhq-vhvj
+Electron: Local race condition in Squirrel.Mac update installation on macOS - https://github.com/advisories/GHSA-vv43-5jgx-7qv8
+Electron: <webview> can enable Node.js integration in Web Workers despite embedder restrictions - https://github.com/advisories/GHSA-9qh4-3jw8-366w
+Electron: HID and USB permission checks can be attributed to the wrong origin - https://github.com/advisories/GHSA-fw47-9c62-h3vw
+Electron: SameSite cookie restrictions are not applied to windows opened from links - https://github.com/advisories/GHSA-2p8c-gr87-2676
+Electron: Pointer lock permission requests can be attributed to the wrong frame - https://github.com/advisories/GHSA-x562-297c-g43g
+Electron: Extension tabs.query returns tab URLs and titles without the tabs permission - https://github.com/advisories/GHSA-98mx-cjp9-gchm
+Electron: Frame subscription trusts GPU-supplied frame geometry - https://github.com/advisories/GHSA-3qxv-5xgr-q7w9
+Electron: Off-screen rendering on macOS trusts GPU-supplied frame geometry - https://github.com/advisories/GHSA-h3v5-h239-pg29
+Electron: openExternal permission requests can be attributed to the wrong origin - https://github.com/advisories/GHSA-997q-gvvc-jwmx
+Electron: Mitigation for compromised eMudhra intermediate certificates - https://github.com/advisories/GHSA-jr5w-w6x2-84p9
+Depends on vulnerable versions of extract-zip
+fix available via `npm audit fix --force`
+Will install electron@45.4.1, which is a breaking change
+node_modules/electron
+
+extract-zip  *
+Severity: high
+extract-zip unvalidated symlink path traversal - https://github.com/advisories/GHSA-jmr9-qjv8-65gv
+extract-zip allows arbitrary file writes through symlink archive entries - https://github.com/advisories/GHSA-7pqw-9j4j-h8q3
+fix available via `npm audit fix --force`
+Will install electron@45.4.1, which is a breaking change
+node_modules/extract-zip
+
+2 high severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+npm_audit_exit=1

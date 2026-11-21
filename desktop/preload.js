@@ -5,7 +5,7 @@
    ========================================================================== */
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-contextBridge.exposeInMainWorld('workspace', {
+const workspace = {
   deviceInfo:  () => ipcRenderer.invoke('device:info'),
   backupInfo:  () => ipcRenderer.invoke('backup:info'),
   backupNow:   () => ipcRenderer.invoke('backup:now'),
@@ -71,6 +71,13 @@ contextBridge.exposeInMainWorld('workspace', {
   getPathForFile: (file) => { try { return webUtils.getPathForFile(file) || ''; } catch (_) { return (file && file.path) || ''; } },
   resolveDropped:  (absPath) => ipcRenderer.invoke('app:resolve-dropped', absPath),
   scanMaterials:   (payload) => ipcRenderer.invoke('materials:scan', payload),
+  rpmProjectRoot: (id) => ipcRenderer.invoke('rpm:projectRoot', id),
+  rpmProjectFiles: (id, opts) => ipcRenderer.invoke('rpm:files', id, opts || {}),
+  rpmProjectRelations: (id) => ipcRenderer.invoke('rpm:relations', id),
+  rpmProjectAudit: (id) => ipcRenderer.invoke('rpm:rpm-audit', id),
+  rpmKnowledgeSnapshot: (opts) => ipcRenderer.invoke('rpm:knowledgeSnapshot', opts || {}),
+  rpmKnowledgeResolve: (projectId, fileId) => ipcRenderer.invoke('rpm:knowledgeResolve', { projectId, fileId }),
+  rpmKnowledgeOpenFile: (projectId, fileId) => ipcRenderer.invoke('rpm:knowledgeOpenFile', { projectId, fileId }),
   exportTemplates: (payload) => ipcRenderer.invoke('templates:export', payload),
   importTemplates: () => ipcRenderer.invoke('templates:import'),
 
@@ -114,4 +121,46 @@ contextBridge.exposeInMainWorld('workspace', {
   connPrompt: () => ipcRenderer.invoke('conn:prompt'),
   connExport: () => ipcRenderer.invoke('conn:export'),
   connReveal: (id) => ipcRenderer.invoke('conn:reveal', id)
-});
+};
+
+if (process.argv.includes('--rw-full-bridge')) {
+  const safe = [
+    'isDesktop', 'platform', 'versions', 'loadData', 'saveData', 'dataFilePath', 'deviceInfo',
+    'accountStatus', 'accountUnlock', 'backupInfo', 'backupAuto', 'backupNow',
+    'rpmProjectRoot', 'rpmProjectFiles', 'rpmProjectRelations', 'rpmProjectAudit',
+    'rpmKnowledgeSnapshot', 'rpmKnowledgeResolve', 'rpmKnowledgeOpenFile'
+  ];
+  const invoke = channel => payload => ipcRenderer.invoke('full:' + channel, payload);
+  const subscribe = channel => callback => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on('full:' + channel, listener);
+    return () => ipcRenderer.removeListener('full:' + channel, listener);
+  };
+  const markdown = Object.fromEntries(
+    ['list', 'read', 'save', 'versions', 'restore', 'watch', 'unwatch'].map(name => [name, invoke('markdown:' + name)])
+  );
+  contextBridge.exposeInMainWorld('workspace', {
+    ...Object.fromEntries(safe.map(name => [name, workspace[name]])),
+    webview: false,
+    full: {
+      enabled: true,
+      version: process.argv.find(arg => arg.startsWith('--rw-full-version='))?.split('=')[1] || '',
+      status: invoke('status'),
+      search: invoke('search'),
+      openMaterial: invoke('openMaterial'),
+      rpmProjects: invoke('rpmProjects'),
+      rpmBinding: invoke('rpmBinding'),
+      importWorkspace: invoke('import'),
+      vault: { status: invoke('vault:status'), choose: invoke('vault:choose') },
+      markdown: { ...markdown, onChange: subscribe('markdown:change') },
+      codex: {
+        ...Object.fromEntries(['capabilities', 'pending', 'discover', 'bind', 'list', 'refresh', 'handoff']
+          .map(name => [name, invoke('codex:' + name)])),
+        onChange: subscribe('codex:change')
+      }
+    }
+  });
+} else {
+  contextBridge.exposeInMainWorld('workspace', workspace);
+}

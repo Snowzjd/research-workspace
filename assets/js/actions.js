@@ -34,19 +34,18 @@ async function copyPath(p) {
 }
 
 function structurePayload() {
-  return {
-    root: rootDir(),
-    projects: DB.projects.map(p => ({
+  const projects = (typeof MaterialSource !== 'undefined' && MaterialSource.structureProjects)
+    ? MaterialSource.structureProjects(DB.projects, DB.settings, MATERIALS)
+    : DB.projects.filter(p => p && !p.rpmBound && !p.rpmRoot && !p.rpmProjectId).map(p => ({
       name: p.name,
       folder: p.folder || p.name,
-      dirs: Object.fromEntries(Object.entries(MATERIALS[p.id] || {}).map(([d, arr]) => [
-        d, arr.map(([n, , ext]) => ({ name: n, kind: ext === 'dir' ? 'dir' : 'file' }))
-      ]))
-    }))
-  };
+      dirs: {}
+    }));
+  return { root: rootDir(), projects: projects };
 }
 
 async function rebuildStructure(silent) {
+  if (window.FullWorkspace?.enabled) return;
   if (!Bridge.desktop) return toast('浏览器模式无法访问本地文件系统', 'err');
   const r = await window.workspace.ensureStructure(structurePayload());
   if (r.ok) {
@@ -120,7 +119,7 @@ function openTaskDetail(idx) {
     <div class="field">
       <label>项目其余材料目录</label>
       <div class="row" style="gap:6px;flex-wrap:wrap">
-        ${Object.keys(MATERIALS[t.p] || {}).map(d => `<button class="chip ${d === t.dir ? 'accent' : 'gray'}" data-act="open-abs" data-path="${esc(projectDir(p) + '\\' + d)}" data-label="${esc(d)}" style="cursor:pointer">${icon('folder')}${esc(d)}</button>`).join('')}
+        ${Object.keys(materialIndexOf(t.p) || {}).map(d => `<button class="chip ${d === t.dir ? 'accent' : 'gray'}" data-act="open-abs" data-path="${esc((typeof projectOpenRoot === 'function' ? projectOpenRoot(p) : projectDir(p)) + '\\' + d)}" data-label="${esc(d)}" style="cursor:pointer">${icon('folder')}${esc(d)}</button>`).join('')}
       </div>
     </div>`;
 
@@ -141,25 +140,39 @@ function openTaskForm(idx) {
   const t = isNew
     ? { t: '', p: state.project, agent: '', tool: '', due: '', pri: 'mid', st: 'todo', dir: '' }
     : JSON.parse(JSON.stringify(DB.tasks[idx]));
+  const candidate = window.FullWorkspace?.enabled;
+  const agents = DB.agents.map(agent => [agent.name, agent.name]);
+  if (candidate) agents.unshift(['', '未指定']);
+  const toolFields = candidate ? [
+    fArea('description', '任务要求', t.description, { rows: 3 }),
+    fArea('acceptance', '完成条件', t.acceptance, { rows: 2 }),
+    fText('codexReferences', '资料与知识节点 ID（可选）', t.codexReferences, {
+      ph: '输入同项目已登记的资料或知识节点 ID，以空格分隔'
+    })
+  ].join('') : '';
   const p = P(t.p);
-  const dirs = Object.keys(MATERIALS[t.p] || {});
+  const dirs = Object.keys(materialIndexOf(t.p) || {});
 
   const body = `
     ${fText('t', '任务名称', t.t, { req: true, ph: '例如：优化 TPMS 晶胞参数' })}
     <div class="field-row">
       ${fSelect('p', '所属项目', t.p, DB.projects.map(p2 => [p2.id, projName(p2)]))}
-      ${fSelect('agent', '负责 Agent', t.agent, DB.agents.map(a => [a.name, a.name]))}
+      ${fSelect('agent', '负责 Agent', t.agent, agents)}
     </div>
     <div class="field-row">
-      ${fText('tool', '使用工具', t.tool, { ph: 'Fluent / Python / Tecplot…' })}
+      ${fText('tool', '使用工具', t.tool, {
+        ph: 'Codex / Fluent / Python…', list: candidate ? 'fw-task-tools' : ''
+      })}
+      ${candidate ? '<datalist id="fw-task-tools"><option value="Codex"></option></datalist>' : ''}
       ${fText('due', '截止日期', t.due, { ph: 'YYYY-MM-DD，留空表示待排期', hint: '不要把「待确认」写在这里。空着就会显示待排期，状态在旁边单独选' })}
     </div>
     <div class="field-row">
       ${fSeg('pri', '优先级', t.pri, [['high', '高'], ['mid', '中'], ['low', '低']])}
       ${fSeg('st', '状态', t.st, [['todo', '待处理'], ['doing', '进行中'], ['review', '待复核'], ['done', '已完成']])}
     </div>
+    ${toolFields}
     ${fSelect('dir', '材料目录（项目内）', t.dir, [['', '（项目根目录）'], ...dirs.map(d => [d, d])], {
-      hint: `完整路径：${esc(projectDir(p))}\\<所选目录>`
+      hint: `完整路径：${esc(typeof projectOpenRoot === 'function' ? projectOpenRoot(p) : projectDir(p))}\\<所选目录>`
     })}`;
 
   openModal({
@@ -180,7 +193,7 @@ function openTaskForm(idx) {
       sel && sel.addEventListener('change', () => {
         const dirSel = modal.querySelector('[name="dir"]');
         if (!dirSel) return;
-        const nd = Object.keys(MATERIALS[sel.value] || {});
+        const nd = Object.keys(materialIndexOf(sel.value) || {});
         dirSel.innerHTML = `<option value="">（项目根目录）</option>` + nd.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
       });
     }
@@ -224,10 +237,11 @@ function openTodoForm(idx) {
 const THUMB_KINDS = [['tpms', '点阵结构'], ['lng', '工业储罐'], ['cfd', '涡量场'], ['pareto', 'Pareto'], ['bench', '试验回路'], ['rag', '知识图谱']];
 function openProjectForm(id, draft) {
   const isNew = id == null;
+  const candidate = window.FullWorkspace?.enabled;
   const p = isNew ? null : P(id);
   const d = draft || {};
   const root = d.rootDir != null ? d.rootDir : (rootDir() || (state.device && state.device.suggestedRoot) || '');
-  const tplId = d.template || 'standard';
+  const tplId = d.template || (candidate ? '' : 'standard');
   const name0 = d.name || '';
   const folder0 = d.folder != null ? d.folder : (name0 ? safeFolderName(name0) : '');
 
@@ -239,17 +253,17 @@ function openProjectForm(id, draft) {
     <div class="field" data-field="template">
       <label>项目模板</label>
       <div class="row" style="gap:7px">
-        <select class="select grow" name="template">${templateOptions().map(([v, l]) =>
+        <select class="select grow" name="template">${candidate ? '<option value="">空白项目</option>' : ''}${templateOptions().map(([v, l]) =>
           `<option value="${esc(v)}"${v === tplId ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>
         <span id="tpl-actions"></span>
       </div>
-      <div class="field-hint" id="tpl-hint">${esc(templateDesc(tplId))}</div>
+      <div class="field-hint" id="tpl-hint">${tplId ? esc(templateDesc(tplId)) : '创建后可添加阶段和任务'}</div>
     </div>`;
 
   const body = isNew ? `
-    ${fText('name', '项目名称', name0, { req: true, ph: '例如：TPMS换热器' })}
-    ${fText('displayName', '显示名', d.displayName || '', { ph: '留空则与项目名称相同', hint: '只用于界面。文件夹名单独保存，互不影响' })}
-    ${fText('folder', '项目文件夹名', folder0, {
+    ${fText('name', '项目名称', name0, { req: true, ph: candidate ? '' : '例如：TPMS换热器' })}
+    ${fText('displayName', '显示名', d.displayName || '', { ph: '留空则与项目名称相同', hint: candidate ? '' : '只用于界面。文件夹名单独保存，互不影响' })}
+    ${candidate ? '' : `${fText('folder', '项目文件夹名', folder0, {
       hint: '建在工作区根目录下的这个子目录；默认跟项目名一致，可改（项目名以后改了也不影响文件夹）'
     })}
     <div class="field" data-field="rootDir">
@@ -260,16 +274,17 @@ function openProjectForm(id, draft) {
       </div>
       <div class="field-hint">所有项目的材料目录都建在这里；之后可在「设置 → 数据与同步」更改</div>
     </div>
-    <div class="path-preview" id="pf-path" title="最终位置">${icon('folder')} <span class="mono">${esc(pathPreview)}</span></div>
-    ${fText('subtitle', '一句话描述', d.subtitle || '', { ph: '多孔结构换热器设计与性能优化' })}
+    <div class="path-preview" id="pf-path" title="最终位置">${icon('folder')} <span class="mono">${esc(pathPreview)}</span></div>`}
+    ${fText('subtitle', '一句话描述', d.subtitle || '', { ph: candidate ? '' : '多孔结构换热器设计与性能优化' })}
     ${fArea('goal', '研究目标', d.goal || '', { rows: 2, ph: '要解决什么问题、做到什么程度', hint: '写清楚这一条，后面 AI 和 Agent 才有判断依据' })}
     <div class="field-hint">新建项目的周期记为「周期待确认」，不会填入模板起止日期。</div>
     ${tplField}
-    ${fCheckbox('starterTasks', '生成模板自带的起始任务', true, { hint: '不勾选则只建项目与材料目录' })}
+    ${candidate ? fCheckbox('starterTasks', '生成所选模板的起始任务', false) :
+      fCheckbox('starterTasks', '生成模板自带的起始任务', true, { hint: '不勾选则只建项目与材料目录' })}
   ` : `
     ${fText('name', '项目名称', p.name, { req: true })}
     ${fText('displayName', '显示名', p.displayName || '', { ph: '留空则使用项目名称', hint: '只改界面上的名字，不改稳定 ID，也不改文件夹' })}
-    ${fText('shortName', '短名称', p.shortName || '', { ph: '例如 SN2 渐变翅片', hint: '卡片和页头优先用它。留空则用完整显示名，两行内换行，不靠截断来排版' })}
+    ${fText('shortName', '短名称', p.shortName || '', { ph: '例如 热接触重复性', hint: '卡片和页头优先用它。留空则用完整显示名，两行内换行，不靠截断来排版' })}
     ${fText('folder', '项目文件夹名', p.folder || p.name, { hint: '只保存相对名。改这里不会移动磁盘目录，外部路径请自建目录联接' })}
     ${fText('subtitle', '一句话描述', p.subtitle)}
     ${fArea('goal', '研究目标', p.goal, { rows: 2 })}
@@ -292,7 +307,7 @@ function openProjectForm(id, draft) {
       ${fSelect('cover_kind', '封面', (p.cover && p.cover.kind) || 'builtin', [['builtin', '类型占位图'], ['local_reference', '本地图片'], ['none', '无图']])}
       ${fSelect('cover_fit', '适配', (p.cover && p.cover.fit) || 'contain', [['contain', '完整显示'], ['cover', '裁切铺满']])}
     </div>
-    ${fText('cover_resource', '本地封面路径', (p.cover && p.cover.resource) || '', { ph: '例如 G:\\\\SN2\\\\fig\\\\cover.jpg', hint: '只记录本机路径，不会上传' })}
+    ${fText('cover_resource', '本地封面路径', (p.cover && p.cover.resource) || '', { ph: '例如 图件/封面.jpg', hint: '只记录本机路径，不会上传' })}
     ${fText('cover_alt', '封面替代文字', (p.cover && p.cover.alt) || '', { ph: '渐变翅片几何' })}
     <div class="field-row">
       ${fText('stage', '当前阶段', p.stage, { ph: '仿真计算' })}
@@ -312,7 +327,7 @@ function openProjectForm(id, draft) {
 
   openModal({
     title: isNew ? '新建科研项目' : '编辑项目',
-    sub: isNew ? '套用模板生成阶段与材料目录，之后可随时调整' : esc(p.name),
+    sub: isNew ? (candidate ? '在候选工作台登记项目，可在创建后绑定现有 RPM。' : '套用模板生成阶段与材料目录，之后可随时调整') : esc(p.name),
     body,
     footer: `<span class="grow"></span>
       <button class="btn" data-act="modal-close">取消</button>
@@ -332,7 +347,7 @@ function openProjectForm(id, draft) {
       const hint = modal.querySelector('#tpl-hint');
       const acts = modal.querySelector('#tpl-actions');
       const syncTpl = () => {
-        if (hint && sel) hint.textContent = templateDesc(sel.value);
+        if (hint && sel) hint.textContent = sel.value ? templateDesc(sel.value) : '创建后可添加阶段和任务';
         if (!acts || !sel) return;
         const t = allTemplates().find(x => x.id === sel.value);
         acts.innerHTML = (t && !t.builtin)
@@ -1051,6 +1066,7 @@ document.addEventListener('click', async e => {
     if (t.dataset.tab === 'task') state.taskFilter = v;
     else if (t.dataset.tab === 'taskmode') state.taskMode = v;
     else if (t.dataset.tab === 'kb') { state.kbCat = v; state.ragResults = null; state.ragMeta = null; }
+    else if (t.dataset.tab === 'kb-section') { state.kbTab = v === 'network' ? 'network' : 'search'; }
     else if (t.dataset.tab === 'set') {
       state.setTab = v;
       if (v === 'external') { refreshConnClients(); return; }
@@ -1095,7 +1111,8 @@ document.addEventListener('click', async e => {
         DB.settings.rootDir = newRoot;
         DB.settings.structureCreated = false;
       }
-      if (!rootDir()) return toast('请先选择工作区根目录', 'err');
+      const candidate = window.FullWorkspace?.enabled;
+      if (!candidate && !rootDir()) return toast('请先选择工作区根目录', 'err');
 
       const folder = safeFolderName(folderEl && folderEl.value.trim() ? folderEl.value.trim() : v.name);
       if (DB.projects.some(x => (x.folder || x.name) === folder)) {
@@ -1108,6 +1125,10 @@ document.addEventListener('click', async e => {
         name: v.name, folder, displayName: v.displayName, subtitle: v.subtitle, goal: v.goal,
         templateId: v.template
       });
+      if (candidate && !v.template) Object.assign(proj, {
+        subtitle: v.subtitle || '', stage: '', next: '', nodes: [], flow: [],
+        cover: { kind: 'none', resource: '', alt: '', fit: 'contain', focus: '' }
+      });
       const span = monthsFromPeriod(proj.period);
       const due = days => {
         const x = new Date(Date.now() + days * 864e5);
@@ -1116,7 +1137,8 @@ document.addEventListener('click', async e => {
 
       mutate(() => {
         DB.projects.push(proj);
-        MATERIALS[proj.id] = Object.fromEntries(((tpl && tpl.dirs.length) ? tpl.dirs : ['01_资料']).map(d => [d, []]));
+        /* 不再把真实项目 id 写入演示 MATERIALS */
+        const starterDirs = (tpl && tpl.dirs.length) ? tpl.dirs : ['01_资料'];
         DB.timeline.push({ p: proj.name, bars: [{ s: span.s, e: span.e, l: proj.stage, c: proj.accent }] });
 
         /* 模板自带的起始任务：都是「想清楚这个项目」必须回答的问题，可删可改 */
@@ -1129,7 +1151,7 @@ document.addEventListener('click', async e => {
             DB.tasks.push({
               id: 'tk' + Date.now().toString(36) + i.toString(36) + Math.random().toString(36).slice(2, 4),
               t: String(t), p: proj.id, agent: agentName, tool: '文档', due: due((i + 1) * 5),
-              pri: i === 0 ? 'high' : 'mid', st: 'todo', dir: (Object.keys(materialIndexOf(proj.id))[0]) || '', src: 'template'
+              pri: i === 0 ? 'high' : 'mid', st: 'todo', dir: (starterDirs[0] || ''), src: 'template'
             });
           });
         }
@@ -1141,8 +1163,8 @@ document.addEventListener('click', async e => {
       }, { activity: { text: `创建项目 <b>${esc(proj.name)}</b>`, kind: 'create', color: '#218358', projectId: proj.id } });
 
       closeModal();
-      toast(`项目 <b>${esc(proj.name)}</b> 已创建 · 文件夹 <span class="mono">${esc(folder)}</span>`, 'ok');
-      if (Bridge.desktop) setTimeout(() => rebuildStructure(true), 200);
+      toast(`项目 <b>${esc(proj.name)}</b> 已创建${candidate ? '' : ' · 文件夹 <span class="mono">' + esc(folder) + '</span>'}`, 'ok');
+      if (Bridge.desktop && !window.FullWorkspace?.enabled) setTimeout(() => rebuildStructure(true), 200);
       return;
     }
     case 'project-update': {
@@ -1248,7 +1270,7 @@ document.addEventListener('click', async e => {
     case 'project-save-template': {
       const p = P(t.dataset.id);
       closeModal();
-      const dirs = Object.keys(MATERIALS[p.id] || {});
+      const dirs = Object.keys(materialIndexOf(p.id) || {});
       const openTasks = DB.tasks.filter(x => x.p === p.id && x.st !== 'done');
       openModal({
         title: '存为项目模板',
@@ -1275,7 +1297,7 @@ document.addEventListener('click', async e => {
       const v = formValues(m);
       const p = P(t.dataset.id);
       const withTasks = !!(m.querySelector('[name="tplTasks"]') || {}).checked;
-      const dirs = Object.keys(MATERIALS[p.id] || {});
+      const dirs = Object.keys(materialIndexOf(p.id) || {});
       const tpl = {
         id: 'tpl' + Date.now().toString(36),
         name: v.tplName.trim(),
@@ -1770,7 +1792,12 @@ document.addEventListener('click', async e => {
       toast(`当前工作区：<b>${esc(p.name)}</b>`, 'ok');
       return;
     }
-    case 'open-project-folder': return openPath(projectDir(P(t.dataset.id)), P(t.dataset.id).name + ' 项目目录');
+    case 'open-project-folder': {
+      const p = P(t.dataset.id);
+      if (!p) return;
+      const root = typeof projectOpenRoot === 'function' ? projectOpenRoot(p) : projectDir(p);
+      return openPath(root, p.name + ' 项目目录');
+    }
 
     /* ---------- 任务 ---------- */
     /* ---------- 项目页（Sprint A） ---------- */
@@ -1829,7 +1856,7 @@ document.addEventListener('click', async e => {
         sub: '只记录原位路径。不会复制、上传，也不会因为文件名判断已提交。',
         body: `
           ${fText('title', '标题', '', { req: true })}
-          ${fText('file', '原位文件', '', { req: true, ph: 'G:\\\\SN2\\\\写作\\\\稿件.docx' })}
+          ${fText('file', '原位文件', '', { req: true, ph: '论文/稿件.docx' })}
           ${fSelect('type', '类型', 'paper', [['paper', '论文'], ['review', '综述'], ['patent', '专利'], ['cad', '模型'], ['mesh', '网格'], ['dataset', '数据集'], ['figure', '图表'], ['report', '报告'], ['other', '其他']])}
           ${fSelect('status', '状态', 'draft', [['draft', '草稿'], ['review', '待复核'], ['confirmed', '已确认'], ['submitted', '已提交']])}
           ${fText('version', '版本标签', '', { ph: 'v3 修订' })}
@@ -1838,6 +1865,18 @@ document.addEventListener('click', async e => {
         footer: `<span class="grow"></span><button class="btn" data-act="modal-close">取消</button>
           <button class="btn primary" data-submit data-act="link-outcome-save" data-id="${p.id}">关联</button>`
       });
+      return;
+    }
+    case 'unlink-outcome': {
+      const p = P(t.dataset.pid || t.dataset.id || state.project);
+      const id = t.dataset.id;
+      if (!p || !id) return;
+      const applied = applyProjectPatch(p, { unlink_outcome: { id: id } });
+      if (!applied.ok) return toast(esc(applied.error || '没有取消关联'), 'err');
+      logActivity('取消成果关联（磁盘文件保留）', 'edit', '#AD5700', { projectId: p.id, objectId: id, type: 'unlink_outcome' });
+      persist();
+      render();
+      toast(esc((applied.changes && applied.changes[0]) || '已取消关联（磁盘文件保留）'), 'ok');
       return;
     }
     case 'link-outcome-save': {
@@ -1876,7 +1915,8 @@ document.addEventListener('click', async e => {
     case 'proj-open-mat': {
       const p = P(t.dataset.id);
       if (!p) return;
-      return openPath(projectDir(p) + '\\' + (t.dataset.d || ''), p.name + ' · ' + (t.dataset.d || ''));
+      const root = typeof projectOpenRoot === 'function' ? projectOpenRoot(p) : projectDir(p);
+      return openPath(root + '\\' + (t.dataset.d || ''), p.name + ' · ' + (t.dataset.d || ''));
     }
     /* ---------- 材料双视图（Sprint E） ---------- */
     /* ---------- 模板导入 / 导出（公开 JSON 格式） ---------- */
@@ -1997,7 +2037,11 @@ document.addEventListener('click', async e => {
       return;
     }
     case 'edit-task': closeModal(); openTaskForm(+t.dataset.idx); return;
-    case 'open-task': openTaskDetail(+t.dataset.idx); return;
+    case 'open-task': {
+      if (window.FullWorkspace?.enabled) window.FullWorkspace.task(DB.tasks[+t.dataset.idx]?.id);
+      else openTaskDetail(+t.dataset.idx);
+      return;
+    }
     case 'open-task-folder': {
       e.stopPropagation();
       return openPath(taskDir(DB.tasks[+t.dataset.idx]), '任务材料 · ' + DB.tasks[+t.dataset.idx].t);
@@ -2008,7 +2052,10 @@ document.addEventListener('click', async e => {
       mutate(() => {
         DB.tasks.unshift({
           id: 'tk' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-          t: v.t, p: v.p, agent: v.agent, tool: v.tool, due: v.due, pri: v.pri, st: v.st, dir: v.dir
+          t: v.t, p: v.p, agent: v.agent, tool: v.tool, due: v.due, pri: v.pri, st: v.st, dir: v.dir,
+          ...(window.FullWorkspace?.enabled && {
+            description: v.description, acceptance: v.acceptance, codexReferences: v.codexReferences
+          })
         });
         DB.workspace.project = (P(v.p) || {}).name || DB.workspace.project;
       }, { activity: { text: `新建任务 <b>${esc(v.t)}</b>`, kind: 'create', color: '#218358' } });
@@ -2017,7 +2064,10 @@ document.addEventListener('click', async e => {
     case 'task-update': {
       const m = document.querySelector('.modal'); if (!validate(m, ['t'])) return;
       const v = formValues(m); const task = DB.tasks[+t.dataset.idx];
-      mutate(() => Object.assign(task, { t: v.t, p: v.p, agent: v.agent, tool: v.tool, due: v.due, pri: v.pri, st: v.st, dir: v.dir }),
+      mutate(() => Object.assign(task, { t: v.t, p: v.p, agent: v.agent, tool: v.tool, due: v.due, pri: v.pri, st: v.st, dir: v.dir,
+          ...(window.FullWorkspace?.enabled && {
+            description: v.description, acceptance: v.acceptance, codexReferences: v.codexReferences
+          }) }),
         { activity: { text: `更新任务 <b>${esc(v.t)}</b>`, kind: 'edit', color: '#AD5700' } });
       closeModal(); toast('任务已保存', 'ok'); return;
     }
@@ -3436,7 +3486,8 @@ document.addEventListener('click', async e => {
       const n = nodes[i];
       if (!n) return;
       const dirName = Object.keys(materialIndexOf(p.id))[i] || '';
-      const dir = dirName ? projectDir(p) + '\\' + dirName : '';
+      const openRoot = typeof projectOpenRoot === 'function' ? projectOpenRoot(p) : projectDir(p);
+      const dir = dirName ? openRoot + '\\' + dirName : '';
       const stageTasks = DB.tasks.filter(x => x.p === p.id && (x.dir === dirName || String(x.t).includes(n.l)));
 
       openModal({
@@ -3452,7 +3503,7 @@ document.addEventListener('click', async e => {
             <input type="hidden" name="stageState" value="${esc(n.s)}"></div>
           <div class="field"><label>日期</label>
             <input class="input" name="stageDate" value="${esc(n.d)}" placeholder="如 10.28"></div>
-          ${dir ? `<div class="field"><label>阶段材料目录</label>
+          ${dir && !window.FullWorkspace?.enabled ? `<div class="field"><label>阶段材料目录</label>
             <div class="path-box"><span class="pb-ico">${icon('folder')}</span>
               <div class="pb-body"><div class="pb-name">${esc(dirName)}</div><div class="pb-path">${esc(dir)}</div></div>
               <div class="pb-actions"><button class="btn sm primary" data-act="open-abs" data-path="${esc(dir)}" data-label="${esc(dirName)}">${icon('folderOpen')}打开</button></div></div></div>` : ''}
@@ -3710,6 +3761,12 @@ const ROUTE_ALIAS = {
 };
 
 function consumeRoute(raw) {
+  if (window.FullWorkspace?.enabled) {
+    const workbench = { home: 'dashboard', projects: 'projects-center', tasks: 'activity', timeline: 'activity',
+      knowledge: 'graph', agents: 'activity', ai: 'activity', dock: 'project', settings: 'dashboard',
+      automation: 'activity', browser: 'dashboard' };
+    return Object.hasOwn(workbench, raw) ? workbench[raw] : raw;
+  }
   if (raw === 'agents') state.aiMode = 'assign';
   if (raw === 'browser') state.aiMode = 'browser';
   if (raw === 'dock') state.projectTab = 'software';
@@ -4075,6 +4132,7 @@ async function boot() {
   const h = location.hash.slice(1);
   const resolved = h ? consumeRoute(h) : '';
   if (resolved && VIEWS[resolved]) state.route = resolved;
+  else if (window.FullWorkspace?.enabled) state.route = 'graph';
   else if (DB.settings.resumeLast && DB.settings.lastRoute) {
     const last = consumeRoute(DB.settings.lastRoute);
     if (VIEWS[last]) state.route = last;
@@ -4087,7 +4145,13 @@ async function boot() {
 
   render();
 
-  if (Bridge.desktop) {
+  if (Bridge.desktop && window.FullWorkspace?.enabled) {
+    try {
+      authSt().status = await Bridge.accountStatus();
+      authSt().ready = true;
+    } catch (_) {}
+    render();
+  } else if (Bridge.desktop) {
     /* 真实进程同步：初始没有任何工作台拉起的进程 */
     DB.apps.forEach(a => { if (a.kind === 'exe') a.run = null; });
     DB.workspace.running = [];

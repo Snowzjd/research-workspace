@@ -4,9 +4,15 @@
 
 一个**独立的 Windows 桌面软件**：项目管理、任务流、科研知识库、工程软件启动器、AI Agent 调度，全部在一个工作空间里运行。
 
-## 下载
+## 4.0.0-rc.1 预发布源码
 
-到 [Releases](../../releases/latest) 下载 `ResearchWorkspace-portable-x.y.z.exe`，双击即用，免安装。
+这个分支上的版本是 **4.0.0-rc.1**。它不是稳定版 4.0.0，也还没有作为 GitHub Release 发布。不要把 [Releases 的 latest](../../releases/latest) 当成这个候选版本，也不要运行 `install.ps1` 或桌面快捷方式脚本去覆盖已经装好的正式版。
+
+Windows 便携包需要在 Windows x64 上按 `FULL-CANDIDATE.md` 和 `docs/release-review/WINDOWS-REBUILD-4.0.0-rc.1.md` 重新构建。构建和验收完成之前，已发布的正式版仍以仓库 Releases 中的历史版本为准。
+
+## 已发布正式版
+
+已发布的历史正式版从 [Releases](../../releases) 获取。那些包不是 4.0.0-rc.1。
 
 - 数据只存在本机（`%APPDATA%\个人科研工作台\`），exe 不含任何项目数据
 - 新设备打开就是空工作台（只有标准模板），按引导建立身份、绑定云端

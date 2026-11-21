@@ -455,31 +455,32 @@ test('a 1000-字 target is a hard CJK band of 800–1200 and pure English replie
   assert.ok(job.lastIndexOf('【回复语言】') > job.indexOf('【专属工作规范】'));
 });
 
-test('empty materials dirs say there is no materials subdirectory', async () => {
+test('unbound materials report the missing file engine and ignore stale in-memory directories', async () => {
   const ctx = loadTools();
   seedProject(ctx);
   const listed = await tool(ctx, 'list_materials', {});
   assert.equal(listed.ok, true);
   assert.equal(listed.empty, true);
   assert.equal(listed.dirs.length, 0);
-  assert.match(listed.note, /没有材料子目录/);
+  assert.equal(listed.source, 'disconnected');
+  assert.match(listed.note, /尚未接入文件引擎/);
 
   const asked = await tool(ctx, 'list_materials', { dir: '01_文献' });
   assert.equal(asked.ok, false);
-  assert.match(asked.error, /没有材料子目录/);
+  assert.match(asked.error, /尚未接入文件引擎/);
 
   const context = await tool(ctx, 'get_project_context', {});
   assert.equal(context.material_dirs.length, 0);
-  assert.match(context.materials_note, /没有材料子目录/);
+  assert.match(context.materials_note, /尚未接入文件引擎/);
 
   runInContext(`MATERIALS[state.project] = { '01_文献': [['a.pdf', '1 MB', 'pdf']] }`, ctx);
   const filled = await tool(ctx, 'list_materials', {});
-  assert.equal(filled.dirs.length, 1);
-  assert.equal(filled.note, undefined);
-  assert.equal(filled.empty, undefined);
+  assert.equal(filled.dirs.length, 0);
+  assert.equal(filled.source, 'disconnected');
+  assert.equal(filled.empty, true);
   const again = await tool(ctx, 'get_project_context', {});
-  assert.equal(JSON.stringify(again.material_dirs), '["01_文献"]');
-  assert.equal(again.materials_note, undefined);
+  assert.equal(again.material_dirs.length, 0);
+  assert.match(again.materials_note, /尚未接入文件引擎/);
 });
 
 test('empty or garbled search warnings are one plain sentence', async () => {

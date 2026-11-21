@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.0.0-rc.1
+
+预发布。不是稳定版 4.0.0，也尚未作为 GitHub Release 发布。Electron 32.2.0 那一次 Windows 便携包验收只对旧运行时有效；这次运行时变更之后必须重新构建再验收。
+
+- 窗口运行时改为仍在上游支持期内的 Electron 45.4.1（Chromium 156.0.8078.100，Node.js 24.22.3，V8 15.6.75.57-electron.c2a1644ee688c616）。
+- 第一方代码使用 MIT 许可证，版权署名为 Snowzjd，年份为 2026。
+- 便携包保留 Electron 发行包根目录的 `LICENSE` 与 `LICENSES.chromium.html`，并把第一方 `LICENSE` 放进 `resources/app/LICENSE`。
+- 本地 API 的 OpenAPI 版本与未提供渲染层版本时的健康检查版本改为 `4.0.0-rc.1`。
+
 ## Unreleased
 
 - 首页卡片不再画完整流程，改为当前阶段、里程碑、未完成任务和下一步。项目页用一份纵向步骤列出全部节点。活动和待办按稳定 project_id 过滤；没有归属的历史记录留在全局。进度以等权里程碑显示，非法值整单拒绝且不会写成 50。周期未核定显示「周期待确认」。封面、软件绑定、原位成果和材料索引状态由界面与 update_project 共用校验。folder 仍是相对名，不复制文件。

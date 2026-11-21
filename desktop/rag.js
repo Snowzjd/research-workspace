@@ -111,7 +111,7 @@ function hintFor(raw, url) {
   return `请求 ${url} 失败：${m || '未知错误'}`;
 }
 
-async function request(endpoint, pathname, { method = 'GET', body, timeout = 15000, auth = true } = {}) {
+async function request(endpoint, pathname, { method = 'GET', body, timeout = 15000, auth = true, noRedirect = false } = {}) {
   const base = normalizeBase(endpoint);
   if (!base) return { ok: false, error: '未配置 RAG 服务地址' };
   const url = base + pathname;
@@ -130,6 +130,7 @@ async function request(endpoint, pathname, { method = 'GET', body, timeout = 150
     const res = await fetch(url, {
       method,
       headers,
+      redirect: noRedirect ? 'error' : 'follow',
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: ctrl.signal
     });
@@ -286,7 +287,8 @@ async function search(cfg = {}) {
   const r = await request(endpoint, snowz ? '/v1/search' : '/search', {
     method: 'POST',
     body: snowz ? snowzBody(q, top_k, cfg) : { query: q, top_k, filters: cfg.filters || {} },
-    timeout: snowz ? 30000 : 20000,
+    timeout: cfg.noRedirect ? 8000 : snowz ? 30000 : 20000,
+    noRedirect: cfg.noRedirect === true,
     auth: !snowz
   });
   if (!r.ok) return r;

@@ -109,32 +109,56 @@ function projectTasksHTML(p) {
 
 /* ---------- 材料 ---------- */
 function projectMaterialsHTML(p) {
+  if (typeof scheduleRpmRefresh === 'function') scheduleRpmRefresh(p.id);
+  const status = materialStatusView(p.id);
   const dirs = Object.keys(materialIndexOf(p.id));
   const files = materialsIn(p.id);
   const scan = state.matScan && state.matScan.pid === p.id ? state.matScan : null;
+  const bound = !!status.rpm_bound || status.source === 'rpm' || status.source === 'rpm-loading' || status.source === 'rpm-error';
+  const refreshLabel = bound ? '刷新文件索引' : '预览目录（非 RPM）';
+  const emptyTitle = (status.state === 'disconnected')
+    ? '尚未接入文件引擎'
+    : status.label;
+  const emptySub = bound
+    ? '文件列表来自文件引擎索引。打开目录时使用解析后的真实根路径，不会把包装目录当作根。'
+    : '不会回退到演示材料，也不会把浅扫描结果写成权威索引。预览只在本次会话中显示。排除名单可在设置 materialScanExclude 中配置。';
+  const fileRows = (d, inDir) => {
+    if (!inDir.length) return `<div class="proj-mat-sub">0 个文件</div>`;
+    const extra = inDir.slice(0, 8).map(f => {
+      const meta = [f.category, f.purpose, f.size].filter(Boolean).join(' · ');
+      const open = f.absolute_path || '';
+      return `<div class="proj-mat-sub" style="display:flex;gap:8px;align-items:center">
+        <button class="head-link" data-act="open-abs" data-path="${esc(open)}" data-label="${esc(f.n)}" style="padding:0">${esc(f.n)}</button>
+        <span class="muted">${esc(meta)}</span>
+      </div>`;
+    }).join('');
+    const more = inDir.length > 8 ? `<div class="proj-mat-sub">还有 ${inDir.length - 8} 个文件</div>` : '';
+    return `<div class="proj-mat-sub">${inDir.length} 个文件</div>${extra}${more}`;
+  };
   return `<div class="card panel">
     <div class="panel-head">
       <h3>${icon('folder')}材料</h3>
-      <span class="head-sub">${esc(materialStatusView(p.id).label)}</span>
+      <span class="head-sub">${esc(status.label)}</span>
       <span class="grow"></span>
-      <button class="btn sm primary" data-act="mat-scan" data-id="${p.id}">${icon('refresh')}与磁盘同步</button>
+      <button class="btn sm primary" data-act="mat-scan" data-id="${p.id}">${icon('refresh')}${refreshLabel}</button>
       <button class="btn sm" data-act="open-project-folder" data-id="${p.id}">${icon('folderOpen')}打开目录</button>
     </div>
-    ${scan ? matDiffHTML(p, scan) : ''}
+    ${scan && scan.nonRpm ? `<div class="field-hint" style="padding:8px 12px">这是一次性目录预览，不是文件引擎索引，也不会写入 materialIndex。</div>` : ''}
+    ${scan && !scan.nonRpm ? matDiffHTML(p, scan) : ''}
     <div class="proj-mat-list">
       ${dirs.length ? dirs.map(d => {
-        const inDir = files.filter(f => String(f.dir || f.rel || '').startsWith(d));
+        const inDir = files.filter(f => f.dir === d || String(f.dir || f.rel || '').startsWith(d));
         return `<div class="proj-mat-row">
           <span class="proj-mat-ico">${icon('folder')}</span>
           <div class="grow"><div class="proj-mat-name">${esc(d)}</div>
-            <div class="proj-mat-sub">${inDir.length} 个已登记文件</div></div>
+            ${fileRows(d, inDir)}</div>
           <button class="btn sm ghost" data-act="proj-open-mat" data-id="${p.id}" data-d="${esc(d)}">${icon('folderOpen')}打开</button>
         </div>`;
       }).join('') : emptyState({
         icon: 'folder',
-        title: materialStatusView(p.id).state === 'unscanned' ? '已关联目录，尚未建立材料索引' : materialStatusView(p.id).label,
-        sub: '登记表为空不等于磁盘没有文件。同步只读文件名、大小和修改时间，不复制、不上传。曹妃甸目录和 RAG 引擎目录只记录是否存在，不展开正文。',
-        primary: { act: 'mat-scan', label: '建立索引', ico: 'refresh', data: { id: p.id } },
+        title: emptyTitle,
+        sub: emptySub,
+        primary: { act: 'mat-scan', label: bound ? '刷新文件索引' : '预览目录（非 RPM）', ico: 'refresh', data: { id: p.id } },
         secondary: { act: 'open-project-folder', label: '打开目录', ico: 'folderOpen', data: { id: p.id } }
       })}
     </div>
@@ -322,53 +346,113 @@ function matDiffHTML(p, scan) {
   </div>`;
 }
 
-/* 扫描磁盘（只读，不写登记） */
+function scheduleRpmRefresh(pid) {
+  if (!pid) return;
+  if (!state.rpmMaterials) state.rpmMaterials = {};
+  const cache = state.rpmMaterials[pid];
+  if (cache && (cache.loading || cache.probed)) return;
+  if (!Bridge.desktop || !window.workspace || typeof window.workspace.rpmProjectFiles !== 'function') {
+    state.rpmMaterials[pid] = { probed: true, rpmBound: false, loading: false };
+    return;
+  }
+  state.rpmMaterials[pid] = Object.assign({}, cache, { loading: true });
+  refreshProjectMaterials(pid).then(function () { render(); });
+}
+
+async function refreshProjectMaterials(pid) {
+  if (!pid) return null;
+  if (!state.rpmMaterials) state.rpmMaterials = {};
+  if (!Bridge.desktop || !window.workspace || typeof window.workspace.rpmProjectRoot !== 'function') {
+    state.rpmMaterials[pid] = { probed: true, rpmBound: false, loading: false };
+    return state.rpmMaterials[pid];
+  }
+  state.rpmMaterials[pid] = Object.assign({}, state.rpmMaterials[pid], { loading: true });
+  const root = await window.workspace.rpmProjectRoot(pid);
+  if (!root || root.rpmBound !== true) {
+    state.rpmMaterials[pid] = {
+      probed: true,
+      loading: false,
+      rpmBound: false,
+      resolvedRoot: (root && root.resolvedRoot) || '',
+      rpmProjectId: (root && root.rpmProjectId) || '',
+      error: (root && (root.error || root.note)) || '',
+      code: (root && root.code) || 'unbound',
+      at: new Date().toISOString()
+    };
+    return state.rpmMaterials[pid];
+  }
+  const found = await window.workspace.rpmProjectFiles(pid, { limit: 500 });
+  if (!found || found.ok === false) {
+    state.rpmMaterials[pid] = {
+      probed: true,
+      loading: false,
+      rpmBound: true,
+      resolvedRoot: (found && found.resolvedRoot) || root.resolvedRoot || '',
+      rpmProjectId: (found && found.rpmProjectId) || root.rpmProjectId || '',
+      error: (found && found.error) || '无法读取文件引擎',
+      files: null,
+      at: new Date().toISOString()
+    };
+    return state.rpmMaterials[pid];
+  }
+  const files = found.files || [];
+  state.rpmMaterials[pid] = {
+    probed: true,
+    loading: false,
+    rpmBound: true,
+    resolvedRoot: found.resolvedRoot || root.resolvedRoot || '',
+    rpmProjectId: found.rpmProjectId || root.rpmProjectId || '',
+    files: files,
+    index: (typeof MaterialSource !== 'undefined' && MaterialSource.indexFromRpmFiles)
+      ? MaterialSource.indexFromRpmFiles(files)
+      : {},
+    error: '',
+    at: new Date().toISOString()
+  };
+  return state.rpmMaterials[pid];
+}
+
+/* 已绑定：刷新 RPM 索引。未绑定：一次性浅扫描预览，默认不写入 materialIndex / materialScans。 */
 async function scanProjectMaterials(pid) {
   const p = P(pid);
   if (!p) return toast('项目不存在', 'err');
-  if (!Bridge.desktop || !window.workspace.scanMaterials) return toast('材料扫描只在桌面端可用', 'err');
+  const decided = typeof materialSourceOf === 'function' ? materialSourceOf(pid) : { source: 'disconnected' };
+  const bound = !!(decided.rpmBound || decided.source === 'rpm' || decided.source === 'rpm-loading' || decided.source === 'rpm-error'
+    || (p.rpmProjectId || p.rpmRoot || (DB.settings && DB.settings.rpmBindings && DB.settings.rpmBindings[pid])));
+  if (bound) {
+    if (!Bridge.desktop || !window.workspace || !window.workspace.rpmProjectFiles) {
+      return toast('文件引擎只在桌面端可用', 'err');
+    }
+    if (!state.rpmMaterials) state.rpmMaterials = {};
+    state.rpmMaterials[pid] = Object.assign({}, state.rpmMaterials[pid], { loading: true, probed: false });
+    render();
+    const cache = await refreshProjectMaterials(pid);
+    render();
+    if (cache && cache.rpmBound && !cache.error) return toast(esc(materialStatusView(pid).label), 'ok');
+    return toast(esc((cache && cache.error) || materialStatusView(pid).label), 'err');
+  }
+  if (!Bridge.desktop || !window.workspace.scanMaterials) return toast('目录预览只在桌面端可用', 'err');
   const gen = state.viewGen || 0;
-  if (!DB.materialScans) DB.materialScans = {};
-  DB.materialScans[pid] = { state: 'scanning', files: 0, error: '', at: new Date().toISOString() };
   render();
   const r = await window.workspace.scanMaterials({ folder: p.folder || p.name });
   if ((state.viewGen || 0) !== gen || state.project !== pid) return;
   if (!r || !r.ok) {
-    const broken = /不存在|不可用|junction|联接/i.test(String((r && r.error) || ''));
-    DB.materialScans[pid] = {
-      state: broken ? 'junction_broken' : 'failed',
-      files: 0,
-      error: (r && r.error) || '无法读取目录',
-      at: new Date().toISOString()
-    };
-    state.matScan = null;
+    state.matScan = { pid: pid, nonRpm: true, error: (r && r.error) || '无法读取目录', count: 0, dirs: [] };
     render();
-    return toast(esc(materialStatusView(pid).label), 'err');
+    return toast('预览失败：' + esc((r && r.error) || '无法读取目录'), 'err');
   }
-  const parsed = normalizeMaterialScan(p, {
-    state: 'ok', files: r.count, dirs: r.dirs || [], target: r.link_target || ''
-  });
-  DB.materialScans[pid] = parsed.scan || { state: 'failed', error: parsed.error || '索引失败', files: 0 };
-  if (r.link_target && !p.junctionTarget) p.junctionTarget = r.link_target;
-  state.matScan = { pid, count: r.count || 0, dirs: r.dirs || [], root: r.root || '', at: Date.now(), note: r.note || '' };
-  persist();
+  state.matScan = {
+    pid: pid, nonRpm: true, preview: true,
+    count: r.count || 0, dirs: r.dirs || [], root: r.root || '',
+    at: Date.now(), note: r.note || ''
+  };
   render();
-  toast(materialStatusView(pid).label, 'ok');
+  toast('目录预览（非 RPM）：' + (r.count || 0) + ' 项，未写入权威索引', 'ok');
 }
 
-/* 确认后按磁盘重建登记表 */
+/* 不再把浅扫描结果写入 materialIndex。 */
 function applyMaterialSync(pid) {
-  const scan = state.matScan;
-  if (!scan || scan.pid !== pid) return toast('请先扫描', 'err');
-  const idx = {};
-  (scan.dirs || []).forEach(d => {
-    idx[d.dir] = (d.files || []).map(f => [f.n, f.size, f.ext]);
-  });
-  DB.materialIndex[pid] = idx;
   state.matScan = null;
-  persist();
   render();
-  const total = Object.values(idx).reduce((n, arr) => n + arr.length, 0);
-  logActivity(`按磁盘重建材料登记：${Object.keys(idx).length} 个目录 / ${total} 个文件`, 'edit', '#AD5700');
-  toast(`登记已更新：${Object.keys(idx).length} 个目录 · ${total} 个文件`, 'ok');
+  toast('材料登记不再作为权威索引写入。已绑定项目请刷新文件引擎；未绑定项目的预览不会写入 materialIndex。', 'err');
 }

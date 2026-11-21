@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>个人 AI 科研工程工作台</title>
 <link rel="stylesheet" href="assets/css/styles.css">
+<link rel="stylesheet" href="assets/css/knowledge-network.css">
+<link rel="stylesheet" href="assets/css/full-workspace.css">
 </head>
 <body class="compact">
   <div class="app">
@@ -14,6 +16,7 @@
       <div class="view-scroll" id="view"></div>
       <!-- 真实网页面板：独立于 #view 存在，重绘不会销毁 webview 内的页面 -->
       <section class="browser-pane" id="browser-pane" hidden></section>
+      <section class="knowledge-network-pane" id="knowledge-network-pane" hidden></section>
       <div id="statusbar-slot"></div>
     </div>
   </div>
@@ -21,7 +24,12 @@
 
   <!-- 加载顺序有意义：图标库 → 数据 → 环境桥接 → UI 组件 → AI 工具集 → 视图 → 交互 -->
   <script src="assets/js/icons.js"></script>
-  <script src="assets/js/data.js"></script>
+  <script src="assets/js/scan-exclude.js"></script>
+  <script src="assets/js/material-source.js"></script>
+  <script src="assets/js/knowledge-source.js"></script>
+  <script src="assets/vendor/cytoscape.min.js"></script>
+  <script src="assets/js/knowledge-network-app.js"></script>
+<script src="assets/js/data.js"></script>
   <script src="assets/js/api.js"></script>
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/ai-tools.js"></script>
@@ -29,6 +37,7 @@
   <script src="assets/js/project-view.js"></script>
   <script src="assets/js/app.js"></script>
   <script src="assets/js/auth.js"></script>
+  <script src="assets/js/full-workspace.js"></script>
   <script src="assets/js/actions.js"></script>
 </body>
 </html>

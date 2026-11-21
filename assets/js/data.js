@@ -1038,34 +1038,70 @@ function ownerView(p) {
 }
 
 function materialDirExcluded(name) {
-  return /曹妃甸|rag[_-]?snowz|RAG引擎|知识库引擎/i.test(String(name || ''));
+  const settings = (typeof DB !== 'undefined' && DB && DB.settings) || {};
+  if (typeof ScanExclude !== 'undefined' && ScanExclude && ScanExclude.isExcluded) {
+    return ScanExclude.isExcluded(name, settings);
+  }
+  const list = Array.isArray(settings.materialScanExclude)
+    ? settings.materialScanExclude
+    : ['rag[_-]?snowz', 'RAG引擎', '知识库引擎'];
+  return list.some(function (pat) {
+    try { return new RegExp(pat, 'i').test(String(name || '')); }
+    catch (_) { return String(name || '').toLowerCase() === String(pat).toLowerCase(); }
+  });
+}
+
+function materialSourceOf(projectId) {
+  const project = typeof P === 'function' ? P(projectId) : null;
+  const rpmCache = (typeof state !== 'undefined' && state && state.rpmMaterials) ? state.rpmMaterials[projectId] : null;
+  if (typeof MaterialSource === 'undefined' || !MaterialSource || !MaterialSource.resolve) {
+    return { source: 'disconnected', index: {}, files: [], rpmBound: false, resolvedRoot: '', label: '尚未接入文件引擎' };
+  }
+  return MaterialSource.resolve({
+    projectId: projectId,
+    project: project,
+    settings: DB && DB.settings,
+    rpmCache: rpmCache,
+    materialIndex: DB && DB.materialIndex,
+    demoMaterials: !globalThis.FullWorkspace?.enabled && typeof MATERIALS !== 'undefined' ? MATERIALS : null,
+    workbenchRoot: typeof rootDir === 'function' ? rootDir() : ''
+  });
 }
 
 function materialStatusView(projectId) {
-  const registeredFiles = typeof materialsIn === 'function' ? materialsIn(projectId).length : 0;
-  const registeredDirs = typeof projectFolderCount === 'function' ? projectFolderCount(projectId) : 0;
-  const scan = (DB && DB.materialScans && DB.materialScans[projectId]) || {};
-  const state = SCAN_STATES.has(scan.state) ? scan.state : 'unscanned';
+  const decided = materialSourceOf(projectId);
   const outcomes = typeof outcomesForProject === 'function' ? outcomesForProject(projectId).length : 0;
-  let label = '已关联目录，尚未建立材料索引';
-  if (state === 'scanning') label = '正在更新材料列表';
-  else if (state === 'empty') label = '此目录当前没有符合条件的文件';
-  else if (state === 'ok') label = `已发现 ${Number(scan.files) || 0} 项，关联成果 ${outcomes} 项`;
-  else if (state === 'failed') label = scan.error ? `无法读取目录：${scan.error}` : '无法读取目录，请检查路径或权限';
-  else if (state === 'junction_broken') label = '原位关联目标不可用';
-  else if (state === 'excluded') label = '该目录按隐私规则跳过';
-  else if (state === 'stale') label = '材料可能已变化，可刷新';
+  const preview = (typeof state !== 'undefined' && state && state.matScan && state.matScan.pid === projectId) ? state.matScan : null;
+  let stateName = 'unscanned';
+  let label = decided.label || '尚未接入文件引擎';
+  if (decided.source === 'rpm') stateName = (decided.fileCount ? 'ok' : 'empty');
+  else if (decided.source === 'rpm-loading') stateName = 'scanning';
+  else if (decided.source === 'rpm-error') stateName = 'failed';
+  else if (decided.source === 'disconnected') stateName = 'disconnected';
+  else if (decided.source === 'historical') stateName = 'historical';
+  else if (decided.source === 'demo') stateName = 'demo';
+  if (preview && preview.nonRpm && decided.source === 'disconnected') {
+    stateName = 'preview';
+    label = '目录预览（非 RPM），' + (Number(preview.count) || 0) + ' 项，不会写入权威索引';
+  }
+  if (decided.source === 'rpm' && outcomes) label = label + '，关联成果 ' + outcomes + ' 项';
   const proj = typeof P === 'function' ? P(projectId) : null;
+  const histScan = (DB && DB.materialScans && DB.materialScans[projectId]) || {};
   return {
-    state,
-    label,
-    registered_files: registeredFiles,
-    registered_dirs: registeredDirs,
-    scanned_files: (state === 'ok' || state === 'empty' || state === 'stale') ? (Number(scan.files) || 0) : null,
-    error: scan.error || '',
+    state: stateName,
+    label: label,
+    source: decided.source || '',
+    rpm_bound: !!decided.rpmBound,
+    resolved_root: decided.resolvedRoot || '',
+    registered_files: (decided.files && decided.files.length) || 0,
+    registered_dirs: decided.index ? Object.keys(decided.index).length : 0,
+    scanned_files: decided.source === 'rpm' || decided.source === 'historical' || decided.source === 'demo'
+      ? ((decided.files && decided.files.length) || 0)
+      : null,
+    error: decided.error || '',
     entry: proj ? (proj.folder || proj.name || '') : '',
-    target: (proj && proj.junctionTarget) || scan.target || '',
-    at: scan.at || ''
+    target: decided.resolvedRoot || (proj && proj.junctionTarget) || histScan.target || '',
+    at: (typeof state !== 'undefined' && state && state.rpmMaterials && state.rpmMaterials[projectId] && state.rpmMaterials[projectId].at) || histScan.at || ''
   };
 }
 
@@ -1178,6 +1214,8 @@ function publicOutcome(o) {
     type: o.type || 'other',
     title: o.title || '',
     file: o.file || '',
+    file_id: o.file_id || '',
+    relative_path: o.relative_path || '',
     version: o.version || '',
     status: o.status || 'draft',
     note: o.note || '',
@@ -1218,6 +1256,8 @@ function linkOutcomeRecord(project, spec) {
     idempotency_key: key,
     project_ids: [project.id],
     type, title, file,
+    file_id: String(spec.file_id || spec.fileId || '').slice(0, 80),
+    relative_path: String(spec.relative_path || spec.relativePath || '').slice(0, 500),
     version: String(spec.version || '').slice(0, 80),
     status,
     note: String(spec.note || spec.evidence || '').slice(0, 500),
@@ -1241,6 +1281,10 @@ function updateOutcomeRecord(project, spec) {
   if (!outcome) return { error: `未找到成果 ${spec.id}` };
   if (spec.title != null) outcome.title = String(spec.title).trim().slice(0, 200);
   if (spec.file != null || spec.path != null) outcome.file = String(spec.file != null ? spec.file : spec.path).trim();
+  if (spec.file_id != null || spec.fileId != null) outcome.file_id = String(spec.file_id != null ? spec.file_id : spec.fileId).slice(0, 80);
+  if (spec.relative_path != null || spec.relativePath != null) outcome.relative_path = String(spec.relative_path != null ? spec.relative_path : spec.relativePath).slice(0, 500);
+  if (spec.file_id != null || spec.fileId != null) outcome.file_id = String(spec.file_id != null ? spec.file_id : spec.fileId).slice(0, 80);
+  if (spec.relative_path != null || spec.relativePath != null) outcome.relative_path = String(spec.relative_path != null ? spec.relative_path : spec.relativePath).slice(0, 500);
   if (spec.type != null) {
     const type = OUTCOME_TYPES[String(spec.type)];
     if (!type) return { error: '成果类型无法识别' };
@@ -2008,6 +2052,7 @@ const SETTINGS_DEFAULT = {
   resumeLast: true, motion: true, notifyDot: true,
   /* agentAuto 已从设置页移除，仅由 Agent 中心的「编排策略」弹窗写入，当前无消费方 */
   agentAuto: true, agentConcurrency: '4', agentConfirm: true, localLLM: true,
+  rpmBindings: {},
   autoBackup: true, cloudSync: false,
   /* 外部 RAG：本软件不做向量化。默认接本机 RAG_Snowz（回环、无鉴权）。 */
   ragEnabled: true,
@@ -2161,6 +2206,11 @@ function migrate(d) {
   if (!Array.isArray(d.agentJobs)) d.agentJobs = [];
 
   if (!d.materialIndex || typeof d.materialIndex !== 'object') d.materialIndex = {};
+  if (typeof MaterialSource !== 'undefined' && MaterialSource.ensureCompatFields) {
+    MaterialSource.ensureCompatFields(d);
+  } else if (d.settings && (!d.settings.rpmBindings || typeof d.settings.rpmBindings !== 'object')) {
+    d.settings.rpmBindings = {};
+  }
 
   /* 流程一致性（v2.8.5）：nodes 是唯一真相，flow/stage 跟它走。
      老数据常见问题是「有 stage 但没有任何节点标记进行中」，界面就没有当前阶段。 */
@@ -2461,25 +2511,66 @@ function projectContent(p) {
     owner_agent: who.agent,
     cover,
     material_index: index,
+    resolved_root: typeof projectOpenRoot === 'function' ? projectOpenRoot(p) : (index && index.resolved_root) || '',
+    rpm_bound: !!(index && index.rpm_bound),
     revision: p.revision || 1,
     progress_change: p.progressChange || ''
   };
 }
 function taskDir(task) { const p = P(task.p); return p ? projectDir(p) + '\\' + (task.dir || '') : rootDir(); }
-/* 项目材料索引：DB.materialIndex 是真实登记（可持久化、可同步），
-   MATERIALS 仅作内置演示项目的兜底示例 */
+/* 已绑定项目以 RPM 文件索引为唯一权威。MATERIALS 仅演示 id；
+   materialIndex / materialScans 保留以便旧备份能加载，不再作为权威写入。 */
 function materialIndexOf(projectId) {
-  const idx = DB && DB.materialIndex && DB.materialIndex[projectId];
-  if (idx && Object.keys(idx).length) return idx;
-  return MATERIALS[projectId] || {};
+  const decided = materialSourceOf(projectId);
+  return (decided && decided.index) || {};
 }
 
 function materialsIn(projectId, dir) {
-  const m = materialIndexOf(projectId);
-  if (dir) return (m[dir] || []).map(([n, size, ext]) => ({ n, size, ext }));
-  return Object.entries(m).flatMap(([d, arr]) => arr.map(([n, size, ext]) => ({ n, size, ext, dir: d })));
+  const decided = materialSourceOf(projectId);
+  if (typeof MaterialSource !== 'undefined' && MaterialSource.filesInIndex) {
+    return MaterialSource.filesInIndex(decided.index, dir);
+  }
+  const m = (decided && decided.index) || {};
+  if (dir) return (m[dir] || []).map(function (row) {
+    if (Array.isArray(row)) return { n: row[0], size: row[1], ext: row[2], dir: dir };
+    return row;
+  });
+  return Object.entries(m).flatMap(function (pair) {
+    const d = pair[0], arr = pair[1] || [];
+    return arr.map(function (row) {
+      if (Array.isArray(row)) return { n: row[0], size: row[1], ext: row[2], dir: d };
+      if (!row.dir) row.dir = d;
+      return row;
+    });
+  });
 }
 function projectFolderCount(projectId) { return Object.keys(materialIndexOf(projectId)).length; }
+function projectOpenRoot(p) {
+  const project = typeof p === 'string' ? (typeof P === 'function' ? P(p) : null) : p;
+  const id = project ? project.id : (typeof p === 'string' ? p : '');
+  if (typeof MaterialSource !== 'undefined' && MaterialSource.openRootOf) {
+    return MaterialSource.openRootOf({
+      projectId: id,
+      project: project,
+      settings: DB && DB.settings,
+      rpmCache: typeof state !== 'undefined' && state.rpmMaterials ? state.rpmMaterials[id] : null,
+      materialIndex: DB && DB.materialIndex,
+      workbenchRoot: typeof rootDir === 'function' ? rootDir() : '',
+      decided: materialSourceOf(id)
+    });
+  }
+  return project ? projectDir(project) : (typeof rootDir === 'function' ? rootDir() : '');
+}
+function outcomeOpenPathOf(outcome, project) {
+  if (typeof MaterialSource !== 'undefined' && MaterialSource.outcomeOpenPath) {
+    return MaterialSource.outcomeOpenPath(outcome, {
+      project: project,
+      decided: project ? materialSourceOf(project.id) : null,
+      workbenchRoot: typeof rootDir === 'function' ? rootDir() : ''
+    });
+  }
+  return (outcome && (outcome.file || outcome.path)) || '';
+}
 
 const P = id => DB.projects.find(p => p.id === id);
 const A = n => DB.agents.find(a => a.name === n);
