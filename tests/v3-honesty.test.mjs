@@ -53,11 +53,11 @@ function seedProject(ctx) {
   `, ctx);
 }
 
-test('package version is 3.2.1 and compact is the default', () => {
+test('package version stays at the 4.0.0-rc.1 baseline and compact is the default', () => {
   const pkg = JSON.parse(readFileSync(new URL('./package.json', root), 'utf8'));
-  assert.equal(pkg.version, '3.2.1');
-  const app = readFileSync(new URL('./assets/js/app.js', root), 'utf8');
-  assert.match(app, /u\.version \|\| '3\.2\.1'/);
+  const desktop = JSON.parse(readFileSync(new URL('./desktop/package.json', root), 'utf8'));
+  assert.equal(pkg.version, '4.0.0-rc.1');
+  assert.equal(desktop.version, pkg.version);
   const ctx = loadTools();
   assert.equal(runInContext('SETTINGS_DEFAULT.compact', ctx), true);
   assert.equal(ctx.freshData().settings.compact, true);

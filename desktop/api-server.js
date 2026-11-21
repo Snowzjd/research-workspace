@@ -14,6 +14,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { runAiChatLoop } = require('./ai-chat-loop');
+const rpmHttp = require('./rpm-http');
 
 const DEFAULT_PORT = 7317;
 const INVOKE_TIMEOUT = 30000;
@@ -25,6 +26,20 @@ let tokenFile = '';
 let getWindow = () => null;
 let onLog = () => {};
 let chatImpl = null;
+let knowledgeSearchImpl = null;
+let advertisedVersion = '';
+let rpmContext = {
+  getConfig() { return {}; },
+  getProject() { return null; },
+  listWorkbenchProjects() { return []; },
+  getBindings() { return {}; },
+  getRootDir() { return ''; }
+};
+function setRpmContext(ctx) {
+  if (!ctx || typeof ctx !== 'object') return rpmContext;
+  rpmContext = Object.assign({}, rpmContext, ctx);
+  return rpmContext;
+}
 
 /* ---------- token：读写分 scope ----------
    full = 可读可写；read = 只读（projects/context/list_*）。
@@ -102,6 +117,7 @@ function clientName(req) {
 }
 
 async function invokeInRenderer(tool, args, client, opts) {
+  if (tool === 'search_knowledge' && knowledgeSearchImpl) return knowledgeSearchImpl(args);
   const win = getWindow();
   if (!win || win.isDestroyed()) return { ok: false, error: '工作台窗口未就绪，请确认软件正在运行' };
 
@@ -196,7 +212,7 @@ function buildOpenApi(tools) {
       }
     },
     security: [{ bearerAuth: [] }],
-    paths: Object.assign(paths, {
+    paths: Object.assign(paths, rpmHttp.OPENAPI_PATHS, {
       '/api/health': {
         get: {
           summary: '服务与数据概览（免鉴权）', tags: ['rest'],
@@ -568,7 +584,7 @@ async function handle(req, res) {
     return sendBare(res, 200, {
       ok: true,
       app: '个人 AI 科研工程工作台',
-      version: diag.version || '3.2.1',
+      version: advertisedVersion || diag.version || '3.2.1',
       port: listenPort,
       windowReady: ready,
       tools_count: diag.tools_count || 0,
@@ -585,6 +601,9 @@ async function handle(req, res) {
   if (!scope) {
     return send(res, 401, { ok: false, error: '未授权：请在请求头带上 Authorization: Bearer <token>，token 可在「设置 → 外部 Agent 接入」查看' });
   }
+
+  /* RPM 只读路由在主进程处理，不依赖渲染层窗口，也不占用 GET /api/audit。 */
+  if (await rpmHttp.handleRpmRoutes(rpmContext, req, res, url, p, send)) return;
 
   const win = getWindow();
   if (!win || win.isDestroyed()) {
@@ -726,7 +745,8 @@ async function handle(req, res) {
           'GET  /api/context?project=<id>': '项目全量上下文（任务/待办/材料目录）',
           'GET  /api/openapi.json': 'OpenAPI 描述',
           'POST /api/tools/<name>': '调用工具，body 为参数对象；写工具可带 dry_run:true 只预览',
-          'POST /api/ai/chat': '探测对话（完整令牌）。body: projectId, message, 可选 agentName/presetKey/autoApprove。删除仍要 confirm=true'
+          'POST /api/ai/chat': '探测对话（完整令牌）。body: projectId, message, 可选 agentName/presetKey/autoApprove。删除仍要 confirm=true',
+          ...rpmHttp.ROOT_ENDPOINT_HELP
         },
         auth: 'Authorization: Bearer <token>'
       });
@@ -740,9 +760,11 @@ async function handle(req, res) {
 }
 
 /* ---------- 启动 / 停止 ---------- */
-function start({ win, userDataDir, port = DEFAULT_PORT, log } = {}) {
+function start({ win, userDataDir, port = DEFAULT_PORT, strictPort = false, version = '', searchKnowledge, log } = {}) {
   if (win) getWindow = () => win;
   if (log) onLog = log;
+  advertisedVersion = version;
+  knowledgeSearchImpl = typeof searchKnowledge === 'function' ? searchKnowledge : null;
   if (!tokens.full) {
     loadOrCreateTokens(path.join(userDataDir, 'api-token.txt'));
     syncLegacyToken();
@@ -753,7 +775,7 @@ function start({ win, userDataDir, port = DEFAULT_PORT, log } = {}) {
     const tryListen = (tryPort, attempt = 0) => {
       server = http.createServer(handle);
       server.on('error', err => {
-        if (err.code === 'EADDRINUSE' && attempt < 12) {
+        if (err.code === 'EADDRINUSE' && !strictPort && attempt < 12) {
           tryListen(tryPort + 1, attempt + 1);
         } else {
           onLog('API 服务启动失败: ' + err.message);
@@ -786,6 +808,6 @@ const info = () => ({
 });
 
 module.exports = {
-  start, stop, setWindow, setChat, info, rotateToken, readAudit, readAllowed,
+  start, stop, setWindow, setChat, setRpmContext, info, rotateToken, readAudit, readAllowed,
   knowledgeFields, DEFAULT_PORT
 };

@@ -16,7 +16,7 @@ const FRESH_PREVIEW = (() => {
 const state = {
   route: 'home', project: 'tpms',
   taskFilter: 'all', taskMode: 'table',
-  kbCat: 'all', setTab: 'general',
+  kbCat: 'all', kbTab: 'search', setTab: 'general',
   search: '', q: '',
   /* 外部 RAG 检索的运行时状态（不入库，只反映本次会话的最新探测/检索结果） */
   rag: { status: 'unknown', indexed: 0, docs: 0, chunks: 0, model: '', askMode: '', error: '' },
@@ -39,6 +39,12 @@ const state = {
   aiAgent: '',
   /* 项目页当前 Tab */
   projectTab: 'overview',
+  /* 运行时 RPM 文件索引（不入库，不回写 materialIndex） */
+  rpmMaterials: {},
+  matScan: null,
+  /* 运行时 RPM 文件索引（不入库，不回写 materialIndex） */
+  rpmMaterials: {},
+  matScan: null,
   /* 内置浏览器：多标签 + 真实 webview 的运行时状态 */
   webPages: [{ id: 'w1', title: '起始页', url: '' }],
   webActive: 0,
@@ -594,11 +600,17 @@ function outcomesCard(p) {
   const history = rows.filter(o => o.current === false);
   const statusText = { draft: '草稿', review: '待复核', confirmed: '已确认', submitted: '已提交' };
   const typeText = { paper: '论文', review: '综述', patent: '专利', cad: '模型', mesh: '网格', dataset: '数据集', figure: '图表', report: '报告', other: '其他' };
-  const line = o => `<button class="activity-row activity-btn" data-act="open-abs" data-path="${esc(o.file)}" data-label="${esc(o.title)}">
+  const line = o => {
+    const openPath = (typeof outcomeOpenPathOf === 'function') ? outcomeOpenPathOf(o, p) : (o.file || '');
+    return `<div class="activity-row" style="display:flex;align-items:center;gap:8px">
+      <button class="activity-btn grow" data-act="open-abs" data-path="${esc(openPath)}" data-label="${esc(o.title)}" style="text-align:left">
       <span class="chip gray">${esc(typeText[o.type] || '成果')}</span>
       <span class="a-txt">${esc(o.title)}${o.version ? ' · ' + esc(o.version) : ''}</span>
       <span class="a-time">${esc(statusText[o.status] || '草稿')}${o.current === false ? ' · 历史版本' : ' · 当前版本'}</span>
-    </button>`;
+    </button>
+      <button class="btn sm ghost" data-act="unlink-outcome" data-id="${esc(o.id)}" data-pid="${esc(p.id)}">取消关联</button>
+    </div>`;
+  };
   return `<div class="card panel" id="preview-outputs">
     <div class="panel-head"><h3>${icon('pencil')}已关联成果</h3>
       <span class="head-sub">论文 / 模型 / 图表 / 报告。未关联不等于不存在</span>
@@ -1076,6 +1088,29 @@ function ragScoreText(score, snowz) {
   return n.toFixed(2);
 }
 
+
+function knowledgeSectionTabs() {
+  const network = state.kbTab === 'network';
+  return `<div class="tabs kb-section-tabs">
+    <button class="tab ${network ? '' : 'active'}" data-tab="kb-section" data-val="search">检索</button>
+    <button class="tab ${network ? 'active' : ''}" data-tab="kb-section" data-val="network">知识网络</button>
+  </div>`;
+}
+
+function knowledgeNetworkBanner() {
+  const st = (typeof KnowledgeSource !== 'undefined' && window.KnowledgeNetwork && typeof window.KnowledgeNetwork.status === 'function')
+    ? window.KnowledgeNetwork.status()
+    : (state.knowledgeNet || {});
+  const incomplete = st.incomplete || st.registry_complete === false;
+  const stale = st.stale || incomplete;
+  const err = st.error && (st.error.error || st.error.code);
+  if (st.loading) return `<div class="today-bar" style="border-left-color:var(--teal)"><b>正在读取 RPM 知识网络快照</b><span class="tb-list">首次进入读取完整快照，之后刷新携带修订号。</span></div>`;
+  if (err && !st.revision) return `<div class="today-bar" style="border-left-color:var(--red)"><b>知识网络暂时不可用</b><span class="tb-list">${esc(String(err))}</span></div>`;
+  if (incomplete || stale) return `<div class="today-bar" style="border-left-color:var(--amber)"><b>数据不完整或可能已过期</b><span class="tb-list">registry_complete=false 时不会把不可读项目当作已删除。请手动刷新后再核对。</span></div>`;
+  if (st.revision) return `<div class="today-bar" style="border-left-color:var(--green)"><b>已接入 RPM 知识网络</b><span class="tb-list">只读快照 · 修订 ${esc(String(st.revision).slice(0, 12))}…${st.generated_at ? ' · ' + esc(st.generated_at) : ''}</span></div>`;
+  return `<div class="today-bar" style="border-left-color:var(--teal)"><b>知识网络由 RPM 真实快照驱动</b><span class="tb-list">不使用演示数据，不在前端推断方法状态。</span></div>`;
+}
+
 function knowledgeView() {
   const cats = [['all', '全部'], ['论文', '论文'], ['报告', '报告'], ['专利', '专利'], ['数据', '数据'], ['代码', '代码']];
   const S = DB.settings;
@@ -1144,7 +1179,8 @@ function knowledgeView() {
   return `<div class="fade-in">
     <div class="page-head">
       <h2>知识库</h2>
-      <span class="page-sub">${engineChip} ${sub}</span>
+      ${knowledgeSectionTabs()}
+      <span class="page-sub">${state.kbTab === 'network' ? 'RPM 只读知识网络' : engineChip + ' ' + sub}</span>
       <span class="ph-right">
         <button class="btn sm" data-act="kb-import">${icon('inbox')}导入资料</button>
         ${snowz
@@ -1154,6 +1190,9 @@ function knowledgeView() {
             : `<button class="btn sm" disabled title="内置登记只按名称匹配，没有向量索引可重建">没有向量索引</button>`}
       </span>
     </div>
+
+    ${state.kbTab === 'network' ? `${knowledgeNetworkBanner()}
+    <p class="page-sub" style="margin:0 0 8px">图谱在下方常驻区域，避免页面重绘时销毁交互状态。来源节点默认折叠。</p></div>` : `${''}
 
     ${(total === 0 && !q && !snowz) ? `<div class="today-bar" style="border-left-color:var(--accent-500,#3E63DD)">
       <span class="tb-ico">${icon('folder')}</span>
@@ -1281,7 +1320,7 @@ function knowledgeView() {
         </div>
       </div>
     </div>
-  </div>`;
+  </div>`} `;
 }
 
 /* ==========================================================================
@@ -2463,18 +2502,37 @@ function render() {
   const prevTop = stream ? stream.scrollTop : 0;
   const stickBottom = stream ? (stream.scrollHeight - stream.scrollTop - stream.clientHeight < 48) : false;
 
-  $('#sidebar-slot').innerHTML = renderSidebar();
-  $('#topbar-slot').innerHTML = renderTopbar();
-  $('#statusbar-slot').innerHTML = renderStatusbar();
+  const full = window.FullWorkspace?.enabled ? window.FullWorkspace : null;
+  const focusedRoute = full && document.activeElement?.closest('#sidebar-slot') ? document.activeElement.dataset.route : '';
+  document.body.classList.toggle('full-workspace', Boolean(full));
+  $('#sidebar-slot').innerHTML = full ? full.sidebar() : renderSidebar();
+  $('#topbar-slot').innerHTML = full ? full.topbar() : renderTopbar();
+  $('#statusbar-slot').innerHTML = full ? full.statusbar() : renderStatusbar();
+  if (focusedRoute) document.querySelector(`#sidebar-slot [data-route="${CSS.escape(focusedRoute)}"]`)?.focus();
 
   /* 内置浏览器使用常驻面板：webview 不能随重绘销毁，否则页面会被反复重载 */
-  const view = $('#view'), pane = $('#browser-pane');
+  const view = $('#view'), pane = $('#browser-pane'), knPane = $('#knowledge-network-pane');
+  const showKnowledgeNet = state.route === 'graph' || (state.route === 'knowledge' && state.kbTab === 'network');
+  document.querySelector('.main')?.classList.toggle('kb-network-mode', !!showKnowledgeNet);
   if (state.route === 'browser') {
     if (view) { view.hidden = true; view.innerHTML = ''; }
     if (pane) { pane.hidden = false; renderBrowserChrome(); }
+    if (knPane) knPane.hidden = true;
   } else {
     if (pane) pane.hidden = true;
-    if (view) { view.hidden = false; view.innerHTML = (VIEWS[state.route] || homeView)(); }
+    if (view) {
+      view.hidden = !!(full && showKnowledgeNet);
+      if (!full || !full.renderView(view)) view.innerHTML = (VIEWS[state.route] || homeView)();
+    }
+    if (knPane) {
+      knPane.hidden = !showKnowledgeNet;
+      if (showKnowledgeNet && window.KnowledgeNetwork && typeof window.KnowledgeNetwork.mount === 'function') {
+        window.KnowledgeNetwork.mount(knPane);
+        if (full) full.syncGraph();
+      } else if (showKnowledgeNet && window.KnowledgeNetwork && typeof window.KnowledgeNetwork.resize === 'function') {
+        window.KnowledgeNetwork.resize();
+      }
+    }
   }
 
   applyAppearance();

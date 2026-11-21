@@ -38,7 +38,7 @@ function findTodo(content) {
   i = DB.todos.findIndex(t => t.t.includes(q) || q.includes(t.t));
   return i;
 }
-const dirsOf = pid => Object.keys(MATERIALS[pid] || {});
+const dirsOf = pid => Object.keys((typeof materialIndexOf === 'function' ? materialIndexOf(pid) : {}) || {});
 
 /* 项目解析：ID → 全名 → 唯一部分匹配。找不到时返回 null，由调用方给出可用列表 */
 function resolveProject(q, opts) {
@@ -636,6 +636,9 @@ const AI_TOOL_IMPL_RAW = {
     };
   },
   async get_project_context(args = {}) {
+    if (args && args.project && typeof refreshProjectMaterials === 'function') {
+      /* 刷新在下面解析出项目之后也会再做一次；这里只是占位保持签名 */
+    }
     const idOnly = wantsExactId(args);
     let p = null;
     if (args.project) {
@@ -662,6 +665,9 @@ const AI_TOOL_IMPL_RAW = {
           : '工作台里还没有项目。可以用 create_project 新建，或提示用户手动创建',
         projects: DB.projects.map(x => x.name)
       };
+    }
+    if (typeof refreshProjectMaterials === 'function') {
+      try { await refreshProjectMaterials(p.id); } catch (_) {}
     }
     const materialDirs = dirsOf(p.id);
     const record = projectContent(p);
@@ -714,7 +720,10 @@ const AI_TOOL_IMPL_RAW = {
         type: a.type || a.kind || '', batch_id: a.batchId || '', at: a.at || 0
       }))
     };
-    if (!materialDirs.length) out.materials_note = '当前项目没有材料子目录。';
+    if (!materialDirs.length) {
+      const materialSource = typeof materialSourceOf === 'function' ? materialSourceOf(p.id).source : 'disconnected';
+      out.materials_note = materialSource === 'disconnected' ? '该项目尚未接入文件引擎' : '当前项目没有材料子目录。';
+    }
     if (record.material_index && record.material_index.state === 'unscanned') {
       out.materials_index_note = '已关联目录，尚未建立材料索引。登记数量为 0 不等于磁盘没有文件。';
     }
@@ -1079,22 +1088,39 @@ const AI_TOOL_IMPL_RAW = {
   async list_materials({ dir } = {}) {
     const p = P(state.project);
     if (!p) return { ok: false, error: '当前没有选中项目' };
-    const all = MATERIALS[p.id] || {};
+    if (typeof refreshProjectMaterials === 'function') {
+      try { await refreshProjectMaterials(p.id); } catch (_) {}
+    }
+    const decided = typeof materialSourceOf === 'function' ? materialSourceOf(p.id) : { source: 'disconnected', index: {}, files: [] };
+    const root = typeof projectOpenRoot === 'function' ? projectOpenRoot(p) : projectDir(p);
     const names = dirsOf(p.id);
-    if (!names.length) {
-      const note = (dir ? `目录「${dir}」不存在。` : '') + '当前项目没有材料子目录。';
-      const out = { ok: !dir, empty: true, project_folder: projectDir(p), dirs: [], note };
+    if (decided.source === 'disconnected' || !names.length) {
+      const note = decided.source === 'disconnected'
+        ? ((dir ? ('目录「' + dir + '」不存在。') : '') + '该项目尚未接入文件引擎')
+        : ((dir ? ('目录「' + dir + '」不存在。') : '') + '当前项目没有材料子目录。');
+      const out = { ok: !dir, empty: true, rpm_bound: !!decided.rpmBound, source: decided.source, project_folder: root, dirs: [], note: note };
       if (dir) out.error = note;
       return out;
     }
+    const allFiles = typeof materialsIn === 'function' ? materialsIn(p.id) : [];
+    const mapFiles = function (d) {
+      return allFiles.filter(function (f) { return f.dir === d; }).map(function (f) {
+        return { name: f.n, size: f.size, category: f.category || '', purpose: f.purpose || '', file_id: f.file_id || '', absolute_path: f.absolute_path || '', relative_path: f.relative_path || '' };
+      });
+    };
     if (dir) {
-      if (!all[dir]) return { ok: false, error: `目录「${dir}」不存在。可用目录：${names.join('、')}` };
-      return { ok: true, dir, full_path: projectDir(p) + '\\' + dir, files: all[dir].map(f => ({ name: f[0], size: f[1] })) };
+      if (names.indexOf(dir) < 0) return { ok: false, error: '目录「' + dir + '」不存在。可用目录：' + names.join('、') };
+      return { ok: true, dir: dir, source: decided.source, rpm_bound: !!decided.rpmBound, full_path: root + '\\' + dir, files: mapFiles(dir) };
     }
     return {
       ok: true,
-      project_folder: projectDir(p),
-      dirs: Object.entries(all).map(([d, files]) => ({ dir: d, file_count: files.length, files: files.map(f => f[0]) }))
+      source: decided.source,
+      rpm_bound: !!decided.rpmBound,
+      project_folder: root,
+      dirs: names.map(function (d) {
+        const files = mapFiles(d);
+        return { dir: d, file_count: files.length, files: files.map(function (f) { return f.name; }), items: files };
+      })
     };
   },
 
@@ -1108,7 +1134,8 @@ const AI_TOOL_IMPL_RAW = {
       }
       return { ok: false, error: `目录「${dir}」不存在。可用目录：${names.join('、')}` };
     }
-    const target = projectDir(p) + (dir ? '\\' + dir : '');
+    const root = typeof projectOpenRoot === 'function' ? projectOpenRoot(p) : projectDir(p);
+    const target = root + (dir ? '\\' + dir : '');
     const r = await Bridge.openFolder(target);
     if (r.ok) {
       logActivity(`<b>AI</b> 打开材料目录 ${esc(dir || p.name)}`, 'open', '#218358');

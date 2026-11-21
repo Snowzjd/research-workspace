@@ -1,0 +1,19 @@
+{
+  "name": "research-workspace-desktop",
+  "productName": "个人科研工程工作台",
+  "version": "4.0.0-rc.1",
+  "description": "Personal AI Research & Engineering Workspace",
+  "main": "main.js",
+  "author": "researcher",
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "electron": "32.2.0"
+  },
+  "scripts": {
+    "portable:full": "node pack-full.mjs",
+    "pack:app": "node build-app.mjs",
+    "portable": "node build-app.mjs && node make-portable.mjs",
+    "release:dist": "node build-app.mjs && node make-portable.mjs && node make-release.mjs"
+  }
+}

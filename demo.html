@@ -1,0 +1,1834 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>科研工程工作台 · 演示数据</title>
+<style>
+:root{--bg:var(--p-paper);--nav:var(--p-nav);--surface:var(--p-card);--panel:var(--p-raised);--line:var(--p-line);--faint:var(--p-line);--txt:var(--p-text);--secondary:var(--p-body);--muted:var(--p-muted);--accent:var(--p-accent);--accent-d:var(--p-tint);--blue:var(--p-blue);--rad:12px;font:14px/1.5 Inter,"Segoe UI","Microsoft YaHei",sans-serif;color:var(--txt);background:var(--bg)}
+*{box-sizing:border-box}body{margin:0}button,select,input,textarea{font:inherit;color:inherit}button,select{cursor:pointer}button,input,select,textarea{outline-offset:3px}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent)}button{background:transparent;border:0}a{color:var(--accent)}h1,h2,h3,p{margin:0}h1{font-size:32px;letter-spacing:.015em;line-height:1.22}h2{font-size:18px}h3{font-size:16px}svg.ico{width:18px;height:18px;flex:none;vertical-align:middle;stroke-width:1.7}.muted{color:var(--muted)}.small{font-size:12px}.mono{font:12px/1.4 "Cascadia Code",Consolas,monospace;letter-spacing:.035em}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dot,var(--accent));flex:none}.icon-box{display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--line);border-radius:9px;background:var(--p-soft);color:var(--blue);flex:none}.pill,.tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 8px;border-radius:6px;border:1px solid var(--line);background:var(--p-soft);color:var(--secondary);white-space:nowrap}.pill.mint{color:var(--accent);background:var(--p-tint);border-color:var(--p-active)}.pill.warn{color:var(--p-amber);background:var(--p-ambertint);border-color:var(--p-ambertint)}.pill.blue{color:var(--p-blue);background:var(--p-bluetint);border-color:var(--p-bluetint)}.btn{display:inline-flex;gap:8px;align-items:center;justify-content:center;padding:8px 12px;min-height:36px;background:var(--p-soft);border:1px solid var(--line);border-radius:8px;white-space:nowrap;font-weight:550}.btn:hover,.select:hover{border-color:var(--p-strongline);background:var(--p-hover)}.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--p-onaccent)}.btn.primary:hover{background:var(--p-accent)}.btn.ghost{background:transparent}.btn.ghost:hover{background:var(--p-hover)}.btn:disabled{opacity:.45;cursor:default}.textbtn{padding:4px 0;color:var(--accent);text-align:left}.textbtn:hover{text-decoration:underline}.icon-btn{display:grid;place-items:center;width:32px;height:32px;border-radius:7px;color:var(--secondary);flex:none}.icon-btn:hover{background:var(--p-hover);color:var(--txt)}
+.app{min-height:100vh;display:grid;grid-template-columns:210px minmax(0,1fr)}.side{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:24px 14px 14px;background:var(--nav);border-right:1px solid var(--faint);overflow:auto;z-index:3}.brand{display:flex;gap:11px;align-items:center;padding:0 8px 22px}.mark{width:37px;height:37px;display:grid;place-items:center;color:var(--p-onaccent);background:linear-gradient(155deg,var(--p-brand),var(--p-branddeep));border-radius:10px;box-shadow:0 5px 18px var(--p-shadow)}.mark svg{width:23px;height:23px}.brand strong{font-size:15px;letter-spacing:0;font-weight:700}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.125em}.side-label{margin:14px 10px 8px;color:var(--muted);font-size:11px;letter-spacing:.15em}.nav-btn,.project-btn{width:100%;min-height:41px;display:flex;align-items:center;gap:10px;text-align:left;padding:7px 10px;border-radius:8px;color:var(--secondary);white-space:nowrap}.nav-btn:hover,.project-btn:hover{background:var(--p-hover);color:var(--p-text)}.nav-btn.active,.project-btn.active{background:var(--p-tint);color:var(--accent)}.nav-btn.active{box-shadow:inset 2px 0 var(--accent)}.project-btn{min-height:35px;font-size:12px}.project-btn span:last-child{overflow:hidden;text-overflow:ellipsis}.side-foot{margin-top:auto;padding:12px;border:1px solid var(--line);background:var(--p-card);border-radius:10px}.side-foot strong{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--p-link)}.side-foot small{display:block;margin-top:5px;color:var(--muted);font-size:11px}
+.main{min-width:0}.top{height:61px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 28px;border-bottom:1px solid var(--faint);background:var(--p-nav)}.crumb,.top-actions,.action-row,.row,.legend{display:flex;align-items:center;gap:10px}.crumb{font-size:13px}.top-actions{gap:12px}.quick{color:var(--secondary);min-width:177px;justify-content:space-between}.quick span{display:flex;gap:8px;align-items:center}.key{font-size:11px;border:1px solid var(--p-line);border-radius:4px;padding:1px 4px;color:var(--muted)}.avatar{width:31px;height:31px;border-radius:50%;background:var(--p-soft);color:var(--p-avatar);display:grid;place-items:center;font-size:12px;border:1px solid var(--p-line)}
+.page{padding:25px 28px 24px;margin:auto;max-width:1770px}.page-head{display:flex;justify-content:space-between;align-items:flex-end;gap:15px;margin-bottom:20px}.page-head p{color:var(--muted);margin-top:7px}.section-tag{color:var(--accent);font-size:11px;letter-spacing:.17em;margin-bottom:8px}.card{border:1px solid var(--line);border-radius:var(--rad);background:var(--surface);min-width:0}.card-pad{padding:17px}.card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:13px}.card-head p{margin-top:4px}
+.graph-shell{display:grid;grid-template-columns:minmax(0,1fr) 286px;overflow:hidden;min-height:560px;height:calc(100vh - 220px)}.graph-left{min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}.graph-tools{display:flex;gap:7px;align-items:center;padding:11px;border-bottom:1px solid var(--line);background:var(--p-chrome);z-index:2;flex-wrap:wrap}.input-wrap{position:relative;display:flex;align-items:center;gap:8px;background:var(--p-field);border:1px solid var(--p-line);border-radius:8px;padding:0 9px;color:var(--muted);min-height:34px;flex:1;min-width:110px}.input-wrap input{width:100%;min-width:0;background:none;border:0;color:var(--txt);padding:6px 0}.input-wrap input::placeholder{color:var(--p-muted)}.select{min-height:34px;min-width:0;background:var(--p-soft);color:var(--secondary);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px}.graph-stage{position:relative;flex:1;min-height:260px;overflow:hidden;background:radial-gradient(ellipse at 49% 47%,var(--p-canvas) 0,var(--p-canvas) 63%,var(--p-canvas) 100%)}.graph-stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab;position:absolute;inset:0}.graph-stage canvas:active{cursor:grabbing}.graph-count{position:absolute;top:13px;left:13px;color:var(--muted);pointer-events:none;display:flex;gap:12px}.graph-count b{color:var(--p-text);font-weight:500}.graph-zoom{position:absolute;right:13px;bottom:13px;display:flex;gap:3px;align-items:center;background:var(--p-chrome);border:1px solid var(--p-line);padding:4px;border-radius:8px}.graph-zoom .mono{padding:0 4px;color:var(--muted)}.graph-tip{position:absolute;top:0;left:0;pointer-events:none;max-width:230px;padding:5px 8px;border:1px solid var(--p-strongline);background:#121e2df2;border-radius:6px;z-index:1;font-size:12px}.graph-empty{position:absolute;top:45%;width:100%;text-align:center;color:var(--secondary);pointer-events:none}.graph-footer{padding:9px 12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;align-items:center;background:var(--p-chrome);flex-wrap:wrap}.legend{gap:10px;flex-wrap:wrap}.legend button,.legend span{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--secondary);padding:0}.legend button:hover,.legend button.selected{color:var(--accent)}.inspector{border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:auto;background:var(--p-card)}.inspect-title{display:flex;align-items:center;justify-content:space-between;min-height:54px;border-bottom:1px solid var(--line);padding:0 14px;font-weight:650}.inspect-body{padding:15px}.inspect-body h2{margin-top:8px;font-size:20px;line-height:1.35;overflow-wrap:anywhere}.inspect-body p{margin:10px 0 15px;color:var(--secondary);font-size:13px;line-height:1.7}.inspect-body .act{width:100%;margin-bottom:7px}.inspect-section{display:flex;justify-content:space-between;align-items:center;padding:12px 0 9px;border-top:1px solid var(--line);margin-top:9px}.neighbor{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:8px 8px;margin-bottom:4px;border:1px solid var(--p-line);border-radius:7px;width:100%;text-align:left;font-size:12px;background:var(--p-soft)}.neighbor:hover{background:var(--p-hover)}.neighbor span:first-child{display:flex;align-items:center;gap:6px;min-width:0}.neighbor .rel{color:var(--muted);white-space:nowrap;font-size:11px}.suggest{position:absolute;top:calc(100% + 6px);left:0;right:0;min-width:224px;border:1px solid var(--p-strongline);border-radius:8px;background:var(--p-raised);padding:4px;box-shadow:0 14px 24px #04070c88;z-index:5}.suggest button{display:flex;gap:8px;align-items:center;text-align:left;width:100%;padding:7px;border-radius:5px;font-size:13px}.suggest button:hover{background:var(--p-hover)}.suggest[hidden]{display:none}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:15px}.stat{display:block;text-align:left;padding:14px 15px}.stat:hover,.project-card:hover{border-color:var(--p-strongline);background:var(--p-hover)}.stat .row{justify-content:space-between}.stat strong{font-size:29px;line-height:1.2;display:block;margin-top:4px}.cols{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr);gap:14px}.stack{display:grid;gap:14px;align-content:start;min-width:0}.project-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.project-card{padding:16px;text-align:left;min-width:0;width:100%}.project-card h2{margin:9px 0 5px;line-height:1.4}.project-card p{line-height:1.55;color:var(--secondary);min-height:45px;margin:5px 0 14px;font-size:13px}.meter{height:5px;border-radius:4px;background:var(--p-track);overflow:hidden;margin:7px 0}.meter i{display:block;height:100%;border-radius:4px}.list{display:grid;gap:3px}.list-row{width:100%;display:flex;align-items:center;text-align:left;gap:10px;padding:10px;border-radius:8px;border-bottom:1px solid var(--faint);min-width:0}.list-row:last-child{border-bottom-color:transparent}.list-row:hover{background:var(--p-hover)}.list-row>div:nth-child(2){min-width:0;flex:1}.list-row strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.list-row small{display:block;color:var(--muted);margin-top:3px}.mini{position:relative;height:230px;overflow:hidden;border-radius:8px;border:1px solid var(--faint);background:var(--p-canvas)}.mini canvas{width:100%;height:100%;position:absolute}.mini button{position:absolute;bottom:11px;right:11px}.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:14px;overflow:auto}.tab{min-height:39px;padding:7px 14px;color:var(--secondary);white-space:nowrap;border-bottom:2px solid transparent}.tab.active{border-color:var(--accent);color:var(--accent)}.tab:hover{background:var(--p-hover)}.hero{margin-bottom:14px;background:linear-gradient(115deg,var(--p-tint),var(--p-card) 68%)}.hero .bar{max-width:420px;margin-top:16px}.milestone{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--faint)}.milestone time{margin-left:auto;color:var(--muted);white-space:nowrap}.timeline{display:grid;gap:0}.event{position:relative;display:flex;gap:10px;padding:10px 0 12px 12px;border-left:1px solid var(--p-line);margin-left:4px}.event:before{content:"";width:7px;height:7px;border-radius:50%;background:#76a8e6;position:absolute;left:-4px;top:17px}.event p{margin:4px 0;color:var(--secondary);font-size:13px}.event .meta{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.event .meta time{color:var(--muted);font-size:11px}
+.workspace{display:grid;grid-template-columns:186px minmax(0,1fr) 235px;min-height:580px;height:calc(100vh - 220px);overflow:hidden}.files,.properties{overflow:auto;background:var(--p-card)}.files{border-right:1px solid var(--line)}.properties{border-left:1px solid var(--line)}.files .inspect-title,.properties .inspect-title{min-height:51px}.file-filter{margin:8px}.tree{padding:3px 7px 10px}.tree details{margin-bottom:7px}.tree summary{cursor:pointer;color:var(--secondary);font-size:12px;padding:5px}.file{display:flex;align-items:center;gap:5px;width:100%;text-align:left;font-size:12px;color:var(--secondary);padding:6px 4px 6px 12px;border-radius:6px}.file.active,.file:hover{background:var(--p-tint);color:var(--accent)}.file .ico{width:14px;height:14px}.file span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.studio{min-width:0;display:flex;flex-direction:column}.editor-bar{min-height:51px;border-bottom:1px solid var(--line);padding:7px 9px;display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--p-chrome);flex-wrap:wrap}.editor-bar .btn{padding:4px 7px;min-height:29px;font-size:12px}.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}.seg button{padding:4px 8px;color:var(--muted);white-space:nowrap;font-size:12px}.seg button.active{color:var(--accent);background:var(--p-tint)}.edit-grid{display:grid;flex:1;min-height:0;min-width:0;grid-template-columns:1fr 1fr}.edit-grid.single{grid-template-columns:1fr}.source,.preview{min-width:0;min-height:0;display:flex;flex-direction:column}.preview{border-left:1px solid var(--line)}.pane-label{font-size:11px;letter-spacing:.08em;color:var(--muted);padding:7px 12px;border-bottom:1px solid var(--faint)}.source textarea{width:100%;flex:1;resize:none;min-height:180px;border:0;background:var(--p-field);color:var(--p-body);padding:12px;line-height:1.65;font-family:"Cascadia Code",Consolas,"Microsoft YaHei",monospace;font-size:12px;tab-size:2;outline-offset:-3px}.rendered{overflow:auto;padding:15px;line-height:1.65;color:var(--p-body);overflow-wrap:anywhere}.rendered h1{font-size:24px;color:var(--txt)}.rendered h2{margin-top:13px;color:var(--txt)}.rendered h3,.rendered p,.rendered ol,.rendered ul,.rendered pre{margin:10px 0}.rendered img{max-width:100%}.rendered pre{overflow:auto;padding:8px;background:var(--p-field)}.rendered code{color:var(--p-blue)}.prop-list{padding:10px 12px;display:grid;gap:5px}.prop-row{display:grid;grid-template-columns:minmax(52px,.75fr) 1fr;gap:7px;font-size:12px;border-bottom:1px solid var(--faint);padding:4px 0;overflow-wrap:anywhere}.prop-section{padding:10px 12px;border-top:1px solid var(--line)}.prop-section h3{font-size:13px;margin-bottom:8px}.prop-section small{display:block;margin-top:4px;color:var(--muted)}.wikilink{color:var(--accent);text-decoration:underline;text-decoration-style:dotted}.unresolved{color:var(--p-amber)}.table-wrap{overflow:auto}.table{border-collapse:collapse;width:100%;white-space:nowrap}.table td,.table th{border-bottom:1px solid var(--faint);padding:12px 10px;text-align:left}.table th{font-size:12px;color:var(--muted);font-weight:500}.table tbody tr:hover{background:var(--p-hover)}.table td:first-child{min-width:180px}.filters{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}.filters .input-wrap{max-width:290px}.blank{padding:20px;text-align:center;color:var(--muted)}
+dialog{color:var(--txt);background:var(--p-raised);border:1px solid var(--p-strongline);border-radius:13px;padding:0;width:min(540px,calc(100vw - 24px));max-height:85vh;box-shadow:0 16px 75px #02050bbe}dialog::backdrop{background:#070d17c0;backdrop-filter:blur(3px)}.dialog-body{padding:16px}.dialog-body p{margin:9px 0 13px;color:var(--secondary)}#toast{position:fixed;bottom:20px;left:50%;z-index:10;padding:8px 13px;background:var(--p-tint);color:var(--p-link);border:1px solid var(--p-active);border-radius:8px;transform:translateX(-50%);pointer-events:none;opacity:0;transition:opacity .15s}#toast.show{opacity:1}
+@media(max-width:1170px){.app{grid-template-columns:175px minmax(0,1fr)}.page{padding-inline:18px}.top{padding-inline:18px}.graph-shell{grid-template-columns:minmax(0,1fr) 240px}.workspace{grid-template-columns:155px minmax(0,1fr) 175px}}
+@media(max-width:920px){.app{grid-template-columns:61px minmax(0,1fr)}.side{padding:14px 8px}.brand{padding:0 4px 14px}.brand>div:last-child,.side-label,.project-btn,.nav-btn span,.side-foot{display:none}.nav-btn{justify-content:center;padding:8px}.workspace{grid-template-columns:135px minmax(0,1fr) 156px}.project-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:1fr}}
+@media(max-width:690px){.page{padding:15px 9px}.top{padding:0 9px}.top .quick{min-width:0}.quick .key,.top .avatar,.crumb span:first-child,.graph-footer>.muted,.page-head .section-tag{display:none}.page-head{align-items:flex-start;flex-wrap:wrap}.app{grid-template-columns:46px minmax(0,1fr)}.side{padding:12px 4px}.brand{padding:0 1px 10px}.mark{width:34px;height:34px}.graph-shell{height:auto;display:block}.graph-stage{height:400px;flex:none}.inspector{border-left:0;border-top:1px solid var(--line);max-height:380px}.workspace{height:auto;display:block}.files{max-height:240px}.studio{min-height:490px}.edit-grid{min-height:400px}.properties{border-top:1px solid var(--line)}.stats,.project-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.stat .icon-box{display:none}.top-actions{gap:4px}h1{font-size:26px}}
+
+
+.rendered blockquote{margin:12px 0;padding:3px 10px;border-left:2px solid var(--p-quote);background:var(--p-quote);border-radius:0 6px 6px 0}.rendered blockquote p{margin:4px 0}.rendered table{width:100%;border-collapse:collapse}.rendered th,.rendered td{padding:4px 6px;border:1px solid var(--line)}
+
+
+.review-check{margin-top:14px;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.review-check p{margin:5px 0 8px}
+.review-table td:first-child{min-width:0}
+.review-table{margin-bottom:12px}
+.page-head .action-row{flex-wrap:wrap}
+
+
+:root,:root[data-theme="warm"]{color-scheme:light;--p-paper:#fff9f5;--p-nav:#fff3f5;--p-card:#fffdfb;--p-raised:#fffcfe;--p-chrome:#fff6f8;--p-field:#fff8f9;--p-soft:#f8eef1;--p-hover:#fde2e8;--p-line:#e5d8df;--p-strongline:#cba6b6;--p-text:#26364a;--p-body:#3f5062;--p-muted:#576577;--p-quiet:#4a5567;--p-accent:#f49bb5;--p-link:#803f5b;--p-tint:#fde2e8;--p-active:#ffc7d8;--p-blue:#335b84;--p-bluetint:#dcefff;--p-amber:#79542f;--p-ambertint:#f3ebdc;--p-onaccent:#392738;--p-shadow:#e3d8df;--p-track:#e8edf3;--p-canvas:#fff9f5;--p-brand:#ffc7d8;--p-branddeep:#f49bb5;--p-quote:#fff0f5;--p-avatar:#344b62;--node-project:#b85c81;--node-note:#497fae;--node-literature:#786995;--node-task:#8d603a;--node-result:#a44977;--node-dataset:#467f8b;--node-method:#5b7954;--cluster-tpms:#b05d81;--cluster-coatings:#648068;--cluster-imaging:#547fa7;--grid:#8799ae36;--edge-selected:#a74970e8;--edge-neighbor:#6382a79c;--edge-dim:#7b87a029;--edge-local:#7d90a586;--edge-shared:#7694ae80;--hub:#6f3955;--label-strong:#334c66;--label:#445a71;--label-halo:#fffaf7ed;}
+:root[data-theme="cool"]{color-scheme:light;--p-paper:#f2f4f7;--p-nav:#e9edf2;--p-card:#fafbfd;--p-raised:#ffffff;--p-chrome:#f4f7fa;--p-field:#ebeff5;--p-soft:#e3e9f1;--p-hover:#dce4ed;--p-line:#cbd5e2;--p-strongline:#aab9cb;--p-text:#222e3b;--p-body:#394a5d;--p-muted:#516174;--p-quiet:#515e6f;--p-accent:#3f6895;--p-link:#2b557f;--p-tint:#e0eaf4;--p-active:#cddff0;--p-blue:#30577d;--p-bluetint:#e3ecf7;--p-amber:#795320;--p-ambertint:#f4ebda;--p-onaccent:#ffffff;--p-shadow:#dbe4ee;--p-track:#e9eff6;--p-canvas:#f5f7fb;--p-brand:#4d78ab;--p-branddeep:#355d89;--p-quote:#e8f0fa;--p-avatar:#556172;--node-project:#327768;--node-note:#355f9c;--node-literature:#755992;--node-task:#87612e;--node-result:#984c71;--node-dataset:#247486;--node-method:#676e36;--cluster-tpms:#795faa;--cluster-coatings:#33786f;--cluster-imaging:#4876a4;--grid:#6a80a02d;--edge-selected:#3c649fc7;--edge-neighbor:#58729b98;--edge-dim:#65769724;--edge-local:#7589a573;--edge-shared:#6680a06d;--hub:#294e78;--label-strong:#233853;--label:#3a506b;--label-halo:#f6f8fbe8;}
+:root[data-theme="charcoal"]{color-scheme:dark;--p-paper:#202221;--p-nav:#242726;--p-card:#2b2e2c;--p-raised:#303432;--p-chrome:#282c2a;--p-field:#333836;--p-soft:#373d39;--p-hover:#3d4440;--p-line:#4a534e;--p-strongline:#66746d;--p-text:#f1f1eb;--p-body:#d1d7d1;--p-muted:#abb7af;--p-quiet:#c3c8c1;--p-accent:#9fd1bf;--p-link:#abd7c8;--p-tint:#344b43;--p-active:#405d52;--p-blue:#a6c4dc;--p-bluetint:#374651;--p-amber:#e6c59c;--p-ambertint:#483e34;--p-onaccent:#172d26;--p-shadow:#303733;--p-track:#343c37;--p-canvas:#262a28;--p-brand:#82b7a5;--p-branddeep:#5d9485;--p-quote:#30483e;--p-avatar:#c2c7c0;--node-project:#a2cfb8;--node-note:#99b7d4;--node-literature:#c0abd4;--node-task:#d8b78f;--node-result:#d0a0b1;--node-dataset:#95c0c7;--node-method:#c1c894;--cluster-tpms:#b2a2c5;--cluster-coatings:#93beac;--cluster-imaging:#95b7cd;--grid:#8e9b9230;--edge-selected:#b7d7c1d9;--edge-neighbor:#a7bdb290;--edge-dim:#869b9125;--edge-local:#a3b3aa70;--edge-shared:#9eafa473;--hub:#d4f0e0;--label-strong:#dbebe3;--label:#c3d1ca;--label-halo:#232724dc;}
+    .graph-stage{background:radial-gradient(ellipse at 49% 47%,var(--p-card) 0,var(--p-canvas) 68%,var(--p-soft) 100%)}
+    .graph-tip{background:var(--p-raised)}
+    #palette{font-size:12px;max-width:94px}
+    .top-actions{gap:8px}
+    .brand .mark{color:var(--p-onaccent)}
+    .btn.primary:hover{filter:brightness(.93)}
+    .nav-btn.active{color:var(--p-link)}
+    #toast{color:var(--p-link)}
+    :root[data-theme="warm"]{
+        --rose-ink:#803f5b;--rose-soft:#fde2e8;--rose-line:#eab4c6;--rose-canvas:#fde2e8;
+        --blue-border:#c0d8ee;--blue-wash:#cfe4f6;--blue-hover:#a9d6ff;
+    }
+    [data-theme="warm"] .nav-btn.active,
+    [data-theme="warm"] .project-btn.active,
+    [data-theme="warm"] .file.active,
+    [data-theme="warm"] .seg button.active{background:var(--rose-soft);color:var(--rose-ink)}
+    [data-theme="warm"] .nav-btn.active{box-shadow:inset 2px 0 var(--rose-ink)}
+    [data-theme="warm"] .tab.active{color:var(--rose-ink);border-color:var(--rose-ink)}
+    [data-theme="warm"] .legend button.selected{color:var(--rose-ink)}
+    [data-theme="warm"] .graph-stage{
+        background:radial-gradient(ellipse at 6% 8%,var(--rose-canvas),transparent 48%),
+                   radial-gradient(ellipse at 94% 100%,var(--p-bluetint),transparent 66%),
+                   var(--p-canvas)
+    }
+    [data-theme="warm"] .mini,[data-theme="warm"] .editor-bar{background:var(--p-bluetint)}
+    [data-theme="warm"] .rendered blockquote{background:var(--p-quote);border-color:var(--rose-line)}
+    [data-theme="warm"] .section-tag,[data-theme="warm"] .textbtn,
+    [data-theme="warm"] .pill.mint,[data-theme="warm"] .side-foot strong{color:var(--p-link)}
+    [data-theme="warm"] .input-wrap:focus-within{border-color:var(--rose-line)}
+    [data-theme="warm"] :focus-visible{outline-color:var(--p-link)}
+    [data-theme="warm"] .btn:not(.primary):not(.ghost),[data-theme="warm"] .icon-box{
+        background:var(--p-bluetint);color:var(--p-blue);border-color:var(--blue-border)
+    }
+    [data-theme="warm"] .btn:not(.primary):not(.ghost):hover{background:var(--blue-hover);border-color:var(--blue-border)}
+    [data-theme="warm"] .pill.blue{background:var(--blue-wash);border-color:var(--blue-border)}
+    [data-theme="warm"] .avatar{background:var(--blue-wash);border-color:var(--blue-border)}
+    @media(max-width:690px){.crumb{gap:2px}.top-actions{gap:3px}.top .quick{padding-inline:6px}#palette{max-width:64px;padding-inline:2px}.top .crumb>svg{display:none}}
+    @media(max-width:390px){.top .quick{font-size:0}.top .quick span{gap:0}}
+    </style>
+</head>
+<body>
+<div id="app"></div><div id="toast" role="status"></div><dialog id="dialog"></dialog>
+<script>
+/* Third-party notices for the bundled Markdown renderer and HTML sanitizer follow. */
+/*
+# License information
+
+## Contribution License Agreement
+
+If you contribute code to this project, you are implicitly allowing your code
+to be distributed under the MIT license. You are also implicitly verifying that
+all code is your original work. `</legalese>`
+
+## Marked
+
+Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/)
+Copyright (c) 2011-2018, Christopher Jeffrey (https://github.com/chjj/)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+## Markdown
+
+Copyright © 2004, John Gruber
+http://daringfireball.net/
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+* Neither the name “Markdown” nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+This software is provided by the copyright holders and contributors “as is” and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the copyright owner or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
+
+DOMPurify
+Copyright 2025 Dr.-Ing. Mario Heiderich, Cure53
+
+DOMPurify is free software; you can redistribute it and/or modify it under the
+terms of either:
+
+a) the Apache License Version 2.0, or
+b) the Mozilla Public License Version 2.0
+
+-----------------------------------------------------------------------------
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright [yyyy] [name of copyright owner]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+-----------------------------------------------------------------------------
+Mozilla Public License, version 2.0
+
+1. Definitions
+
+1.1. “Contributor”
+
+     means each individual or legal entity that creates, contributes to the
+     creation of, or owns Covered Software.
+
+1.2. “Contributor Version”
+
+     means the combination of the Contributions of others (if any) used by a
+     Contributor and that particular Contributor’s Contribution.
+
+1.3. “Contribution”
+
+     means Covered Software of a particular Contributor.
+
+1.4. “Covered Software”
+
+     means Source Code Form to which the initial Contributor has attached the
+     notice in Exhibit A, the Executable Form of such Source Code Form, and
+     Modifications of such Source Code Form, in each case including portions
+     thereof.
+
+1.5. “Incompatible With Secondary Licenses”
+     means
+
+     a. that the initial Contributor has attached the notice described in
+        Exhibit B to the Covered Software; or
+
+     b. that the Covered Software was made available under the terms of version
+        1.1 or earlier of the License, but not also under the terms of a
+        Secondary License.
+
+1.6. “Executable Form”
+
+     means any form of the work other than Source Code Form.
+
+1.7. “Larger Work”
+
+     means a work that combines Covered Software with other material, in a separate
+     file or files, that is not Covered Software.
+
+1.8. “License”
+
+     means this document.
+
+1.9. “Licensable”
+
+     means having the right to grant, to the maximum extent possible, whether at the
+     time of the initial grant or subsequently, any and all of the rights conveyed by
+     this License.
+
+1.10. “Modifications”
+
+     means any of the following:
+
+     a. any file in Source Code Form that results from an addition to, deletion
+        from, or modification of the contents of Covered Software; or
+
+     b. any new file in Source Code Form that contains any Covered Software.
+
+1.11. “Patent Claims” of a Contributor
+
+      means any patent claim(s), including without limitation, method, process,
+      and apparatus claims, in any patent Licensable by such Contributor that
+      would be infringed, but for the grant of the License, by the making,
+      using, selling, offering for sale, having made, import, or transfer of
+      either its Contributions or its Contributor Version.
+
+1.12. “Secondary License”
+
+      means either the GNU General Public License, Version 2.0, the GNU Lesser
+      General Public License, Version 2.1, the GNU Affero General Public
+      License, Version 3.0, or any later versions of those licenses.
+
+1.13. “Source Code Form”
+
+      means the form of the work preferred for making modifications.
+
+1.14. “You” (or “Your”)
+
+      means an individual or a legal entity exercising rights under this
+      License. For legal entities, “You” includes any entity that controls, is
+      controlled by, or is under common control with You. For purposes of this
+      definition, “control” means (a) the power, direct or indirect, to cause
+      the direction or management of such entity, whether by contract or
+      otherwise, or (b) ownership of more than fifty percent (50%) of the
+      outstanding shares or beneficial ownership of such entity.
+
+
+2. License Grants and Conditions
+
+2.1. Grants
+
+     Each Contributor hereby grants You a world-wide, royalty-free,
+     non-exclusive license:
+
+     a. under intellectual property rights (other than patent or trademark)
+        Licensable by such Contributor to use, reproduce, make available,
+        modify, display, perform, distribute, and otherwise exploit its
+        Contributions, either on an unmodified basis, with Modifications, or as
+        part of a Larger Work; and
+
+     b. under Patent Claims of such Contributor to make, use, sell, offer for
+        sale, have made, import, and otherwise transfer either its Contributions
+        or its Contributor Version.
+
+2.2. Effective Date
+
+     The licenses granted in Section 2.1 with respect to any Contribution become
+     effective for each Contribution on the date the Contributor first distributes
+     such Contribution.
+
+2.3. Limitations on Grant Scope
+
+     The licenses granted in this Section 2 are the only rights granted under this
+     License. No additional rights or licenses will be implied from the distribution
+     or licensing of Covered Software under this License. Notwithstanding Section
+     2.1(b) above, no patent license is granted by a Contributor:
+
+     a. for any code that a Contributor has removed from Covered Software; or
+
+     b. for infringements caused by: (i) Your and any other third party’s
+        modifications of Covered Software, or (ii) the combination of its
+        Contributions with other software (except as part of its Contributor
+        Version); or
+
+     c. under Patent Claims infringed by Covered Software in the absence of its
+        Contributions.
+
+     This License does not grant any rights in the trademarks, service marks, or
+     logos of any Contributor (except as may be necessary to comply with the
+     notice requirements in Section 3.4).
+
+2.4. Subsequent Licenses
+
+     No Contributor makes additional grants as a result of Your choice to
+     distribute the Covered Software under a subsequent version of this License
+     (see Section 10.2) or under the terms of a Secondary License (if permitted
+     under the terms of Section 3.3).
+
+2.5. Representation
+
+     Each Contributor represents that the Contributor believes its Contributions
+     are its original creation(s) or it has sufficient rights to grant the
+     rights to its Contributions conveyed by this License.
+
+2.6. Fair Use
+
+     This License is not intended to limit any rights You have under applicable
+     copyright doctrines of fair use, fair dealing, or other equivalents.
+
+2.7. Conditions
+
+     Sections 3.1, 3.2, 3.3, and 3.4 are conditions of the licenses granted in
+     Section 2.1.
+
+
+3. Responsibilities
+
+3.1. Distribution of Source Form
+
+     All distribution of Covered Software in Source Code Form, including any
+     Modifications that You create or to which You contribute, must be under the
+     terms of this License. You must inform recipients that the Source Code Form
+     of the Covered Software is governed by the terms of this License, and how
+     they can obtain a copy of this License. You may not attempt to alter or
+     restrict the recipients’ rights in the Source Code Form.
+
+3.2. Distribution of Executable Form
+
+     If You distribute Covered Software in Executable Form then:
+
+     a. such Covered Software must also be made available in Source Code Form,
+        as described in Section 3.1, and You must inform recipients of the
+        Executable Form how they can obtain a copy of such Source Code Form by
+        reasonable means in a timely manner, at a charge no more than the cost
+        of distribution to the recipient; and
+
+     b. You may distribute such Executable Form under the terms of this License,
+        or sublicense it under different terms, provided that the license for
+        the Executable Form does not attempt to limit or alter the recipients’
+        rights in the Source Code Form under this License.
+
+3.3. Distribution of a Larger Work
+
+     You may create and distribute a Larger Work under terms of Your choice,
+     provided that You also comply with the requirements of this License for the
+     Covered Software. If the Larger Work is a combination of Covered Software
+     with a work governed by one or more Secondary Licenses, and the Covered
+     Software is not Incompatible With Secondary Licenses, this License permits
+     You to additionally distribute such Covered Software under the terms of
+     such Secondary License(s), so that the recipient of the Larger Work may, at
+     their option, further distribute the Covered Software under the terms of
+     either this License or such Secondary License(s).
+
+3.4. Notices
+
+     You may not remove or alter the substance of any license notices (including
+     copyright notices, patent notices, disclaimers of warranty, or limitations
+     of liability) contained within the Source Code Form of the Covered
+     Software, except that You may alter any license notices to the extent
+     required to remedy known factual inaccuracies.
+
+3.5. Application of Additional Terms
+
+     You may choose to offer, and to charge a fee for, warranty, support,
+     indemnity or liability obligations to one or more recipients of Covered
+     Software. However, You may do so only on Your own behalf, and not on behalf
+     of any Contributor. You must make it absolutely clear that any such
+     warranty, support, indemnity, or liability obligation is offered by You
+     alone, and You hereby agree to indemnify every Contributor for any
+     liability incurred by such Contributor as a result of warranty, support,
+     indemnity or liability terms You offer. You may include additional
+     disclaimers of warranty and limitations of liability specific to any
+     jurisdiction.
+
+4. Inability to Comply Due to Statute or Regulation
+
+   If it is impossible for You to comply with any of the terms of this License
+   with respect to some or all of the Covered Software due to statute, judicial
+   order, or regulation then You must: (a) comply with the terms of this License
+   to the maximum extent possible; and (b) describe the limitations and the code
+   they affect. Such description must be placed in a text file included with all
+   distributions of the Covered Software under this License. Except to the
+   extent prohibited by statute or regulation, such description must be
+   sufficiently detailed for a recipient of ordinary skill to be able to
+   understand it.
+
+5. Termination
+
+5.1. The rights granted under this License will terminate automatically if You
+     fail to comply with any of its terms. However, if You become compliant,
+     then the rights granted under this License from a particular Contributor
+     are reinstated (a) provisionally, unless and until such Contributor
+     explicitly and finally terminates Your grants, and (b) on an ongoing basis,
+     if such Contributor fails to notify You of the non-compliance by some
+     reasonable means prior to 60 days after You have come back into compliance.
+     Moreover, Your grants from a particular Contributor are reinstated on an
+     ongoing basis if such Contributor notifies You of the non-compliance by
+     some reasonable means, this is the first time You have received notice of
+     non-compliance with this License from such Contributor, and You become
+     compliant prior to 30 days after Your receipt of the notice.
+
+5.2. If You initiate litigation against any entity by asserting a patent
+     infringement claim (excluding declaratory judgment actions, counter-claims,
+     and cross-claims) alleging that a Contributor Version directly or
+     indirectly infringes any patent, then the rights granted to You by any and
+     all Contributors for the Covered Software under Section 2.1 of this License
+     shall terminate.
+
+5.3. In the event of termination under Sections 5.1 or 5.2 above, all end user
+     license agreements (excluding distributors and resellers) which have been
+     validly granted by You or Your distributors under this License prior to
+     termination shall survive termination.
+
+6. Disclaimer of Warranty
+
+   Covered Software is provided under this License on an “as is” basis, without
+   warranty of any kind, either expressed, implied, or statutory, including,
+   without limitation, warranties that the Covered Software is free of defects,
+   merchantable, fit for a particular purpose or non-infringing. The entire
+   risk as to the quality and performance of the Covered Software is with You.
+   Should any Covered Software prove defective in any respect, You (not any
+   Contributor) assume the cost of any necessary servicing, repair, or
+   correction. This disclaimer of warranty constitutes an essential part of this
+   License. No use of  any Covered Software is authorized under this License
+   except under this disclaimer.
+
+7. Limitation of Liability
+
+   Under no circumstances and under no legal theory, whether tort (including
+   negligence), contract, or otherwise, shall any Contributor, or anyone who
+   distributes Covered Software as permitted above, be liable to You for any
+   direct, indirect, special, incidental, or consequential damages of any
+   character including, without limitation, damages for lost profits, loss of
+   goodwill, work stoppage, computer failure or malfunction, or any and all
+   other commercial damages or losses, even if such party shall have been
+   informed of the possibility of such damages. This limitation of liability
+   shall not apply to liability for death or personal injury resulting from such
+   party’s negligence to the extent applicable law prohibits such limitation.
+   Some jurisdictions do not allow the exclusion or limitation of incidental or
+   consequential damages, so this exclusion and limitation may not apply to You.
+
+8. Litigation
+
+   Any litigation relating to this License may be brought only in the courts of
+   a jurisdiction where the defendant maintains its principal place of business
+   and such litigation shall be governed by laws of that jurisdiction, without
+   reference to its conflict-of-law provisions. Nothing in this Section shall
+   prevent a party’s ability to bring cross-claims or counter-claims.
+
+9. Miscellaneous
+
+   This License represents the complete agreement concerning the subject matter
+   hereof. If any provision of this License is held to be unenforceable, such
+   provision shall be reformed only to the extent necessary to make it
+   enforceable. Any law or regulation which provides that the language of a
+   contract shall be construed against the drafter shall not be used to construe
+   this License against a Contributor.
+
+
+10. Versions of the License
+
+10.1. New Versions
+
+      Mozilla Foundation is the license steward. Except as provided in Section
+      10.3, no one other than the license steward has the right to modify or
+      publish new versions of this License. Each version will be given a
+      distinguishing version number.
+
+10.2. Effect of New Versions
+
+      You may distribute the Covered Software under the terms of the version of
+      the License under which You originally received the Covered Software, or
+      under the terms of any subsequent version published by the license
+      steward.
+
+10.3. Modified Versions
+
+      If you create software not governed by this License, and you want to
+      create a new license for such software, you may create and use a modified
+      version of this License if you rename the license and remove any
+      references to the name of the license steward (except to note that such
+      modified license differs from this License).
+
+10.4. Distributing Source Code Form that is Incompatible With Secondary Licenses
+      If You choose to distribute Source Code Form that is Incompatible With
+      Secondary Licenses under the terms of this version of the License, the
+      notice described in Exhibit B of this License must be attached.
+
+Exhibit A - Source Code Form License Notice
+
+      This Source Code Form is subject to the
+      terms of the Mozilla Public License, v.
+      2.0. If a copy of the MPL was not
+      distributed with this file, You can
+      obtain one at
+      http://mozilla.org/MPL/2.0/.
+
+If it is not possible or desirable to put the notice in a particular file, then
+You may include the notice in a location (such as a LICENSE file in a relevant
+directory) where a recipient would be likely to look for such a notice.
+
+You may add additional accurate notices of copyright ownership.
+
+Exhibit B - “Incompatible With Secondary Licenses” Notice
+
+      This Source Code Form is “Incompatible
+      With Secondary Licenses”, as defined by
+      the Mozilla Public License, v. 2.0.
+
+
+*/
+/**
+ * marked v15.0.12 - a markdown parser
+ * Copyright (c) 2011-2025, Christopher Jeffrey. (MIT Licensed)
+ * https://github.com/markedjs/marked
+ */
+
+/**
+ * DO NOT EDIT THIS FILE
+ * The code in this file is generated from files in ./src/
+ */
+(function(g,f){if(typeof exports=="object"&&typeof module<"u"){module.exports=f()}else if("function"==typeof define && define.amd){define("marked",f)}else {g["marked"]=f()}}(typeof globalThis < "u" ? globalThis : typeof self < "u" ? self : this,function(){var exports={};var __exports=exports;var module={exports};
+"use strict";var H=Object.defineProperty;var be=Object.getOwnPropertyDescriptor;var Te=Object.getOwnPropertyNames;var we=Object.prototype.hasOwnProperty;var ye=(l,e)=>{for(var t in e)H(l,t,{get:e[t],enumerable:!0})},Re=(l,e,t,n)=>{if(e&&typeof e=="object"||typeof e=="function")for(let s of Te(e))!we.call(l,s)&&s!==t&&H(l,s,{get:()=>e[s],enumerable:!(n=be(e,s))||n.enumerable});return l};var Se=l=>Re(H({},"__esModule",{value:!0}),l);var kt={};ye(kt,{Hooks:()=>L,Lexer:()=>x,Marked:()=>E,Parser:()=>b,Renderer:()=>$,TextRenderer:()=>_,Tokenizer:()=>S,defaults:()=>w,getDefaults:()=>z,lexer:()=>ht,marked:()=>k,options:()=>it,parse:()=>pt,parseInline:()=>ct,parser:()=>ut,setOptions:()=>ot,use:()=>lt,walkTokens:()=>at});module.exports=Se(kt);function z(){return{async:!1,breaks:!1,extensions:null,gfm:!0,hooks:null,pedantic:!1,renderer:null,silent:!1,tokenizer:null,walkTokens:null}}var w=z();function N(l){w=l}var I={exec:()=>null};function h(l,e=""){let t=typeof l=="string"?l:l.source,n={replace:(s,i)=>{let r=typeof i=="string"?i:i.source;return r=r.replace(m.caret,"$1"),t=t.replace(s,r),n},getRegex:()=>new RegExp(t,e)};return n}var m={codeRemoveIndent:/^(?: {1,4}| {0,3}\t)/gm,outputLinkReplace:/\\([\[\]])/g,indentCodeCompensation:/^(\s+)(?:```)/,beginningSpace:/^\s+/,endingHash:/#$/,startingSpaceChar:/^ /,endingSpaceChar:/ $/,nonSpaceChar:/[^ ]/,newLineCharGlobal:/\n/g,tabCharGlobal:/\t/g,multipleSpaceGlobal:/\s+/g,blankLine:/^[ \t]*$/,doubleBlankLine:/\n[ \t]*\n[ \t]*$/,blockquoteStart:/^ {0,3}>/,blockquoteSetextReplace:/\n {0,3}((?:=+|-+) *)(?=\n|$)/g,blockquoteSetextReplace2:/^ {0,3}>[ \t]?/gm,listReplaceTabs:/^\t+/,listReplaceNesting:/^ {1,4}(?=( {4})*[^ ])/g,listIsTask:/^\[[ xX]\] /,listReplaceTask:/^\[[ xX]\] +/,anyLine:/\n.*\n/,hrefBrackets:/^<(.*)>$/,tableDelimiter:/[:|]/,tableAlignChars:/^\||\| *$/g,tableRowBlankLine:/\n[ \t]*$/,tableAlignRight:/^ *-+: *$/,tableAlignCenter:/^ *:-+: *$/,tableAlignLeft:/^ *:-+ *$/,startATag:/^<a /i,endATag:/^<\/a>/i,startPreScriptTag:/^<(pre|code|kbd|script)(\s|>)/i,endPreScriptTag:/^<\/(pre|code|kbd|script)(\s|>)/i,startAngleBracket:/^</,endAngleBracket:/>$/,pedanticHrefTitle:/^([^'"]*[^\s])\s+(['"])(.*)\2/,unicodeAlphaNumeric:/[\p{L}\p{N}]/u,escapeTest:/[&<>"']/,escapeReplace:/[&<>"']/g,escapeTestNoEncode:/[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/,escapeReplaceNoEncode:/[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/g,unescapeTest:/&(#(?:\d+)|(?:#x[0-9A-Fa-f]+)|(?:\w+));?/ig,caret:/(^|[^\[])\^/g,percentDecode:/%25/g,findPipe:/\|/g,splitPipe:/ \|/,slashPipe:/\\\|/g,carriageReturn:/\r\n|\r/g,spaceLine:/^ +$/gm,notSpaceStart:/^\S*/,endingNewline:/\n$/,listItemRegex:l=>new RegExp(`^( {0,3}${l})((?:[	 ][^\\n]*)?(?:\\n|$))`),nextBulletRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}(?:[*+-]|\\d{1,9}[.)])((?:[ 	][^\\n]*)?(?:\\n|$))`),hrRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}((?:- *){3,}|(?:_ *){3,}|(?:\\* *){3,})(?:\\n+|$)`),fencesBeginRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}(?:\`\`\`|~~~)`),headingBeginRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}#`),htmlBeginRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}<(?:[a-z].*>|!--)`,"i")},$e=/^(?:[ \t]*(?:\n|$))+/,_e=/^((?: {4}| {0,3}\t)[^\n]+(?:\n(?:[ \t]*(?:\n|$))*)?)+/,Le=/^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/,O=/^ {0,3}((?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/,ze=/^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/,F=/(?:[*+-]|\d{1,9}[.)])/,ie=/^(?!bull |blockCode|fences|blockquote|heading|html|table)((?:.|\n(?!\s*?\n|bull |blockCode|fences|blockquote|heading|html|table))+?)\n {0,3}(=+|-+) *(?:\n+|$)/,oe=h(ie).replace(/bull/g,F).replace(/blockCode/g,/(?: {4}| {0,3}\t)/).replace(/fences/g,/ {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g,/ {0,3}>/).replace(/heading/g,/ {0,3}#{1,6}/).replace(/html/g,/ {0,3}<[^\n>]+>\n/).replace(/\|table/g,"").getRegex(),Me=h(ie).replace(/bull/g,F).replace(/blockCode/g,/(?: {4}| {0,3}\t)/).replace(/fences/g,/ {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g,/ {0,3}>/).replace(/heading/g,/ {0,3}#{1,6}/).replace(/html/g,/ {0,3}<[^\n>]+>\n/).replace(/table/g,/ {0,3}\|?(?:[:\- ]*\|)+[\:\- ]*\n/).getRegex(),Q=/^([^\n]+(?:\n(?!hr|heading|lheading|blockquote|fences|list|html|table| +\n)[^\n]+)*)/,Pe=/^[^\n]+/,U=/(?!\s*\])(?:\\.|[^\[\]\\])+/,Ae=h(/^ {0,3}\[(label)\]: *(?:\n[ \t]*)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n[ \t]*)?| *\n[ \t]*)(title))? *(?:\n+|$)/).replace("label",U).replace("title",/(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/).getRegex(),Ee=h(/^( {0,3}bull)([ \t][^\n]+?)?(?:\n|$)/).replace(/bull/g,F).getRegex(),v="address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul",K=/<!--(?:-?>|[\s\S]*?(?:-->|$))/,Ce=h("^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n+|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>\\n*|$)|<![A-Z][\\s\\S]*?(?:>\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$)|<(?!script|pre|style|textarea)([a-z][\\w-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$)|</(?!script|pre|style|textarea)[a-z][\\w-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$))","i").replace("comment",K).replace("tag",v).replace("attribute",/ +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>`]+)?/).getRegex(),le=h(Q).replace("hr",O).replace("heading"," {0,3}#{1,6}(?:\\s|$)").replace("|lheading","").replace("|table","").replace("blockquote"," {0,3}>").replace("fences"," {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list"," {0,3}(?:[*+-]|1[.)]) ").replace("html","</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag",v).getRegex(),Ie=h(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/).replace("paragraph",le).getRegex(),X={blockquote:Ie,code:_e,def:Ae,fences:Le,heading:ze,hr:O,html:Ce,lheading:oe,list:Ee,newline:$e,paragraph:le,table:I,text:Pe},re=h("^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)").replace("hr",O).replace("heading"," {0,3}#{1,6}(?:\\s|$)").replace("blockquote"," {0,3}>").replace("code","(?: {4}| {0,3}	)[^\\n]").replace("fences"," {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list"," {0,3}(?:[*+-]|1[.)]) ").replace("html","</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag",v).getRegex(),Oe={...X,lheading:Me,table:re,paragraph:h(Q).replace("hr",O).replace("heading"," {0,3}#{1,6}(?:\\s|$)").replace("|lheading","").replace("table",re).replace("blockquote"," {0,3}>").replace("fences"," {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list"," {0,3}(?:[*+-]|1[.)]) ").replace("html","</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag",v).getRegex()},Be={...X,html:h(`^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`).replace("comment",K).replace(/tag/g,"(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\\b)\\w+(?!:|[^\\w\\s@]*@)\\b").getRegex(),def:/^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +(["(][^\n]+[")]))? *(?:\n+|$)/,heading:/^(#{1,6})(.*)(?:\n+|$)/,fences:I,lheading:/^(.+?)\n {0,3}(=+|-+) *(?:\n+|$)/,paragraph:h(Q).replace("hr",O).replace("heading",` *#{1,6} *[^
+]`).replace("lheading",oe).replace("|table","").replace("blockquote"," {0,3}>").replace("|fences","").replace("|list","").replace("|html","").replace("|tag","").getRegex()},qe=/^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/,ve=/^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/,ae=/^( {2,}|\\)\n(?!\s*$)/,De=/^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/,D=/[\p{P}\p{S}]/u,W=/[\s\p{P}\p{S}]/u,ce=/[^\s\p{P}\p{S}]/u,Ze=h(/^((?![*_])punctSpace)/,"u").replace(/punctSpace/g,W).getRegex(),pe=/(?!~)[\p{P}\p{S}]/u,Ge=/(?!~)[\s\p{P}\p{S}]/u,He=/(?:[^\s\p{P}\p{S}]|~)/u,Ne=/\[[^[\]]*?\]\((?:\\.|[^\\\(\)]|\((?:\\.|[^\\\(\)])*\))*\)|`[^`]*?`|<[^<>]*?>/g,ue=/^(?:\*+(?:((?!\*)punct)|[^\s*]))|^_+(?:((?!_)punct)|([^\s_]))/,je=h(ue,"u").replace(/punct/g,D).getRegex(),Fe=h(ue,"u").replace(/punct/g,pe).getRegex(),he="^[^_*]*?__[^_*]*?\\*[^_*]*?(?=__)|[^*]+(?=[^*])|(?!\\*)punct(\\*+)(?=[\\s]|$)|notPunctSpace(\\*+)(?!\\*)(?=punctSpace|$)|(?!\\*)punctSpace(\\*+)(?=notPunctSpace)|[\\s](\\*+)(?!\\*)(?=punct)|(?!\\*)punct(\\*+)(?!\\*)(?=punct)|notPunctSpace(\\*+)(?=notPunctSpace)",Qe=h(he,"gu").replace(/notPunctSpace/g,ce).replace(/punctSpace/g,W).replace(/punct/g,D).getRegex(),Ue=h(he,"gu").replace(/notPunctSpace/g,He).replace(/punctSpace/g,Ge).replace(/punct/g,pe).getRegex(),Ke=h("^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)punct(_+)(?=[\\s]|$)|notPunctSpace(_+)(?!_)(?=punctSpace|$)|(?!_)punctSpace(_+)(?=notPunctSpace)|[\\s](_+)(?!_)(?=punct)|(?!_)punct(_+)(?!_)(?=punct)","gu").replace(/notPunctSpace/g,ce).replace(/punctSpace/g,W).replace(/punct/g,D).getRegex(),Xe=h(/\\(punct)/,"gu").replace(/punct/g,D).getRegex(),We=h(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/).replace("scheme",/[a-zA-Z][a-zA-Z0-9+.-]{1,31}/).replace("email",/[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/).getRegex(),Je=h(K).replace("(?:-->|$)","-->").getRegex(),Ve=h("^comment|^</[a-zA-Z][\\w:-]*\\s*>|^<[a-zA-Z][\\w-]*(?:attribute)*?\\s*/?>|^<\\?[\\s\\S]*?\\?>|^<![a-zA-Z]+\\s[\\s\\S]*?>|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>").replace("comment",Je).replace("attribute",/\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*"[^"]*"|\s*=\s*'[^']*'|\s*=\s*[^\s"'=<>`]+)?/).getRegex(),q=/(?:\[(?:\\.|[^\[\]\\])*\]|\\.|`[^`]*`|[^\[\]\\`])*?/,Ye=h(/^!?\[(label)\]\(\s*(href)(?:(?:[ \t]*(?:\n[ \t]*)?)(title))?\s*\)/).replace("label",q).replace("href",/<(?:\\.|[^\n<>\\])+>|[^ \t\n\x00-\x1f]*/).replace("title",/"(?:\\"?|[^"\\])*"|'(?:\\'?|[^'\\])*'|\((?:\\\)?|[^)\\])*\)/).getRegex(),ke=h(/^!?\[(label)\]\[(ref)\]/).replace("label",q).replace("ref",U).getRegex(),ge=h(/^!?\[(ref)\](?:\[\])?/).replace("ref",U).getRegex(),et=h("reflink|nolink(?!\\()","g").replace("reflink",ke).replace("nolink",ge).getRegex(),J={_backpedal:I,anyPunctuation:Xe,autolink:We,blockSkip:Ne,br:ae,code:ve,del:I,emStrongLDelim:je,emStrongRDelimAst:Qe,emStrongRDelimUnd:Ke,escape:qe,link:Ye,nolink:ge,punctuation:Ze,reflink:ke,reflinkSearch:et,tag:Ve,text:De,url:I},tt={...J,link:h(/^!?\[(label)\]\((.*?)\)/).replace("label",q).getRegex(),reflink:h(/^!?\[(label)\]\s*\[([^\]]*)\]/).replace("label",q).getRegex()},j={...J,emStrongRDelimAst:Ue,emStrongLDelim:Fe,url:h(/^((?:ftp|https?):\/\/|www\.)(?:[a-zA-Z0-9\-]+\.?)+[^\s<]*|^email/,"i").replace("email",/[A-Za-z0-9._+-]+(@)[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![-_])/).getRegex(),_backpedal:/(?:[^?!.,:;*_'"~()&]+|\([^)]*\)|&(?![a-zA-Z0-9]+;$)|[?!.,:;*_'"~)]+(?!$))+/,del:/^(~~?)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))\1(?=[^~]|$)/,text:/^([`~]+|[^`~])(?:(?= {2,}\n)|(?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)|[\s\S]*?(?:(?=[\\<!\[`*~_]|\b_|https?:\/\/|ftp:\/\/|www\.|$)|[^ ](?= {2,}\n)|[^a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-](?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)))/},nt={...j,br:h(ae).replace("{2,}","*").getRegex(),text:h(j.text).replace("\\b_","\\b_| {2,}\\n").replace(/\{2,\}/g,"*").getRegex()},B={normal:X,gfm:Oe,pedantic:Be},P={normal:J,gfm:j,breaks:nt,pedantic:tt};var st={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"},fe=l=>st[l];function R(l,e){if(e){if(m.escapeTest.test(l))return l.replace(m.escapeReplace,fe)}else if(m.escapeTestNoEncode.test(l))return l.replace(m.escapeReplaceNoEncode,fe);return l}function V(l){try{l=encodeURI(l).replace(m.percentDecode,"%")}catch{return null}return l}function Y(l,e){let t=l.replace(m.findPipe,(i,r,o)=>{let a=!1,c=r;for(;--c>=0&&o[c]==="\\";)a=!a;return a?"|":" |"}),n=t.split(m.splitPipe),s=0;if(n[0].trim()||n.shift(),n.length>0&&!n.at(-1)?.trim()&&n.pop(),e)if(n.length>e)n.splice(e);else for(;n.length<e;)n.push("");for(;s<n.length;s++)n[s]=n[s].trim().replace(m.slashPipe,"|");return n}function A(l,e,t){let n=l.length;if(n===0)return"";let s=0;for(;s<n;){let i=l.charAt(n-s-1);if(i===e&&!t)s++;else if(i!==e&&t)s++;else break}return l.slice(0,n-s)}function de(l,e){if(l.indexOf(e[1])===-1)return-1;let t=0;for(let n=0;n<l.length;n++)if(l[n]==="\\")n++;else if(l[n]===e[0])t++;else if(l[n]===e[1]&&(t--,t<0))return n;return t>0?-2:-1}function me(l,e,t,n,s){let i=e.href,r=e.title||null,o=l[1].replace(s.other.outputLinkReplace,"$1");n.state.inLink=!0;let a={type:l[0].charAt(0)==="!"?"image":"link",raw:t,href:i,title:r,text:o,tokens:n.inlineTokens(o)};return n.state.inLink=!1,a}function rt(l,e,t){let n=l.match(t.other.indentCodeCompensation);if(n===null)return e;let s=n[1];return e.split(`
+`).map(i=>{let r=i.match(t.other.beginningSpace);if(r===null)return i;let[o]=r;return o.length>=s.length?i.slice(s.length):i}).join(`
+`)}var S=class{options;rules;lexer;constructor(e){this.options=e||w}space(e){let t=this.rules.block.newline.exec(e);if(t&&t[0].length>0)return{type:"space",raw:t[0]}}code(e){let t=this.rules.block.code.exec(e);if(t){let n=t[0].replace(this.rules.other.codeRemoveIndent,"");return{type:"code",raw:t[0],codeBlockStyle:"indented",text:this.options.pedantic?n:A(n,`
+`)}}}fences(e){let t=this.rules.block.fences.exec(e);if(t){let n=t[0],s=rt(n,t[3]||"",this.rules);return{type:"code",raw:n,lang:t[2]?t[2].trim().replace(this.rules.inline.anyPunctuation,"$1"):t[2],text:s}}}heading(e){let t=this.rules.block.heading.exec(e);if(t){let n=t[2].trim();if(this.rules.other.endingHash.test(n)){let s=A(n,"#");(this.options.pedantic||!s||this.rules.other.endingSpaceChar.test(s))&&(n=s.trim())}return{type:"heading",raw:t[0],depth:t[1].length,text:n,tokens:this.lexer.inline(n)}}}hr(e){let t=this.rules.block.hr.exec(e);if(t)return{type:"hr",raw:A(t[0],`
+`)}}blockquote(e){let t=this.rules.block.blockquote.exec(e);if(t){let n=A(t[0],`
+`).split(`
+`),s="",i="",r=[];for(;n.length>0;){let o=!1,a=[],c;for(c=0;c<n.length;c++)if(this.rules.other.blockquoteStart.test(n[c]))a.push(n[c]),o=!0;else if(!o)a.push(n[c]);else break;n=n.slice(c);let p=a.join(`
+`),u=p.replace(this.rules.other.blockquoteSetextReplace,`
+    $1`).replace(this.rules.other.blockquoteSetextReplace2,"");s=s?`${s}
+${p}`:p,i=i?`${i}
+${u}`:u;let d=this.lexer.state.top;if(this.lexer.state.top=!0,this.lexer.blockTokens(u,r,!0),this.lexer.state.top=d,n.length===0)break;let g=r.at(-1);if(g?.type==="code")break;if(g?.type==="blockquote"){let T=g,f=T.raw+`
+`+n.join(`
+`),y=this.blockquote(f);r[r.length-1]=y,s=s.substring(0,s.length-T.raw.length)+y.raw,i=i.substring(0,i.length-T.text.length)+y.text;break}else if(g?.type==="list"){let T=g,f=T.raw+`
+`+n.join(`
+`),y=this.list(f);r[r.length-1]=y,s=s.substring(0,s.length-g.raw.length)+y.raw,i=i.substring(0,i.length-T.raw.length)+y.raw,n=f.substring(r.at(-1).raw.length).split(`
+`);continue}}return{type:"blockquote",raw:s,tokens:r,text:i}}}list(e){let t=this.rules.block.list.exec(e);if(t){let n=t[1].trim(),s=n.length>1,i={type:"list",raw:"",ordered:s,start:s?+n.slice(0,-1):"",loose:!1,items:[]};n=s?`\\d{1,9}\\${n.slice(-1)}`:`\\${n}`,this.options.pedantic&&(n=s?n:"[*+-]");let r=this.rules.other.listItemRegex(n),o=!1;for(;e;){let c=!1,p="",u="";if(!(t=r.exec(e))||this.rules.block.hr.test(e))break;p=t[0],e=e.substring(p.length);let d=t[2].split(`
+`,1)[0].replace(this.rules.other.listReplaceTabs,Z=>" ".repeat(3*Z.length)),g=e.split(`
+`,1)[0],T=!d.trim(),f=0;if(this.options.pedantic?(f=2,u=d.trimStart()):T?f=t[1].length+1:(f=t[2].search(this.rules.other.nonSpaceChar),f=f>4?1:f,u=d.slice(f),f+=t[1].length),T&&this.rules.other.blankLine.test(g)&&(p+=g+`
+`,e=e.substring(g.length+1),c=!0),!c){let Z=this.rules.other.nextBulletRegex(f),te=this.rules.other.hrRegex(f),ne=this.rules.other.fencesBeginRegex(f),se=this.rules.other.headingBeginRegex(f),xe=this.rules.other.htmlBeginRegex(f);for(;e;){let G=e.split(`
+`,1)[0],C;if(g=G,this.options.pedantic?(g=g.replace(this.rules.other.listReplaceNesting,"  "),C=g):C=g.replace(this.rules.other.tabCharGlobal,"    "),ne.test(g)||se.test(g)||xe.test(g)||Z.test(g)||te.test(g))break;if(C.search(this.rules.other.nonSpaceChar)>=f||!g.trim())u+=`
+`+C.slice(f);else{if(T||d.replace(this.rules.other.tabCharGlobal,"    ").search(this.rules.other.nonSpaceChar)>=4||ne.test(d)||se.test(d)||te.test(d))break;u+=`
+`+g}!T&&!g.trim()&&(T=!0),p+=G+`
+`,e=e.substring(G.length+1),d=C.slice(f)}}i.loose||(o?i.loose=!0:this.rules.other.doubleBlankLine.test(p)&&(o=!0));let y=null,ee;this.options.gfm&&(y=this.rules.other.listIsTask.exec(u),y&&(ee=y[0]!=="[ ] ",u=u.replace(this.rules.other.listReplaceTask,""))),i.items.push({type:"list_item",raw:p,task:!!y,checked:ee,loose:!1,text:u,tokens:[]}),i.raw+=p}let a=i.items.at(-1);if(a)a.raw=a.raw.trimEnd(),a.text=a.text.trimEnd();else return;i.raw=i.raw.trimEnd();for(let c=0;c<i.items.length;c++)if(this.lexer.state.top=!1,i.items[c].tokens=this.lexer.blockTokens(i.items[c].text,[]),!i.loose){let p=i.items[c].tokens.filter(d=>d.type==="space"),u=p.length>0&&p.some(d=>this.rules.other.anyLine.test(d.raw));i.loose=u}if(i.loose)for(let c=0;c<i.items.length;c++)i.items[c].loose=!0;return i}}html(e){let t=this.rules.block.html.exec(e);if(t)return{type:"html",block:!0,raw:t[0],pre:t[1]==="pre"||t[1]==="script"||t[1]==="style",text:t[0]}}def(e){let t=this.rules.block.def.exec(e);if(t){let n=t[1].toLowerCase().replace(this.rules.other.multipleSpaceGlobal," "),s=t[2]?t[2].replace(this.rules.other.hrefBrackets,"$1").replace(this.rules.inline.anyPunctuation,"$1"):"",i=t[3]?t[3].substring(1,t[3].length-1).replace(this.rules.inline.anyPunctuation,"$1"):t[3];return{type:"def",tag:n,raw:t[0],href:s,title:i}}}table(e){let t=this.rules.block.table.exec(e);if(!t||!this.rules.other.tableDelimiter.test(t[2]))return;let n=Y(t[1]),s=t[2].replace(this.rules.other.tableAlignChars,"").split("|"),i=t[3]?.trim()?t[3].replace(this.rules.other.tableRowBlankLine,"").split(`
+`):[],r={type:"table",raw:t[0],header:[],align:[],rows:[]};if(n.length===s.length){for(let o of s)this.rules.other.tableAlignRight.test(o)?r.align.push("right"):this.rules.other.tableAlignCenter.test(o)?r.align.push("center"):this.rules.other.tableAlignLeft.test(o)?r.align.push("left"):r.align.push(null);for(let o=0;o<n.length;o++)r.header.push({text:n[o],tokens:this.lexer.inline(n[o]),header:!0,align:r.align[o]});for(let o of i)r.rows.push(Y(o,r.header.length).map((a,c)=>({text:a,tokens:this.lexer.inline(a),header:!1,align:r.align[c]})));return r}}lheading(e){let t=this.rules.block.lheading.exec(e);if(t)return{type:"heading",raw:t[0],depth:t[2].charAt(0)==="="?1:2,text:t[1],tokens:this.lexer.inline(t[1])}}paragraph(e){let t=this.rules.block.paragraph.exec(e);if(t){let n=t[1].charAt(t[1].length-1)===`
+`?t[1].slice(0,-1):t[1];return{type:"paragraph",raw:t[0],text:n,tokens:this.lexer.inline(n)}}}text(e){let t=this.rules.block.text.exec(e);if(t)return{type:"text",raw:t[0],text:t[0],tokens:this.lexer.inline(t[0])}}escape(e){let t=this.rules.inline.escape.exec(e);if(t)return{type:"escape",raw:t[0],text:t[1]}}tag(e){let t=this.rules.inline.tag.exec(e);if(t)return!this.lexer.state.inLink&&this.rules.other.startATag.test(t[0])?this.lexer.state.inLink=!0:this.lexer.state.inLink&&this.rules.other.endATag.test(t[0])&&(this.lexer.state.inLink=!1),!this.lexer.state.inRawBlock&&this.rules.other.startPreScriptTag.test(t[0])?this.lexer.state.inRawBlock=!0:this.lexer.state.inRawBlock&&this.rules.other.endPreScriptTag.test(t[0])&&(this.lexer.state.inRawBlock=!1),{type:"html",raw:t[0],inLink:this.lexer.state.inLink,inRawBlock:this.lexer.state.inRawBlock,block:!1,text:t[0]}}link(e){let t=this.rules.inline.link.exec(e);if(t){let n=t[2].trim();if(!this.options.pedantic&&this.rules.other.startAngleBracket.test(n)){if(!this.rules.other.endAngleBracket.test(n))return;let r=A(n.slice(0,-1),"\\");if((n.length-r.length)%2===0)return}else{let r=de(t[2],"()");if(r===-2)return;if(r>-1){let a=(t[0].indexOf("!")===0?5:4)+t[1].length+r;t[2]=t[2].substring(0,r),t[0]=t[0].substring(0,a).trim(),t[3]=""}}let s=t[2],i="";if(this.options.pedantic){let r=this.rules.other.pedanticHrefTitle.exec(s);r&&(s=r[1],i=r[3])}else i=t[3]?t[3].slice(1,-1):"";return s=s.trim(),this.rules.other.startAngleBracket.test(s)&&(this.options.pedantic&&!this.rules.other.endAngleBracket.test(n)?s=s.slice(1):s=s.slice(1,-1)),me(t,{href:s&&s.replace(this.rules.inline.anyPunctuation,"$1"),title:i&&i.replace(this.rules.inline.anyPunctuation,"$1")},t[0],this.lexer,this.rules)}}reflink(e,t){let n;if((n=this.rules.inline.reflink.exec(e))||(n=this.rules.inline.nolink.exec(e))){let s=(n[2]||n[1]).replace(this.rules.other.multipleSpaceGlobal," "),i=t[s.toLowerCase()];if(!i){let r=n[0].charAt(0);return{type:"text",raw:r,text:r}}return me(n,i,n[0],this.lexer,this.rules)}}emStrong(e,t,n=""){let s=this.rules.inline.emStrongLDelim.exec(e);if(!s||s[3]&&n.match(this.rules.other.unicodeAlphaNumeric))return;if(!(s[1]||s[2]||"")||!n||this.rules.inline.punctuation.exec(n)){let r=[...s[0]].length-1,o,a,c=r,p=0,u=s[0][0]==="*"?this.rules.inline.emStrongRDelimAst:this.rules.inline.emStrongRDelimUnd;for(u.lastIndex=0,t=t.slice(-1*e.length+r);(s=u.exec(t))!=null;){if(o=s[1]||s[2]||s[3]||s[4]||s[5]||s[6],!o)continue;if(a=[...o].length,s[3]||s[4]){c+=a;continue}else if((s[5]||s[6])&&r%3&&!((r+a)%3)){p+=a;continue}if(c-=a,c>0)continue;a=Math.min(a,a+c+p);let d=[...s[0]][0].length,g=e.slice(0,r+s.index+d+a);if(Math.min(r,a)%2){let f=g.slice(1,-1);return{type:"em",raw:g,text:f,tokens:this.lexer.inlineTokens(f)}}let T=g.slice(2,-2);return{type:"strong",raw:g,text:T,tokens:this.lexer.inlineTokens(T)}}}}codespan(e){let t=this.rules.inline.code.exec(e);if(t){let n=t[2].replace(this.rules.other.newLineCharGlobal," "),s=this.rules.other.nonSpaceChar.test(n),i=this.rules.other.startingSpaceChar.test(n)&&this.rules.other.endingSpaceChar.test(n);return s&&i&&(n=n.substring(1,n.length-1)),{type:"codespan",raw:t[0],text:n}}}br(e){let t=this.rules.inline.br.exec(e);if(t)return{type:"br",raw:t[0]}}del(e){let t=this.rules.inline.del.exec(e);if(t)return{type:"del",raw:t[0],text:t[2],tokens:this.lexer.inlineTokens(t[2])}}autolink(e){let t=this.rules.inline.autolink.exec(e);if(t){let n,s;return t[2]==="@"?(n=t[1],s="mailto:"+n):(n=t[1],s=n),{type:"link",raw:t[0],text:n,href:s,tokens:[{type:"text",raw:n,text:n}]}}}url(e){let t;if(t=this.rules.inline.url.exec(e)){let n,s;if(t[2]==="@")n=t[0],s="mailto:"+n;else{let i;do i=t[0],t[0]=this.rules.inline._backpedal.exec(t[0])?.[0]??"";while(i!==t[0]);n=t[0],t[1]==="www."?s="http://"+t[0]:s=t[0]}return{type:"link",raw:t[0],text:n,href:s,tokens:[{type:"text",raw:n,text:n}]}}}inlineText(e){let t=this.rules.inline.text.exec(e);if(t){let n=this.lexer.state.inRawBlock;return{type:"text",raw:t[0],text:t[0],escaped:n}}}};var x=class l{tokens;options;state;tokenizer;inlineQueue;constructor(e){this.tokens=[],this.tokens.links=Object.create(null),this.options=e||w,this.options.tokenizer=this.options.tokenizer||new S,this.tokenizer=this.options.tokenizer,this.tokenizer.options=this.options,this.tokenizer.lexer=this,this.inlineQueue=[],this.state={inLink:!1,inRawBlock:!1,top:!0};let t={other:m,block:B.normal,inline:P.normal};this.options.pedantic?(t.block=B.pedantic,t.inline=P.pedantic):this.options.gfm&&(t.block=B.gfm,this.options.breaks?t.inline=P.breaks:t.inline=P.gfm),this.tokenizer.rules=t}static get rules(){return{block:B,inline:P}}static lex(e,t){return new l(t).lex(e)}static lexInline(e,t){return new l(t).inlineTokens(e)}lex(e){e=e.replace(m.carriageReturn,`
+`),this.blockTokens(e,this.tokens);for(let t=0;t<this.inlineQueue.length;t++){let n=this.inlineQueue[t];this.inlineTokens(n.src,n.tokens)}return this.inlineQueue=[],this.tokens}blockTokens(e,t=[],n=!1){for(this.options.pedantic&&(e=e.replace(m.tabCharGlobal,"    ").replace(m.spaceLine,""));e;){let s;if(this.options.extensions?.block?.some(r=>(s=r.call({lexer:this},e,t))?(e=e.substring(s.raw.length),t.push(s),!0):!1))continue;if(s=this.tokenizer.space(e)){e=e.substring(s.raw.length);let r=t.at(-1);s.raw.length===1&&r!==void 0?r.raw+=`
+`:t.push(s);continue}if(s=this.tokenizer.code(e)){e=e.substring(s.raw.length);let r=t.at(-1);r?.type==="paragraph"||r?.type==="text"?(r.raw+=`
+`+s.raw,r.text+=`
+`+s.text,this.inlineQueue.at(-1).src=r.text):t.push(s);continue}if(s=this.tokenizer.fences(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.heading(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.hr(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.blockquote(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.list(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.html(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.def(e)){e=e.substring(s.raw.length);let r=t.at(-1);r?.type==="paragraph"||r?.type==="text"?(r.raw+=`
+`+s.raw,r.text+=`
+`+s.raw,this.inlineQueue.at(-1).src=r.text):this.tokens.links[s.tag]||(this.tokens.links[s.tag]={href:s.href,title:s.title});continue}if(s=this.tokenizer.table(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.lheading(e)){e=e.substring(s.raw.length),t.push(s);continue}let i=e;if(this.options.extensions?.startBlock){let r=1/0,o=e.slice(1),a;this.options.extensions.startBlock.forEach(c=>{a=c.call({lexer:this},o),typeof a=="number"&&a>=0&&(r=Math.min(r,a))}),r<1/0&&r>=0&&(i=e.substring(0,r+1))}if(this.state.top&&(s=this.tokenizer.paragraph(i))){let r=t.at(-1);n&&r?.type==="paragraph"?(r.raw+=`
+`+s.raw,r.text+=`
+`+s.text,this.inlineQueue.pop(),this.inlineQueue.at(-1).src=r.text):t.push(s),n=i.length!==e.length,e=e.substring(s.raw.length);continue}if(s=this.tokenizer.text(e)){e=e.substring(s.raw.length);let r=t.at(-1);r?.type==="text"?(r.raw+=`
+`+s.raw,r.text+=`
+`+s.text,this.inlineQueue.pop(),this.inlineQueue.at(-1).src=r.text):t.push(s);continue}if(e){let r="Infinite loop on byte: "+e.charCodeAt(0);if(this.options.silent){console.error(r);break}else throw new Error(r)}}return this.state.top=!0,t}inline(e,t=[]){return this.inlineQueue.push({src:e,tokens:t}),t}inlineTokens(e,t=[]){let n=e,s=null;if(this.tokens.links){let o=Object.keys(this.tokens.links);if(o.length>0)for(;(s=this.tokenizer.rules.inline.reflinkSearch.exec(n))!=null;)o.includes(s[0].slice(s[0].lastIndexOf("[")+1,-1))&&(n=n.slice(0,s.index)+"["+"a".repeat(s[0].length-2)+"]"+n.slice(this.tokenizer.rules.inline.reflinkSearch.lastIndex))}for(;(s=this.tokenizer.rules.inline.anyPunctuation.exec(n))!=null;)n=n.slice(0,s.index)+"++"+n.slice(this.tokenizer.rules.inline.anyPunctuation.lastIndex);for(;(s=this.tokenizer.rules.inline.blockSkip.exec(n))!=null;)n=n.slice(0,s.index)+"["+"a".repeat(s[0].length-2)+"]"+n.slice(this.tokenizer.rules.inline.blockSkip.lastIndex);let i=!1,r="";for(;e;){i||(r=""),i=!1;let o;if(this.options.extensions?.inline?.some(c=>(o=c.call({lexer:this},e,t))?(e=e.substring(o.raw.length),t.push(o),!0):!1))continue;if(o=this.tokenizer.escape(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.tag(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.link(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.reflink(e,this.tokens.links)){e=e.substring(o.raw.length);let c=t.at(-1);o.type==="text"&&c?.type==="text"?(c.raw+=o.raw,c.text+=o.text):t.push(o);continue}if(o=this.tokenizer.emStrong(e,n,r)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.codespan(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.br(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.del(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.autolink(e)){e=e.substring(o.raw.length),t.push(o);continue}if(!this.state.inLink&&(o=this.tokenizer.url(e))){e=e.substring(o.raw.length),t.push(o);continue}let a=e;if(this.options.extensions?.startInline){let c=1/0,p=e.slice(1),u;this.options.extensions.startInline.forEach(d=>{u=d.call({lexer:this},p),typeof u=="number"&&u>=0&&(c=Math.min(c,u))}),c<1/0&&c>=0&&(a=e.substring(0,c+1))}if(o=this.tokenizer.inlineText(a)){e=e.substring(o.raw.length),o.raw.slice(-1)!=="_"&&(r=o.raw.slice(-1)),i=!0;let c=t.at(-1);c?.type==="text"?(c.raw+=o.raw,c.text+=o.text):t.push(o);continue}if(e){let c="Infinite loop on byte: "+e.charCodeAt(0);if(this.options.silent){console.error(c);break}else throw new Error(c)}}return t}};var $=class{options;parser;constructor(e){this.options=e||w}space(e){return""}code({text:e,lang:t,escaped:n}){let s=(t||"").match(m.notSpaceStart)?.[0],i=e.replace(m.endingNewline,"")+`
+`;return s?'<pre><code class="language-'+R(s)+'">'+(n?i:R(i,!0))+`</code></pre>
+`:"<pre><code>"+(n?i:R(i,!0))+`</code></pre>
+`}blockquote({tokens:e}){return`<blockquote>
+${this.parser.parse(e)}</blockquote>
+`}html({text:e}){return e}heading({tokens:e,depth:t}){return`<h${t}>${this.parser.parseInline(e)}</h${t}>
+`}hr(e){return`<hr>
+`}list(e){let t=e.ordered,n=e.start,s="";for(let o=0;o<e.items.length;o++){let a=e.items[o];s+=this.listitem(a)}let i=t?"ol":"ul",r=t&&n!==1?' start="'+n+'"':"";return"<"+i+r+`>
+`+s+"</"+i+`>
+`}listitem(e){let t="";if(e.task){let n=this.checkbox({checked:!!e.checked});e.loose?e.tokens[0]?.type==="paragraph"?(e.tokens[0].text=n+" "+e.tokens[0].text,e.tokens[0].tokens&&e.tokens[0].tokens.length>0&&e.tokens[0].tokens[0].type==="text"&&(e.tokens[0].tokens[0].text=n+" "+R(e.tokens[0].tokens[0].text),e.tokens[0].tokens[0].escaped=!0)):e.tokens.unshift({type:"text",raw:n+" ",text:n+" ",escaped:!0}):t+=n+" "}return t+=this.parser.parse(e.tokens,!!e.loose),`<li>${t}</li>
+`}checkbox({checked:e}){return"<input "+(e?'checked="" ':"")+'disabled="" type="checkbox">'}paragraph({tokens:e}){return`<p>${this.parser.parseInline(e)}</p>
+`}table(e){let t="",n="";for(let i=0;i<e.header.length;i++)n+=this.tablecell(e.header[i]);t+=this.tablerow({text:n});let s="";for(let i=0;i<e.rows.length;i++){let r=e.rows[i];n="";for(let o=0;o<r.length;o++)n+=this.tablecell(r[o]);s+=this.tablerow({text:n})}return s&&(s=`<tbody>${s}</tbody>`),`<table>
+<thead>
+`+t+`</thead>
+`+s+`</table>
+`}tablerow({text:e}){return`<tr>
+${e}</tr>
+`}tablecell(e){let t=this.parser.parseInline(e.tokens),n=e.header?"th":"td";return(e.align?`<${n} align="${e.align}">`:`<${n}>`)+t+`</${n}>
+`}strong({tokens:e}){return`<strong>${this.parser.parseInline(e)}</strong>`}em({tokens:e}){return`<em>${this.parser.parseInline(e)}</em>`}codespan({text:e}){return`<code>${R(e,!0)}</code>`}br(e){return"<br>"}del({tokens:e}){return`<del>${this.parser.parseInline(e)}</del>`}link({href:e,title:t,tokens:n}){let s=this.parser.parseInline(n),i=V(e);if(i===null)return s;e=i;let r='<a href="'+e+'"';return t&&(r+=' title="'+R(t)+'"'),r+=">"+s+"</a>",r}image({href:e,title:t,text:n,tokens:s}){s&&(n=this.parser.parseInline(s,this.parser.textRenderer));let i=V(e);if(i===null)return R(n);e=i;let r=`<img src="${e}" alt="${n}"`;return t&&(r+=` title="${R(t)}"`),r+=">",r}text(e){return"tokens"in e&&e.tokens?this.parser.parseInline(e.tokens):"escaped"in e&&e.escaped?e.text:R(e.text)}};var _=class{strong({text:e}){return e}em({text:e}){return e}codespan({text:e}){return e}del({text:e}){return e}html({text:e}){return e}text({text:e}){return e}link({text:e}){return""+e}image({text:e}){return""+e}br(){return""}};var b=class l{options;renderer;textRenderer;constructor(e){this.options=e||w,this.options.renderer=this.options.renderer||new $,this.renderer=this.options.renderer,this.renderer.options=this.options,this.renderer.parser=this,this.textRenderer=new _}static parse(e,t){return new l(t).parse(e)}static parseInline(e,t){return new l(t).parseInline(e)}parse(e,t=!0){let n="";for(let s=0;s<e.length;s++){let i=e[s];if(this.options.extensions?.renderers?.[i.type]){let o=i,a=this.options.extensions.renderers[o.type].call({parser:this},o);if(a!==!1||!["space","hr","heading","code","table","blockquote","list","html","paragraph","text"].includes(o.type)){n+=a||"";continue}}let r=i;switch(r.type){case"space":{n+=this.renderer.space(r);continue}case"hr":{n+=this.renderer.hr(r);continue}case"heading":{n+=this.renderer.heading(r);continue}case"code":{n+=this.renderer.code(r);continue}case"table":{n+=this.renderer.table(r);continue}case"blockquote":{n+=this.renderer.blockquote(r);continue}case"list":{n+=this.renderer.list(r);continue}case"html":{n+=this.renderer.html(r);continue}case"paragraph":{n+=this.renderer.paragraph(r);continue}case"text":{let o=r,a=this.renderer.text(o);for(;s+1<e.length&&e[s+1].type==="text";)o=e[++s],a+=`
+`+this.renderer.text(o);t?n+=this.renderer.paragraph({type:"paragraph",raw:a,text:a,tokens:[{type:"text",raw:a,text:a,escaped:!0}]}):n+=a;continue}default:{let o='Token with "'+r.type+'" type was not found.';if(this.options.silent)return console.error(o),"";throw new Error(o)}}}return n}parseInline(e,t=this.renderer){let n="";for(let s=0;s<e.length;s++){let i=e[s];if(this.options.extensions?.renderers?.[i.type]){let o=this.options.extensions.renderers[i.type].call({parser:this},i);if(o!==!1||!["escape","html","link","image","strong","em","codespan","br","del","text"].includes(i.type)){n+=o||"";continue}}let r=i;switch(r.type){case"escape":{n+=t.text(r);break}case"html":{n+=t.html(r);break}case"link":{n+=t.link(r);break}case"image":{n+=t.image(r);break}case"strong":{n+=t.strong(r);break}case"em":{n+=t.em(r);break}case"codespan":{n+=t.codespan(r);break}case"br":{n+=t.br(r);break}case"del":{n+=t.del(r);break}case"text":{n+=t.text(r);break}default:{let o='Token with "'+r.type+'" type was not found.';if(this.options.silent)return console.error(o),"";throw new Error(o)}}}return n}};var L=class{options;block;constructor(e){this.options=e||w}static passThroughHooks=new Set(["preprocess","postprocess","processAllTokens"]);preprocess(e){return e}postprocess(e){return e}processAllTokens(e){return e}provideLexer(){return this.block?x.lex:x.lexInline}provideParser(){return this.block?b.parse:b.parseInline}};var E=class{defaults=z();options=this.setOptions;parse=this.parseMarkdown(!0);parseInline=this.parseMarkdown(!1);Parser=b;Renderer=$;TextRenderer=_;Lexer=x;Tokenizer=S;Hooks=L;constructor(...e){this.use(...e)}walkTokens(e,t){let n=[];for(let s of e)switch(n=n.concat(t.call(this,s)),s.type){case"table":{let i=s;for(let r of i.header)n=n.concat(this.walkTokens(r.tokens,t));for(let r of i.rows)for(let o of r)n=n.concat(this.walkTokens(o.tokens,t));break}case"list":{let i=s;n=n.concat(this.walkTokens(i.items,t));break}default:{let i=s;this.defaults.extensions?.childTokens?.[i.type]?this.defaults.extensions.childTokens[i.type].forEach(r=>{let o=i[r].flat(1/0);n=n.concat(this.walkTokens(o,t))}):i.tokens&&(n=n.concat(this.walkTokens(i.tokens,t)))}}return n}use(...e){let t=this.defaults.extensions||{renderers:{},childTokens:{}};return e.forEach(n=>{let s={...n};if(s.async=this.defaults.async||s.async||!1,n.extensions&&(n.extensions.forEach(i=>{if(!i.name)throw new Error("extension name required");if("renderer"in i){let r=t.renderers[i.name];r?t.renderers[i.name]=function(...o){let a=i.renderer.apply(this,o);return a===!1&&(a=r.apply(this,o)),a}:t.renderers[i.name]=i.renderer}if("tokenizer"in i){if(!i.level||i.level!=="block"&&i.level!=="inline")throw new Error("extension level must be 'block' or 'inline'");let r=t[i.level];r?r.unshift(i.tokenizer):t[i.level]=[i.tokenizer],i.start&&(i.level==="block"?t.startBlock?t.startBlock.push(i.start):t.startBlock=[i.start]:i.level==="inline"&&(t.startInline?t.startInline.push(i.start):t.startInline=[i.start]))}"childTokens"in i&&i.childTokens&&(t.childTokens[i.name]=i.childTokens)}),s.extensions=t),n.renderer){let i=this.defaults.renderer||new $(this.defaults);for(let r in n.renderer){if(!(r in i))throw new Error(`renderer '${r}' does not exist`);if(["options","parser"].includes(r))continue;let o=r,a=n.renderer[o],c=i[o];i[o]=(...p)=>{let u=a.apply(i,p);return u===!1&&(u=c.apply(i,p)),u||""}}s.renderer=i}if(n.tokenizer){let i=this.defaults.tokenizer||new S(this.defaults);for(let r in n.tokenizer){if(!(r in i))throw new Error(`tokenizer '${r}' does not exist`);if(["options","rules","lexer"].includes(r))continue;let o=r,a=n.tokenizer[o],c=i[o];i[o]=(...p)=>{let u=a.apply(i,p);return u===!1&&(u=c.apply(i,p)),u}}s.tokenizer=i}if(n.hooks){let i=this.defaults.hooks||new L;for(let r in n.hooks){if(!(r in i))throw new Error(`hook '${r}' does not exist`);if(["options","block"].includes(r))continue;let o=r,a=n.hooks[o],c=i[o];L.passThroughHooks.has(r)?i[o]=p=>{if(this.defaults.async)return Promise.resolve(a.call(i,p)).then(d=>c.call(i,d));let u=a.call(i,p);return c.call(i,u)}:i[o]=(...p)=>{let u=a.apply(i,p);return u===!1&&(u=c.apply(i,p)),u}}s.hooks=i}if(n.walkTokens){let i=this.defaults.walkTokens,r=n.walkTokens;s.walkTokens=function(o){let a=[];return a.push(r.call(this,o)),i&&(a=a.concat(i.call(this,o))),a}}this.defaults={...this.defaults,...s}}),this}setOptions(e){return this.defaults={...this.defaults,...e},this}lexer(e,t){return x.lex(e,t??this.defaults)}parser(e,t){return b.parse(e,t??this.defaults)}parseMarkdown(e){return(n,s)=>{let i={...s},r={...this.defaults,...i},o=this.onError(!!r.silent,!!r.async);if(this.defaults.async===!0&&i.async===!1)return o(new Error("marked(): The async option was set to true by an extension. Remove async: false from the parse options object to return a Promise."));if(typeof n>"u"||n===null)return o(new Error("marked(): input parameter is undefined or null"));if(typeof n!="string")return o(new Error("marked(): input parameter is of type "+Object.prototype.toString.call(n)+", string expected"));r.hooks&&(r.hooks.options=r,r.hooks.block=e);let a=r.hooks?r.hooks.provideLexer():e?x.lex:x.lexInline,c=r.hooks?r.hooks.provideParser():e?b.parse:b.parseInline;if(r.async)return Promise.resolve(r.hooks?r.hooks.preprocess(n):n).then(p=>a(p,r)).then(p=>r.hooks?r.hooks.processAllTokens(p):p).then(p=>r.walkTokens?Promise.all(this.walkTokens(p,r.walkTokens)).then(()=>p):p).then(p=>c(p,r)).then(p=>r.hooks?r.hooks.postprocess(p):p).catch(o);try{r.hooks&&(n=r.hooks.preprocess(n));let p=a(n,r);r.hooks&&(p=r.hooks.processAllTokens(p)),r.walkTokens&&this.walkTokens(p,r.walkTokens);let u=c(p,r);return r.hooks&&(u=r.hooks.postprocess(u)),u}catch(p){return o(p)}}}onError(e,t){return n=>{if(n.message+=`
+Please report this to https://github.com/markedjs/marked.`,e){let s="<p>An error occurred:</p><pre>"+R(n.message+"",!0)+"</pre>";return t?Promise.resolve(s):s}if(t)return Promise.reject(n);throw n}}};var M=new E;function k(l,e){return M.parse(l,e)}k.options=k.setOptions=function(l){return M.setOptions(l),k.defaults=M.defaults,N(k.defaults),k};k.getDefaults=z;k.defaults=w;k.use=function(...l){return M.use(...l),k.defaults=M.defaults,N(k.defaults),k};k.walkTokens=function(l,e){return M.walkTokens(l,e)};k.parseInline=M.parseInline;k.Parser=b;k.parser=b.parse;k.Renderer=$;k.TextRenderer=_;k.Lexer=x;k.lexer=x.lex;k.Tokenizer=S;k.Hooks=L;k.parse=k;var it=k.options,ot=k.setOptions,lt=k.use,at=k.walkTokens,ct=k.parseInline,pt=k,ut=b.parse,ht=x.lex;
+
+if(__exports != exports)module.exports = exports;return module.exports}));
+
+;
+/*! @license DOMPurify 3.3.0 | (c) Cure53 and other contributors | Released under the Apache license 2.0 and Mozilla Public License 2.0 | github.com/cure53/DOMPurify/blob/3.3.0/LICENSE */
+!function(e,t){"object"==typeof exports&&"undefined"!=typeof module?module.exports=t():"function"==typeof define&&define.amd?define(t):(e="undefined"!=typeof globalThis?globalThis:e||self).DOMPurify=t()}(this,(function(){"use strict";const{entries:e,setPrototypeOf:t,isFrozen:n,getPrototypeOf:o,getOwnPropertyDescriptor:r}=Object;let{freeze:i,seal:a,create:l}=Object,{apply:c,construct:s}="undefined"!=typeof Reflect&&Reflect;i||(i=function(e){return e}),a||(a=function(e){return e}),c||(c=function(e,t){for(var n=arguments.length,o=new Array(n>2?n-2:0),r=2;r<n;r++)o[r-2]=arguments[r];return e.apply(t,o)}),s||(s=function(e){for(var t=arguments.length,n=new Array(t>1?t-1:0),o=1;o<t;o++)n[o-1]=arguments[o];return new e(...n)});const u=w(Array.prototype.forEach),m=w(Array.prototype.lastIndexOf),p=w(Array.prototype.pop),f=w(Array.prototype.push),d=w(Array.prototype.splice),h=w(String.prototype.toLowerCase),g=w(String.prototype.toString),T=w(String.prototype.match),y=w(String.prototype.replace),E=w(String.prototype.indexOf),A=w(String.prototype.trim),_=w(Object.prototype.hasOwnProperty),b=w(RegExp.prototype.test),S=(N=TypeError,function(){for(var e=arguments.length,t=new Array(e),n=0;n<e;n++)t[n]=arguments[n];return s(N,t)});var N;function w(e){return function(t){t instanceof RegExp&&(t.lastIndex=0);for(var n=arguments.length,o=new Array(n>1?n-1:0),r=1;r<n;r++)o[r-1]=arguments[r];return c(e,t,o)}}function R(e,o){let r=arguments.length>2&&void 0!==arguments[2]?arguments[2]:h;t&&t(e,null);let i=o.length;for(;i--;){let t=o[i];if("string"==typeof t){const e=r(t);e!==t&&(n(o)||(o[i]=e),t=e)}e[t]=!0}return e}function D(e){for(let t=0;t<e.length;t++){_(e,t)||(e[t]=null)}return e}function C(t){const n=l(null);for(const[o,r]of e(t)){_(t,o)&&(Array.isArray(r)?n[o]=D(r):r&&"object"==typeof r&&r.constructor===Object?n[o]=C(r):n[o]=r)}return n}function v(e,t){for(;null!==e;){const n=r(e,t);if(n){if(n.get)return w(n.get);if("function"==typeof n.value)return w(n.value)}e=o(e)}return function(){return null}}const O=i(["a","abbr","acronym","address","area","article","aside","audio","b","bdi","bdo","big","blink","blockquote","body","br","button","canvas","caption","center","cite","code","col","colgroup","content","data","datalist","dd","decorator","del","details","dfn","dialog","dir","div","dl","dt","element","em","fieldset","figcaption","figure","font","footer","form","h1","h2","h3","h4","h5","h6","head","header","hgroup","hr","html","i","img","input","ins","kbd","label","legend","li","main","map","mark","marquee","menu","menuitem","meter","nav","nobr","ol","optgroup","option","output","p","picture","pre","progress","q","rp","rt","ruby","s","samp","search","section","select","shadow","slot","small","source","spacer","span","strike","strong","style","sub","summary","sup","table","tbody","td","template","textarea","tfoot","th","thead","time","tr","track","tt","u","ul","var","video","wbr"]),x=i(["svg","a","altglyph","altglyphdef","altglyphitem","animatecolor","animatemotion","animatetransform","circle","clippath","defs","desc","ellipse","enterkeyhint","exportparts","filter","font","g","glyph","glyphref","hkern","image","inputmode","line","lineargradient","marker","mask","metadata","mpath","part","path","pattern","polygon","polyline","radialgradient","rect","stop","style","switch","symbol","text","textpath","title","tref","tspan","view","vkern"]),L=i(["feBlend","feColorMatrix","feComponentTransfer","feComposite","feConvolveMatrix","feDiffuseLighting","feDisplacementMap","feDistantLight","feDropShadow","feFlood","feFuncA","feFuncB","feFuncG","feFuncR","feGaussianBlur","feImage","feMerge","feMergeNode","feMorphology","feOffset","fePointLight","feSpecularLighting","feSpotLight","feTile","feTurbulence"]),k=i(["animate","color-profile","cursor","discard","font-face","font-face-format","font-face-name","font-face-src","font-face-uri","foreignobject","hatch","hatchpath","mesh","meshgradient","meshpatch","meshrow","missing-glyph","script","set","solidcolor","unknown","use"]),I=i(["math","menclose","merror","mfenced","mfrac","mglyph","mi","mlabeledtr","mmultiscripts","mn","mo","mover","mpadded","mphantom","mroot","mrow","ms","mspace","msqrt","mstyle","msub","msup","msubsup","mtable","mtd","mtext","mtr","munder","munderover","mprescripts"]),M=i(["maction","maligngroup","malignmark","mlongdiv","mscarries","mscarry","msgroup","mstack","msline","msrow","semantics","annotation","annotation-xml","mprescripts","none"]),U=i(["#text"]),z=i(["accept","action","align","alt","autocapitalize","autocomplete","autopictureinpicture","autoplay","background","bgcolor","border","capture","cellpadding","cellspacing","checked","cite","class","clear","color","cols","colspan","controls","controlslist","coords","crossorigin","datetime","decoding","default","dir","disabled","disablepictureinpicture","disableremoteplayback","download","draggable","enctype","enterkeyhint","exportparts","face","for","headers","height","hidden","high","href","hreflang","id","inert","inputmode","integrity","ismap","kind","label","lang","list","loading","loop","low","max","maxlength","media","method","min","minlength","multiple","muted","name","nonce","noshade","novalidate","nowrap","open","optimum","part","pattern","placeholder","playsinline","popover","popovertarget","popovertargetaction","poster","preload","pubdate","radiogroup","readonly","rel","required","rev","reversed","role","rows","rowspan","spellcheck","scope","selected","shape","size","sizes","slot","span","srclang","start","src","srcset","step","style","summary","tabindex","title","translate","type","usemap","valign","value","width","wrap","xmlns","slot"]),P=i(["accent-height","accumulate","additive","alignment-baseline","amplitude","ascent","attributename","attributetype","azimuth","basefrequency","baseline-shift","begin","bias","by","class","clip","clippathunits","clip-path","clip-rule","color","color-interpolation","color-interpolation-filters","color-profile","color-rendering","cx","cy","d","dx","dy","diffuseconstant","direction","display","divisor","dur","edgemode","elevation","end","exponent","fill","fill-opacity","fill-rule","filter","filterunits","flood-color","flood-opacity","font-family","font-size","font-size-adjust","font-stretch","font-style","font-variant","font-weight","fx","fy","g1","g2","glyph-name","glyphref","gradientunits","gradienttransform","height","href","id","image-rendering","in","in2","intercept","k","k1","k2","k3","k4","kerning","keypoints","keysplines","keytimes","lang","lengthadjust","letter-spacing","kernelmatrix","kernelunitlength","lighting-color","local","marker-end","marker-mid","marker-start","markerheight","markerunits","markerwidth","maskcontentunits","maskunits","max","mask","mask-type","media","method","mode","min","name","numoctaves","offset","operator","opacity","order","orient","orientation","origin","overflow","paint-order","path","pathlength","patterncontentunits","patterntransform","patternunits","points","preservealpha","preserveaspectratio","primitiveunits","r","rx","ry","radius","refx","refy","repeatcount","repeatdur","restart","result","rotate","scale","seed","shape-rendering","slope","specularconstant","specularexponent","spreadmethod","startoffset","stddeviation","stitchtiles","stop-color","stop-opacity","stroke-dasharray","stroke-dashoffset","stroke-linecap","stroke-linejoin","stroke-miterlimit","stroke-opacity","stroke","stroke-width","style","surfacescale","systemlanguage","tabindex","tablevalues","targetx","targety","transform","transform-origin","text-anchor","text-decoration","text-rendering","textlength","type","u1","u2","unicode","values","viewbox","visibility","version","vert-adv-y","vert-origin-x","vert-origin-y","width","word-spacing","wrap","writing-mode","xchannelselector","ychannelselector","x","x1","x2","xmlns","y","y1","y2","z","zoomandpan"]),F=i(["accent","accentunder","align","bevelled","close","columnsalign","columnlines","columnspan","denomalign","depth","dir","display","displaystyle","encoding","fence","frame","height","href","id","largeop","length","linethickness","lspace","lquote","mathbackground","mathcolor","mathsize","mathvariant","maxsize","minsize","movablelimits","notation","numalign","open","rowalign","rowlines","rowspacing","rowspan","rspace","rquote","scriptlevel","scriptminsize","scriptsizemultiplier","selection","separator","separators","stretchy","subscriptshift","supscriptshift","symmetric","voffset","width","xmlns"]),H=i(["xlink:href","xml:id","xlink:title","xml:space","xmlns:xlink"]),B=a(/\{\{[\w\W]*|[\w\W]*\}\}/gm),G=a(/<%[\w\W]*|[\w\W]*%>/gm),W=a(/\$\{[\w\W]*/gm),Y=a(/^data-[\-\w.\u00B7-\uFFFF]+$/),j=a(/^aria-[\-\w]+$/),X=a(/^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i),q=a(/^(?:\w+script|data):/i),$=a(/[\u0000-\u0020\u00A0\u1680\u180E\u2000-\u2029\u205F\u3000]/g),K=a(/^html$/i),V=a(/^[a-z][.\w]*(-[.\w]+)+$/i);var Z=Object.freeze({__proto__:null,ARIA_ATTR:j,ATTR_WHITESPACE:$,CUSTOM_ELEMENT:V,DATA_ATTR:Y,DOCTYPE_NAME:K,ERB_EXPR:G,IS_ALLOWED_URI:X,IS_SCRIPT_OR_DATA:q,MUSTACHE_EXPR:B,TMPLIT_EXPR:W});const J=1,Q=3,ee=7,te=8,ne=9,oe=function(){return"undefined"==typeof window?null:window};var re=function t(){let n=arguments.length>0&&void 0!==arguments[0]?arguments[0]:oe();const o=e=>t(e);if(o.version="3.3.0",o.removed=[],!n||!n.document||n.document.nodeType!==ne||!n.Element)return o.isSupported=!1,o;let{document:r}=n;const a=r,c=a.currentScript,{DocumentFragment:s,HTMLTemplateElement:N,Node:w,Element:D,NodeFilter:B,NamedNodeMap:G=n.NamedNodeMap||n.MozNamedAttrMap,HTMLFormElement:W,DOMParser:Y,trustedTypes:j}=n,q=D.prototype,$=v(q,"cloneNode"),V=v(q,"remove"),re=v(q,"nextSibling"),ie=v(q,"childNodes"),ae=v(q,"parentNode");if("function"==typeof N){const e=r.createElement("template");e.content&&e.content.ownerDocument&&(r=e.content.ownerDocument)}let le,ce="";const{implementation:se,createNodeIterator:ue,createDocumentFragment:me,getElementsByTagName:pe}=r,{importNode:fe}=a;let de={afterSanitizeAttributes:[],afterSanitizeElements:[],afterSanitizeShadowDOM:[],beforeSanitizeAttributes:[],beforeSanitizeElements:[],beforeSanitizeShadowDOM:[],uponSanitizeAttribute:[],uponSanitizeElement:[],uponSanitizeShadowNode:[]};o.isSupported="function"==typeof e&&"function"==typeof ae&&se&&void 0!==se.createHTMLDocument;const{MUSTACHE_EXPR:he,ERB_EXPR:ge,TMPLIT_EXPR:Te,DATA_ATTR:ye,ARIA_ATTR:Ee,IS_SCRIPT_OR_DATA:Ae,ATTR_WHITESPACE:_e,CUSTOM_ELEMENT:be}=Z;let{IS_ALLOWED_URI:Se}=Z,Ne=null;const we=R({},[...O,...x,...L,...I,...U]);let Re=null;const De=R({},[...z,...P,...F,...H]);let Ce=Object.seal(l(null,{tagNameCheck:{writable:!0,configurable:!1,enumerable:!0,value:null},attributeNameCheck:{writable:!0,configurable:!1,enumerable:!0,value:null},allowCustomizedBuiltInElements:{writable:!0,configurable:!1,enumerable:!0,value:!1}})),ve=null,Oe=null;const xe=Object.seal(l(null,{tagCheck:{writable:!0,configurable:!1,enumerable:!0,value:null},attributeCheck:{writable:!0,configurable:!1,enumerable:!0,value:null}}));let Le=!0,ke=!0,Ie=!1,Me=!0,Ue=!1,ze=!0,Pe=!1,Fe=!1,He=!1,Be=!1,Ge=!1,We=!1,Ye=!0,je=!1,Xe=!0,qe=!1,$e={},Ke=null;const Ve=R({},["annotation-xml","audio","colgroup","desc","foreignobject","head","iframe","math","mi","mn","mo","ms","mtext","noembed","noframes","noscript","plaintext","script","style","svg","template","thead","title","video","xmp"]);let Ze=null;const Je=R({},["audio","video","img","source","image","track"]);let Qe=null;const et=R({},["alt","class","for","id","label","name","pattern","placeholder","role","summary","title","value","style","xmlns"]),tt="http://www.w3.org/1998/Math/MathML",nt="http://www.w3.org/2000/svg",ot="http://www.w3.org/1999/xhtml";let rt=ot,it=!1,at=null;const lt=R({},[tt,nt,ot],g);let ct=R({},["mi","mo","mn","ms","mtext"]),st=R({},["annotation-xml"]);const ut=R({},["title","style","font","a","script"]);let mt=null;const pt=["application/xhtml+xml","text/html"];let ft=null,dt=null;const ht=r.createElement("form"),gt=function(e){return e instanceof RegExp||e instanceof Function},Tt=function(){let e=arguments.length>0&&void 0!==arguments[0]?arguments[0]:{};if(!dt||dt!==e){if(e&&"object"==typeof e||(e={}),e=C(e),mt=-1===pt.indexOf(e.PARSER_MEDIA_TYPE)?"text/html":e.PARSER_MEDIA_TYPE,ft="application/xhtml+xml"===mt?g:h,Ne=_(e,"ALLOWED_TAGS")?R({},e.ALLOWED_TAGS,ft):we,Re=_(e,"ALLOWED_ATTR")?R({},e.ALLOWED_ATTR,ft):De,at=_(e,"ALLOWED_NAMESPACES")?R({},e.ALLOWED_NAMESPACES,g):lt,Qe=_(e,"ADD_URI_SAFE_ATTR")?R(C(et),e.ADD_URI_SAFE_ATTR,ft):et,Ze=_(e,"ADD_DATA_URI_TAGS")?R(C(Je),e.ADD_DATA_URI_TAGS,ft):Je,Ke=_(e,"FORBID_CONTENTS")?R({},e.FORBID_CONTENTS,ft):Ve,ve=_(e,"FORBID_TAGS")?R({},e.FORBID_TAGS,ft):C({}),Oe=_(e,"FORBID_ATTR")?R({},e.FORBID_ATTR,ft):C({}),$e=!!_(e,"USE_PROFILES")&&e.USE_PROFILES,Le=!1!==e.ALLOW_ARIA_ATTR,ke=!1!==e.ALLOW_DATA_ATTR,Ie=e.ALLOW_UNKNOWN_PROTOCOLS||!1,Me=!1!==e.ALLOW_SELF_CLOSE_IN_ATTR,Ue=e.SAFE_FOR_TEMPLATES||!1,ze=!1!==e.SAFE_FOR_XML,Pe=e.WHOLE_DOCUMENT||!1,Be=e.RETURN_DOM||!1,Ge=e.RETURN_DOM_FRAGMENT||!1,We=e.RETURN_TRUSTED_TYPE||!1,He=e.FORCE_BODY||!1,Ye=!1!==e.SANITIZE_DOM,je=e.SANITIZE_NAMED_PROPS||!1,Xe=!1!==e.KEEP_CONTENT,qe=e.IN_PLACE||!1,Se=e.ALLOWED_URI_REGEXP||X,rt=e.NAMESPACE||ot,ct=e.MATHML_TEXT_INTEGRATION_POINTS||ct,st=e.HTML_INTEGRATION_POINTS||st,Ce=e.CUSTOM_ELEMENT_HANDLING||{},e.CUSTOM_ELEMENT_HANDLING&&gt(e.CUSTOM_ELEMENT_HANDLING.tagNameCheck)&&(Ce.tagNameCheck=e.CUSTOM_ELEMENT_HANDLING.tagNameCheck),e.CUSTOM_ELEMENT_HANDLING&&gt(e.CUSTOM_ELEMENT_HANDLING.attributeNameCheck)&&(Ce.attributeNameCheck=e.CUSTOM_ELEMENT_HANDLING.attributeNameCheck),e.CUSTOM_ELEMENT_HANDLING&&"boolean"==typeof e.CUSTOM_ELEMENT_HANDLING.allowCustomizedBuiltInElements&&(Ce.allowCustomizedBuiltInElements=e.CUSTOM_ELEMENT_HANDLING.allowCustomizedBuiltInElements),Ue&&(ke=!1),Ge&&(Be=!0),$e&&(Ne=R({},U),Re=[],!0===$e.html&&(R(Ne,O),R(Re,z)),!0===$e.svg&&(R(Ne,x),R(Re,P),R(Re,H)),!0===$e.svgFilters&&(R(Ne,L),R(Re,P),R(Re,H)),!0===$e.mathMl&&(R(Ne,I),R(Re,F),R(Re,H))),e.ADD_TAGS&&("function"==typeof e.ADD_TAGS?xe.tagCheck=e.ADD_TAGS:(Ne===we&&(Ne=C(Ne)),R(Ne,e.ADD_TAGS,ft))),e.ADD_ATTR&&("function"==typeof e.ADD_ATTR?xe.attributeCheck=e.ADD_ATTR:(Re===De&&(Re=C(Re)),R(Re,e.ADD_ATTR,ft))),e.ADD_URI_SAFE_ATTR&&R(Qe,e.ADD_URI_SAFE_ATTR,ft),e.FORBID_CONTENTS&&(Ke===Ve&&(Ke=C(Ke)),R(Ke,e.FORBID_CONTENTS,ft)),Xe&&(Ne["#text"]=!0),Pe&&R(Ne,["html","head","body"]),Ne.table&&(R(Ne,["tbody"]),delete ve.tbody),e.TRUSTED_TYPES_POLICY){if("function"!=typeof e.TRUSTED_TYPES_POLICY.createHTML)throw S('TRUSTED_TYPES_POLICY configuration option must provide a "createHTML" hook.');if("function"!=typeof e.TRUSTED_TYPES_POLICY.createScriptURL)throw S('TRUSTED_TYPES_POLICY configuration option must provide a "createScriptURL" hook.');le=e.TRUSTED_TYPES_POLICY,ce=le.createHTML("")}else void 0===le&&(le=function(e,t){if("object"!=typeof e||"function"!=typeof e.createPolicy)return null;let n=null;const o="data-tt-policy-suffix";t&&t.hasAttribute(o)&&(n=t.getAttribute(o));const r="dompurify"+(n?"#"+n:"");try{return e.createPolicy(r,{createHTML:e=>e,createScriptURL:e=>e})}catch(e){return console.warn("TrustedTypes policy "+r+" could not be created."),null}}(j,c)),null!==le&&"string"==typeof ce&&(ce=le.createHTML(""));i&&i(e),dt=e}},yt=R({},[...x,...L,...k]),Et=R({},[...I,...M]),At=function(e){f(o.removed,{element:e});try{ae(e).removeChild(e)}catch(t){V(e)}},_t=function(e,t){try{f(o.removed,{attribute:t.getAttributeNode(e),from:t})}catch(e){f(o.removed,{attribute:null,from:t})}if(t.removeAttribute(e),"is"===e)if(Be||Ge)try{At(t)}catch(e){}else try{t.setAttribute(e,"")}catch(e){}},bt=function(e){let t=null,n=null;if(He)e="<remove></remove>"+e;else{const t=T(e,/^[\r\n\t ]+/);n=t&&t[0]}"application/xhtml+xml"===mt&&rt===ot&&(e='<html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>'+e+"</body></html>");const o=le?le.createHTML(e):e;if(rt===ot)try{t=(new Y).parseFromString(o,mt)}catch(e){}if(!t||!t.documentElement){t=se.createDocument(rt,"template",null);try{t.documentElement.innerHTML=it?ce:o}catch(e){}}const i=t.body||t.documentElement;return e&&n&&i.insertBefore(r.createTextNode(n),i.childNodes[0]||null),rt===ot?pe.call(t,Pe?"html":"body")[0]:Pe?t.documentElement:i},St=function(e){return ue.call(e.ownerDocument||e,e,B.SHOW_ELEMENT|B.SHOW_COMMENT|B.SHOW_TEXT|B.SHOW_PROCESSING_INSTRUCTION|B.SHOW_CDATA_SECTION,null)},Nt=function(e){return e instanceof W&&("string"!=typeof e.nodeName||"string"!=typeof e.textContent||"function"!=typeof e.removeChild||!(e.attributes instanceof G)||"function"!=typeof e.removeAttribute||"function"!=typeof e.setAttribute||"string"!=typeof e.namespaceURI||"function"!=typeof e.insertBefore||"function"!=typeof e.hasChildNodes)},wt=function(e){return"function"==typeof w&&e instanceof w};function Rt(e,t,n){u(e,(e=>{e.call(o,t,n,dt)}))}const Dt=function(e){let t=null;if(Rt(de.beforeSanitizeElements,e,null),Nt(e))return At(e),!0;const n=ft(e.nodeName);if(Rt(de.uponSanitizeElement,e,{tagName:n,allowedTags:Ne}),ze&&e.hasChildNodes()&&!wt(e.firstElementChild)&&b(/<[/\w!]/g,e.innerHTML)&&b(/<[/\w!]/g,e.textContent))return At(e),!0;if(e.nodeType===ee)return At(e),!0;if(ze&&e.nodeType===te&&b(/<[/\w]/g,e.data))return At(e),!0;if(!(xe.tagCheck instanceof Function&&xe.tagCheck(n))&&(!Ne[n]||ve[n])){if(!ve[n]&&vt(n)){if(Ce.tagNameCheck instanceof RegExp&&b(Ce.tagNameCheck,n))return!1;if(Ce.tagNameCheck instanceof Function&&Ce.tagNameCheck(n))return!1}if(Xe&&!Ke[n]){const t=ae(e)||e.parentNode,n=ie(e)||e.childNodes;if(n&&t){for(let o=n.length-1;o>=0;--o){const r=$(n[o],!0);r.__removalCount=(e.__removalCount||0)+1,t.insertBefore(r,re(e))}}}return At(e),!0}return e instanceof D&&!function(e){let t=ae(e);t&&t.tagName||(t={namespaceURI:rt,tagName:"template"});const n=h(e.tagName),o=h(t.tagName);return!!at[e.namespaceURI]&&(e.namespaceURI===nt?t.namespaceURI===ot?"svg"===n:t.namespaceURI===tt?"svg"===n&&("annotation-xml"===o||ct[o]):Boolean(yt[n]):e.namespaceURI===tt?t.namespaceURI===ot?"math"===n:t.namespaceURI===nt?"math"===n&&st[o]:Boolean(Et[n]):e.namespaceURI===ot?!(t.namespaceURI===nt&&!st[o])&&!(t.namespaceURI===tt&&!ct[o])&&!Et[n]&&(ut[n]||!yt[n]):!("application/xhtml+xml"!==mt||!at[e.namespaceURI]))}(e)?(At(e),!0):"noscript"!==n&&"noembed"!==n&&"noframes"!==n||!b(/<\/no(script|embed|frames)/i,e.innerHTML)?(Ue&&e.nodeType===Q&&(t=e.textContent,u([he,ge,Te],(e=>{t=y(t,e," ")})),e.textContent!==t&&(f(o.removed,{element:e.cloneNode()}),e.textContent=t)),Rt(de.afterSanitizeElements,e,null),!1):(At(e),!0)},Ct=function(e,t,n){if(Ye&&("id"===t||"name"===t)&&(n in r||n in ht))return!1;if(ke&&!Oe[t]&&b(ye,t));else if(Le&&b(Ee,t));else if(xe.attributeCheck instanceof Function&&xe.attributeCheck(t,e));else if(!Re[t]||Oe[t]){if(!(vt(e)&&(Ce.tagNameCheck instanceof RegExp&&b(Ce.tagNameCheck,e)||Ce.tagNameCheck instanceof Function&&Ce.tagNameCheck(e))&&(Ce.attributeNameCheck instanceof RegExp&&b(Ce.attributeNameCheck,t)||Ce.attributeNameCheck instanceof Function&&Ce.attributeNameCheck(t,e))||"is"===t&&Ce.allowCustomizedBuiltInElements&&(Ce.tagNameCheck instanceof RegExp&&b(Ce.tagNameCheck,n)||Ce.tagNameCheck instanceof Function&&Ce.tagNameCheck(n))))return!1}else if(Qe[t]);else if(b(Se,y(n,_e,"")));else if("src"!==t&&"xlink:href"!==t&&"href"!==t||"script"===e||0!==E(n,"data:")||!Ze[e]){if(Ie&&!b(Ae,y(n,_e,"")));else if(n)return!1}else;return!0},vt=function(e){return"annotation-xml"!==e&&T(e,be)},Ot=function(e){Rt(de.beforeSanitizeAttributes,e,null);const{attributes:t}=e;if(!t||Nt(e))return;const n={attrName:"",attrValue:"",keepAttr:!0,allowedAttributes:Re,forceKeepAttr:void 0};let r=t.length;for(;r--;){const i=t[r],{name:a,namespaceURI:l,value:c}=i,s=ft(a),m=c;let f="value"===a?m:A(m);if(n.attrName=s,n.attrValue=f,n.keepAttr=!0,n.forceKeepAttr=void 0,Rt(de.uponSanitizeAttribute,e,n),f=n.attrValue,!je||"id"!==s&&"name"!==s||(_t(a,e),f="user-content-"+f),ze&&b(/((--!?|])>)|<\/(style|title|textarea)/i,f)){_t(a,e);continue}if("attributename"===s&&T(f,"href")){_t(a,e);continue}if(n.forceKeepAttr)continue;if(!n.keepAttr){_t(a,e);continue}if(!Me&&b(/\/>/i,f)){_t(a,e);continue}Ue&&u([he,ge,Te],(e=>{f=y(f,e," ")}));const d=ft(e.nodeName);if(Ct(d,s,f)){if(le&&"object"==typeof j&&"function"==typeof j.getAttributeType)if(l);else switch(j.getAttributeType(d,s)){case"TrustedHTML":f=le.createHTML(f);break;case"TrustedScriptURL":f=le.createScriptURL(f)}if(f!==m)try{l?e.setAttributeNS(l,a,f):e.setAttribute(a,f),Nt(e)?At(e):p(o.removed)}catch(t){_t(a,e)}}else _t(a,e)}Rt(de.afterSanitizeAttributes,e,null)},xt=function e(t){let n=null;const o=St(t);for(Rt(de.beforeSanitizeShadowDOM,t,null);n=o.nextNode();)Rt(de.uponSanitizeShadowNode,n,null),Dt(n),Ot(n),n.content instanceof s&&e(n.content);Rt(de.afterSanitizeShadowDOM,t,null)};return o.sanitize=function(e){let t=arguments.length>1&&void 0!==arguments[1]?arguments[1]:{},n=null,r=null,i=null,l=null;if(it=!e,it&&(e="\x3c!--\x3e"),"string"!=typeof e&&!wt(e)){if("function"!=typeof e.toString)throw S("toString is not a function");if("string"!=typeof(e=e.toString()))throw S("dirty is not a string, aborting")}if(!o.isSupported)return e;if(Fe||Tt(t),o.removed=[],"string"==typeof e&&(qe=!1),qe){if(e.nodeName){const t=ft(e.nodeName);if(!Ne[t]||ve[t])throw S("root node is forbidden and cannot be sanitized in-place")}}else if(e instanceof w)n=bt("\x3c!----\x3e"),r=n.ownerDocument.importNode(e,!0),r.nodeType===J&&"BODY"===r.nodeName||"HTML"===r.nodeName?n=r:n.appendChild(r);else{if(!Be&&!Ue&&!Pe&&-1===e.indexOf("<"))return le&&We?le.createHTML(e):e;if(n=bt(e),!n)return Be?null:We?ce:""}n&&He&&At(n.firstChild);const c=St(qe?e:n);for(;i=c.nextNode();)Dt(i),Ot(i),i.content instanceof s&&xt(i.content);if(qe)return e;if(Be){if(Ge)for(l=me.call(n.ownerDocument);n.firstChild;)l.appendChild(n.firstChild);else l=n;return(Re.shadowroot||Re.shadowrootmode)&&(l=fe.call(a,l,!0)),l}let m=Pe?n.outerHTML:n.innerHTML;return Pe&&Ne["!doctype"]&&n.ownerDocument&&n.ownerDocument.doctype&&n.ownerDocument.doctype.name&&b(K,n.ownerDocument.doctype.name)&&(m="<!DOCTYPE "+n.ownerDocument.doctype.name+">\n"+m),Ue&&u([he,ge,Te],(e=>{m=y(m,e," ")})),le&&We?le.createHTML(m):m},o.setConfig=function(){Tt(arguments.length>0&&void 0!==arguments[0]?arguments[0]:{}),Fe=!0},o.clearConfig=function(){dt=null,Fe=!1},o.isValidAttribute=function(e,t,n){dt||Tt({});const o=ft(e),r=ft(t);return Ct(o,r,n)},o.addHook=function(e,t){"function"==typeof t&&f(de[e],t)},o.removeHook=function(e,t){if(void 0!==t){const n=m(de[e],t);return-1===n?void 0:d(de[e],n,1)[0]}return p(de[e])},o.removeHooks=function(e){de[e]=[]},o.removeAllHooks=function(){de={afterSanitizeAttributes:[],afterSanitizeElements:[],afterSanitizeShadowDOM:[],beforeSanitizeAttributes:[],beforeSanitizeElements:[],beforeSanitizeShadowDOM:[],uponSanitizeAttribute:[],uponSanitizeElement:[],uponSanitizeShadowNode:[]}},o}();return re}));
+//# sourceMappingURL=purify.min.js.map
+
+;
+const DATA = (() => {
+  const projects = [
+    {
+      id: 'tpms', name: 'TPMS 扇区换热器', short: 'TPMS 换热器', code: 'HX-01',
+      description: '评估环形换热器单扇区的几何与流道分隔，并为后续传热和压降验证建立可追溯的输入基线。',
+      status: '进行中', color: '#a995ff', progress: 62, stage: '几何核查',
+      milestones: [
+        { name: '明确单扇区研究范围', date: '2026-11-07', done: true },
+        { name: '建立流道几何基线', date: '2026-11-16', done: true },
+        { name: '复核端口连通与计算输入', date: '2026-11-24', done: false },
+        { name: '完成单扇区验证', date: '2026-12-08', done: false },
+      ],
+    },
+    {
+      id: 'coatings', name: '耐蚀涂层可靠性', short: '耐蚀涂层', code: 'MAT-02',
+      description: '比较两类涂层在湿干循环下的失效模式，追踪样片制备、暴露记录与阻抗测量。',
+      status: '进行中', color: '#5de3c2', progress: 47, stage: '首批暴露',
+      milestones: [
+        { name: '完成样片随机编号与初始检查', date: '2026-11-10', done: true },
+        { name: '核查首轮暴露日志', date: '2026-11-21', done: false },
+        { name: '完成阻抗复测和失效评估', date: '2026-12-03', done: false },
+      ],
+    },
+    {
+      id: 'imaging', name: '显微图像计量', short: '显微计量', code: 'IMG-03',
+      description: '建立显微尺度校准和图像复标协议，量化重复标注对孔隙计量结果的影响。',
+      status: '待复核', color: '#58b8f6', progress: 78, stage: '重复性复核',
+      milestones: [
+        { name: '完成比例尺校准', date: '2026-11-08', done: true },
+        { name: '完成双人盲标', date: '2026-11-17', done: true },
+        { name: '锁定计量口径与适用范围', date: '2026-11-26', done: false },
+      ],
+    },
+  ];
+  const nodes = projects.map(project => ({
+    id: project.id, label: project.name, type: 'project',
+    project: project.id, summary: project.description,
+  }));
+  const edges = [];
+  const notes = [];
+  const tasks = [];
+  const materials = [];
+  const relation = (source, target, kind) => {
+    edges.push({ source, target, relation: kind });
+  };
+
+  function addGroup(project, hub, entries, connections) {
+    for (const [id, label, type, summary, detail] of entries) {
+      nodes.push({ id, label, type, project, summary });
+      if (type === 'task') {
+        const [status, due, owner = '研究者'] = detail;
+        tasks.push({ id, project, title: label, status, due, owner, summary });
+      }
+      if (['dataset', 'result', 'literature'].includes(type)) {
+        const [format, date] = detail;
+        const kind = { dataset: '数据集', result: '成果', literature: '文献' }[type];
+        materials.push({ id, project, title: label, kind, format, date, summary });
+      }
+    }
+    if (project !== 'shared') relation(hub, project, '归属');
+    for (const [source, target, kind] of connections) relation(source, target, kind);
+  }
+
+  addGroup('tpms', 'tp-architecture', [
+    ['tp-architecture', '扇区结构与流道假设', 'note', '记录单扇区模型范围、两种流体的端口配对，以及需要复核的几何假设。'],
+    ['tp-ports', '端口对角配对表', 'dataset', '记录演示扇区四个端口的 A→C、D→B 配对及端口标识。', ['CSV', '2026-11-16']],
+    ['tp-port-check', '复核两套流体域连通性', 'task', '逐一追踪入口至出口的连通路径，记录交叉连通与死区检查结果。', ['进行中', '2026-11-22']],
+    ['tp-domain-check', '流体域分隔检查', 'method', '通过独立体积、断面与端口映射复核两个计算流体域的分隔。'],
+    ['tp-geometry', '扇区几何基线', 'result', '包含结构示意、版本号和待确认的封口尺寸。', ['STEP', '2026-11-17']],
+    ['tp-section', '流体域截面核查单', 'result', '汇总几个典型截面中需复核的封口位置和流体域标记。', ['PDF', '2026-11-18']],
+    ['tp-review', '单扇区几何评审纪要', 'note', '记录可用于几何验收的检查项与需要补充证据的决定。'],
+    ['tp-wall', '壁厚参数核对', 'task', '记录样件中要求复测的等效壁厚与局部最薄位置。', ['待复核', '2026-11-23']],
+  ], [
+    ['tp-ports','tp-architecture','支持'], ['tp-domain-check','tp-port-check','支持'],
+    ['tp-port-check','tp-section','产出'], ['tp-architecture','tp-geometry','关联'],
+    ['tp-port-check','tp-ports','依赖'], ['tp-geometry','tp-section','支持'],
+    ['tp-review','tp-architecture','引用'], ['tp-section','tp-review','支持'],
+    ['tp-wall','tp-geometry','依赖'], ['tp-wall','tp-review','关联'],
+  ]);
+
+  addGroup('tpms', 'tp-boundary', [
+    ['tp-boundary', '边界条件口径', 'note', '统一压力参考、温度单位与流体属性来源，标记尚未确认的条件。'],
+    ['tp-property', '流体物性来源记录', 'literature', '演示文献条目，按温度与压力范围组织氮侧和油侧的属性来源。', ['PDF', '2026-11-09']],
+    ['tp-bc-table', '边界条件快照', 'dataset', '包含流量、入口温度、压力参考和来源编号的演示表。', ['CSV', '2026-11-14']],
+    ['tp-bc-check', '复核压力参考口径', 'task', '逐项核对压力变量定义以及参考压力在工况表中的来源。', ['进行中', '2026-11-23', 'Codex']],
+    ['tp-property-range', '物性覆盖范围核对', 'method', '对照预期状态范围和物性表范围，标出需要进一步核查的区间。'],
+    ['tp-oil', '油侧物性待核项', 'dataset', '列出待核查牌号、温度区间、来源和单位。', ['XLSX', '2026-11-18']],
+    ['tp-condition-report', '工况输入检查表', 'result', '保留已核字段、待核字段和确认人列，用于工况审查。', ['PDF', '2026-11-19']],
+  ], [
+    ['tp-boundary','tp-property','引用'], ['tp-bc-table','tp-boundary','支持'],
+    ['tp-bc-check','tp-bc-table','依赖'], ['tp-bc-check','tp-condition-report','产出'],
+    ['tp-boundary','tp-condition-report','关联'], ['tp-property','tp-property-range','支持'],
+    ['tp-property-range','tp-oil','关联'], ['tp-oil','tp-condition-report','支持'],
+    ['tp-architecture','tp-boundary','引用'],
+  ]);
+
+  addGroup('tpms', 'tp-validation', [
+    ['tp-validation', '单扇区验证计划', 'note', '分阶段定义几何检查、计算输入与结果复核的通过条件。'],
+    ['tp-mesh-plan', '网格层级与监测量', 'method', '定义网格层级、关键监测量和结果对比安排。'],
+    ['tp-mesh-case', '网格样本登记表', 'dataset', '登记候选网格规格和所用几何基线，保留待算标记。', ['XLSX', '2026-11-18']],
+    ['tp-balances', '质量与能量核查方法', 'method', '列出需要对照的守恒量、统计区间与边界通量。'],
+    ['tp-verify', '准备网格层级对比', 'task', '整理网格层级和后处理字段，后续补录实算结果。', ['待开始', '2026-11-26']],
+    ['tp-region-run', '单扇区算例模板', 'result', '仅示意算例目录和输出清单，可以用于检查验证计划的输入覆盖情况。', ['ZIP', '2026-11-18']],
+    ['tp-benchmark', '换热器数值核查阅读摘记', 'literature', '演示引文，归纳几何误差、离散误差和守恒检查。', ['PDF', '2026-11-12']],
+  ], [
+    ['tp-validation','tp-benchmark','引用'], ['tp-mesh-plan','tp-validation','支持'],
+    ['tp-mesh-plan','tp-mesh-case','关联'], ['tp-verify','tp-mesh-case','依赖'],
+    ['tp-verify','tp-region-run','依赖'], ['tp-balances','tp-validation','支持'],
+    ['tp-region-run','tp-validation','关联'], ['tp-balances','tp-region-run','支持'],
+    ['tp-validation','tp-architecture','引用'], ['tp-validation','tp-boundary','引用'],
+    ['tp-verify','tp-port-check','依赖'], ['tp-mesh-case','tp-geometry','依赖'],
+  ]);
+
+  addGroup('tpms', 'tp-evaluation', [
+    ['tp-evaluation', '传热和压降评价口径', 'note', '定义候选样件比较所需的压降、换热量和统计边界。'],
+    ['tp-pressure', '压降抽取截面约定', 'method', '记录沿程与局部压降的截面标识和取值定义。'],
+    ['tp-thermal', '热量统计区间说明', 'method', '使用两侧焓差整理换热量，并记录统计区间及一致性待核项。'],
+    ['tp-performance', '性能结果待填模板', 'result', '列出换热量、压降、质量平衡与运行条件字段，结果保留为空。', ['XLSX', '2026-11-18']],
+    ['tp-extract', '核对后处理字段', 'task', '检查模板字段、单位和结果引用，补齐待填项说明。', ['已完成', '2026-11-18', 'Agent']],
+  ], [
+    ['tp-pressure','tp-evaluation','支持'], ['tp-thermal','tp-evaluation','支持'],
+    ['tp-extract','tp-performance','产出'], ['tp-pressure','tp-performance','支持'],
+    ['tp-thermal','tp-performance','支持'], ['tp-evaluation','tp-validation','引用'],
+    ['tp-extract','tp-balances','依赖'], ['tp-evaluation','tp-boundary','引用'],
+  ]);
+
+  addGroup('coatings', 'co-protocol', [
+    ['co-protocol', '湿干循环实验方案', 'note', '记录样片分组、暴露周期、终止条件和数据归档约定。'],
+    ['co-batch', '涂层样片批次记录', 'dataset', '记录批次、基材、涂层类别和独立样片编号。', ['CSV', '2026-11-09']],
+    ['co-random', '样片分组与盲法', 'method', '在基材批次内随机分组，保留分配清单和评阅遮蔽记录。'],
+    ['co-prepare', '核对样片随机编码', 'task', '检查编码表、瓶签、照片和基材批次的一致性。', ['已完成', '2026-11-10']],
+    ['co-schedule', '湿干暴露时序表', 'dataset', '用时间戳组织暴露、干燥、称量和异常停机记录。', ['XLSX', '2026-11-12']],
+    ['co-procedure', '暴露条件操作卡', 'result', '包括循环时序、设备校验字段和暂停处理步骤。', ['PDF', '2026-11-12']],
+    ['co-exposure-lit', '循环暴露试验阅读摘记', 'literature', '演示引文，归纳湿干时序记录和终止条件的报告要求。', ['PDF', '2026-11-06']],
+  ], [
+    ['co-protocol','co-exposure-lit','引用'], ['co-protocol','co-schedule','关联'],
+    ['co-random','co-protocol','支持'], ['co-prepare','co-random','依赖'],
+    ['co-prepare','co-batch','产出'], ['co-batch','co-schedule','关联'],
+    ['co-procedure','co-protocol','关联'], ['co-schedule','co-procedure','支持'],
+  ]);
+
+  addGroup('coatings', 'co-eis', [
+    ['co-eis', '阻抗测量记录', 'note', '记录测量窗口、电极配置、重复测量与异常谱线复核规则。'],
+    ['co-eis-raw', '首轮阻抗原始谱', 'dataset', '保留频率、阻抗实部和虚部及测量元数据。', ['CSV', '2026-11-17']],
+    ['co-scan', '异常谱线复测', 'task', '回溯装夹与接触状态，并复测标记为异常的谱线。', ['进行中', '2026-11-25']],
+    ['co-spectrum', '谱线可比性核查', 'method', '检查频段、开路稳定条件、面积归一化和仪器漂移。'],
+    ['co-eis-reference', '阻抗谱报告条目摘记', 'literature', '演示参考条目，说明测量条件与谱图需要同时归档。', ['PDF', '2026-11-11']],
+    ['co-eis-plot', '首轮谱线比较图', 'result', '登记样片组别、重复测量和待复核谱线编号。', ['PNG', '2026-11-18']],
+    ['co-area', '面积归一化输入表', 'dataset', '保留试样暴露面积、几何测量记录和审批字段。', ['CSV', '2026-11-15']],
+  ], [
+    ['co-eis','co-eis-reference','引用'], ['co-eis-raw','co-eis','支持'],
+    ['co-scan','co-eis-raw','依赖'], ['co-spectrum','co-scan','支持'],
+    ['co-area','co-spectrum','支持'], ['co-eis-raw','co-eis-plot','支持'],
+    ['co-eis','co-eis-plot','关联'], ['co-eis','co-protocol','引用'],
+    ['co-area','co-batch','依赖'], ['co-eis-raw','co-schedule','关联'],
+  ]);
+
+  addGroup('coatings', 'co-failure', [
+    ['co-failure', '失效模式判读', 'note', '按起泡、边缘剥离和基材腐蚀组织图像判读与复标记录。'],
+    ['co-image', '样片表面记录集', 'dataset', '将固定拍摄条件下的样片照片与暴露时间建立映射。', ['ZIP', '2026-11-18']],
+    ['co-criteria', '涂层表面判读规则', 'method', '预先定义缺陷计数、遮蔽区域和无法判读状态。'],
+    ['co-review', '复核边缘缺陷标记', 'task', '对存在分歧的图像复查位置标记和样片编号。', ['待复核', '2026-11-22', 'Codex']],
+    ['co-failure-panel', '表面缺陷对照图', 'result', '按样片、暴露阶段和判读分歧生成图版。', ['PDF', '2026-11-18']],
+    ['co-rater', '双评阅一致性记录', 'dataset', '逐条保留初评、复评、差异分类与最终处置。', ['XLSX', '2026-11-19']],
+    ['co-edge', '边缘遮蔽与背景排除', 'method', '说明拍摄时的边缘遮蔽和图像统计中的排除范围。'],
+  ], [
+    ['co-image','co-failure','支持'], ['co-criteria','co-failure','支持'],
+    ['co-edge','co-criteria','支持'], ['co-review','co-image','依赖'],
+    ['co-review','co-rater','产出'], ['co-rater','co-failure-panel','支持'],
+    ['co-image','co-failure-panel','支持'], ['co-review','co-failure','引用'],
+    ['co-rater','co-failure','支持'], ['co-failure','co-protocol','引用'],
+    ['co-failure','co-eis','引用'], ['co-image','co-batch','依赖'],
+    ['co-edge','co-random','关联'],
+  ]);
+
+  addGroup('coatings', 'co-log', [
+    ['co-log', '首轮暴露质控记录', 'note', '记录设备偏离、样片复位与需要补证据的异常事件。'],
+    ['co-environment', '环境箱读数片段', 'dataset', '保存循环期间温湿度时间序列和设备校准状态。', ['CSV', '2026-11-18']],
+    ['co-qc', '补录环境箱异常事件', 'task', '核对异常读数与循环日志，对齐样片受影响的起止时间。', ['进行中', '2026-11-21']],
+    ['co-exceptions', '环境异常处置表', 'result', '记录设备偏离事件及相关批次的复核、保留或剔除决定。', ['XLSX', '2026-11-19']],
+    ['co-repeat', '首轮暴露复验安排', 'task', '根据质控结果决定需要重复的湿干循环和复测对象。', ['待开始', '2026-11-27']],
+  ], [
+    ['co-log','co-protocol','引用'], ['co-environment','co-log','支持'],
+    ['co-qc','co-environment','依赖'], ['co-qc','co-exceptions','产出'],
+    ['co-repeat','co-exceptions','依赖'], ['co-log','co-failure','引用'],
+    ['co-environment','co-schedule','关联'], ['co-repeat','co-scan','关联'],
+  ]);
+
+  addGroup('imaging', 'im-scale', [
+    ['im-scale', '显微比例尺校准', 'note', '规定如何从标尺图像换算像素与实际长度，并记录批次差异。'],
+    ['im-slide', '标尺原始图像集', 'dataset', '包含多个倍率下的标尺原图、曝光设置和采集时间。', ['ZIP', '2026-11-07']],
+    ['im-scale-curve', '校准拟合与残差检查', 'method', '记录像素到长度的拟合，以及残差偏离和适用倍率。'],
+    ['im-check', '核对多倍率换算', 'task', '复核倍率转换、标尺图像和单位舍入规则。', ['已完成', '2026-11-08']],
+    ['im-scale-table', '倍率换算登记表', 'result', '登记倍率对应的长度换算系数及适用设备。', ['XLSX', '2026-11-08']],
+    ['im-lens', '畸变与视场边缘检查', 'method', '通过视场中央和边缘标尺判断计量区域。'],
+    ['im-calibration-ref', '显微尺度校准阅读摘记', 'literature', '演示引文，记录标尺溯源、残差报告和倍率切换条件。', ['PDF', '2026-11-06']],
+  ], [
+    ['im-scale','im-calibration-ref','引用'], ['im-slide','im-scale','支持'],
+    ['im-scale-curve','im-scale','支持'], ['im-slide','im-lens','支持'],
+    ['im-check','im-scale-curve','依赖'], ['im-check','im-scale-table','产出'],
+    ['im-lens','im-scale-table','支持'], ['im-scale-table','im-scale','关联'],
+  ]);
+
+  addGroup('imaging', 'im-annotation', [
+    ['im-annotation', '双人盲标协议', 'note', '统一孔隙轮廓定义、边界样本处理和争议项回看方式。'],
+    ['im-tiles', '盲标切片清单', 'dataset', '用去标识切片编号记录复标任务和视野采样位置。', ['CSV', '2026-11-10']],
+    ['im-masks', '两轮盲标掩膜', 'dataset', '按切片与评阅者记录标注版本、时间戳和跳过原因。', ['ZIP', '2026-11-17']],
+    ['im-dual', '完成双人盲标', 'task', '上传两组轮廓掩膜与跳过原因，并登记待仲裁样本。', ['已完成', '2026-11-17']],
+    ['im-contour', '边缘孔隙计数规则', 'method', '规定部分可见孔隙的纳入规则及其敏感性检查方式。'],
+    ['im-disputes', '标注争议样例图册', 'result', '归纳低对比度、触边和相交轮廓的典型分歧。', ['PDF', '2026-11-18']],
+    ['im-arbitrate', '仲裁分歧样本', 'task', '核查被遮蔽的切片编号，处置双方差异超出约定的轮廓。', ['待复核', '2026-11-23', 'Agent']],
+  ], [
+    ['im-annotation','im-scale','引用'], ['im-contour','im-annotation','支持'],
+    ['im-dual','im-tiles','依赖'], ['im-dual','im-masks','产出'],
+    ['im-masks','im-annotation','支持'], ['im-masks','im-disputes','支持'],
+    ['im-arbitrate','im-disputes','依赖'], ['im-contour','im-disputes','关联'],
+    ['im-tiles','im-scale-table','依赖'],
+  ]);
+
+  addGroup('imaging', 'im-repeatability', [
+    ['im-repeatability', '重复性分析口径', 'note', '定义重复标注的比较单位、差异指标与需要谨慎解释的极端样本。'],
+    ['im-pairs', '评阅者配对结果', 'dataset', '按切片配对两轮计量值，附带掩膜版本和剔除标识。', ['CSV', '2026-11-18']],
+    ['im-agreement', '评阅一致性图', 'result', '按切片显示计量差异，并保留回溯到标注样本的编号。', ['PNG', '2026-11-18']],
+    ['im-analysis', '配对差异与复核阈值', 'method', '用配对差异与物理单位表示计量变异，保留超界样本清单。'],
+    ['im-run', '整理重复标注统计', 'task', '重核文件映射、长度单位和差异数据，输出待复核列表。', ['待复核', '2026-11-24', 'Codex']],
+    ['im-pair-ref', '重复性评估阅读摘记', 'literature', '演示条目，区分同一评阅者重复误差与评阅者间差异。', ['PDF', '2026-11-13']],
+    ['im-exclusions', '待复核样本清单', 'dataset', '按误差来源标记超界样本，保留剔除前后可核字段。', ['CSV', '2026-11-19']],
+  ], [
+    ['im-repeatability','im-pair-ref','引用'], ['im-repeatability','im-annotation','引用'],
+    ['im-repeatability','im-scale','引用'], ['im-pairs','im-masks','依赖'],
+    ['im-analysis','im-repeatability','支持'], ['im-pairs','im-agreement','支持'],
+    ['im-run','im-pairs','依赖'], ['im-run','im-agreement','产出'],
+    ['im-run','im-exclusions','产出'], ['im-exclusions','im-disputes','关联'],
+    ['im-agreement','im-repeatability','关联'], ['im-pairs','im-scale-table','依赖'],
+  ]);
+
+  addGroup('imaging', 'im-handbook', [
+    ['im-handbook', '图像归档与复用', 'note', '定义原图、掩膜与计量导出的配套关系，以及可复用条件。'],
+    ['im-dictionary', '微图像字段定义', 'dataset', '说明视野编号、倍率、单位、评阅版本和文件校验字段。', ['CSV', '2026-11-18']],
+    ['im-package', '示例数据归档包', 'result', '示意归档流转和元数据配套关系的文件包登记。', ['ZIP', '2026-11-19']],
+    ['im-handoff', '检查归档元数据', 'task', '核查原图与统计材料的标识、版本及说明文件。', ['待开始', '2026-11-26']],
+    ['im-acquisition', '视野采集策略', 'method', '按样片区域抽取多个固定条件视野，保留选择依据。'],
+  ], [
+    ['im-handbook','im-repeatability','引用'], ['im-handbook','im-annotation','引用'],
+    ['im-dictionary','im-handbook','支持'], ['im-handoff','im-dictionary','依赖'],
+    ['im-handoff','im-package','关联'], ['im-masks','im-package','支持'],
+    ['im-acquisition','im-tiles','支持'], ['im-package','im-scale-table','依赖'],
+  ]);
+
+  addGroup('shared', 'sh-evidence', [
+    ['sh-evidence', '证据归档约定', 'note', '统一项目材料如何记录来源、版本和结论所依赖的证据。'],
+    ['sh-review', '复核记录模板', 'note', '定义待核项、复核人和处理证据需要保存的最小字段。'],
+    ['sh-trace', '样本与文件溯源', 'method', '原始材料保留唯一标识，分析版本与出图记录使用可回溯引用。'],
+    ['sh-units', '单位与测量条件模板', 'note', '整理在报告和导出结果中重复使用的单位、基准与测量条件字段。'],
+    ['sh-metadata', '通用元数据字段表', 'dataset', '列出日期、来源、版本、记录人和适用边界等通用字段。', ['CSV', '2026-11-05']],
+    ['sh-uncertainty', '测量与复验术语摘记', 'literature', '演示条目，记录重复性、复验与测量条件的术语对照。', ['PDF', '2026-11-06']],
+    ['sh-package', '成果交接清单', 'result', '汇总成果所需的材料、说明、状态和归档责任。', ['PDF', '2026-11-12']],
+    ['sh-qc', '异常事件留痕规则', 'method', '保存异常的时间、影响对象、处置决定和复核记录。'],
+  ], [
+    ['sh-evidence','sh-review','引用'], ['sh-evidence','sh-units','引用'],
+    ['sh-trace','sh-evidence','支持'], ['sh-metadata','sh-trace','支持'],
+    ['sh-metadata','sh-package','支持'], ['sh-units','sh-uncertainty','引用'],
+    ['sh-review','sh-evidence','引用'], ['sh-qc','sh-review','支持'],
+    ['sh-package','sh-evidence','关联'],
+  ]);
+
+  [
+    ['tp-review','sh-review','引用'], ['tp-boundary','sh-units','引用'],
+    ['tp-evaluation','sh-evidence','引用'], ['co-log','sh-review','引用'],
+    ['co-log','sh-qc','依赖'], ['co-random','sh-trace','依赖'],
+    ['co-failure','sh-evidence','引用'], ['im-scale','sh-units','引用'],
+    ['im-repeatability','sh-uncertainty','引用'], ['im-handbook','sh-evidence','引用'],
+    ['im-package','sh-package','依赖'], ['co-image','im-lens','依赖'],
+    ['co-review','im-arbitrate','关联'], ['co-rater','im-analysis','关联'],
+  ].forEach(([source,target,kind]) => relation(source, target, kind));
+
+  const body = {
+    'tp-architecture': '本轮以单扇区作为几何检查范围。氮侧沿 A → C，油侧沿 D → B。先复核预定的连通路径，再登记疑似串通位置与检查截面。\n\n## 验收条件\n\n- 两套流体域均能够从入口追踪到对应出口。\n- 四个端口名称和方向在截面图、工况表中一致。\n- 几何基线与待确认问题可逐项回溯。\n\n> 演示状态：几何检查待复核，性能字段待填。',
+    'tp-review': '复核记录从版本号、端口和局部最薄位置展开。几何确认前，保留需要复测的截面与待定封口尺寸，供后续算例核对。',
+    'tp-boundary': '工况输入保留各变量的原始单位和来源编号。压力参考单独记录，油侧属性拟采用有牌号与温度范围的来源。',
+    'tp-validation': '在确认流体域分隔之后，先准备网格层级与守恒统计安排。演示算例模板中的传热和压降字段等待实际求解结果。',
+    'tp-evaluation': '比较候选结构时，在相同流量、入口条件和取样截面下报告压降与热量。保留两侧焓差及所用的统计区间。',
+    'co-protocol': '样片按基材批次分层随机分组。每次湿干切换保留时间戳和环境箱读数，发生偏离时记录受影响样片。',
+    'co-eis': '每条谱线需有暴露面积、频率区间、电极配置和开路稳定观察。异常谱线根据装夹与接触记录逐一复测。',
+    'co-failure': '按事先商定的缺陷分类对照片实施独立评阅。边缘剥离和阴影区域需保留对照图，适时补充拍摄条件。\n\n## 边缘缺陷复核口径\n\n- 样片编号、视野编号和拍摄方向应能与表面记录逐项对应。\n- 两位评阅者意见不一致时，记录原始判读和复核处置。\n- 缺少方向标记时先补齐记录，再确认剥离或阴影。\n\n> 演示记录 C07 / F02 缺少方向标记，目前保留为待确认。',
+    'co-log': '环境箱出现读数偏离时，将其与循环时序和样片清单对应。解释偏离所需的运行记录和复核决定一并归档。',
+    'im-scale': '在每个倍率下选择多段已知标尺长度，拟合像素与实际长度的换算系数，再比较视场中央和边缘的残差。',
+    'im-annotation': '让两位评阅者按相同口径独立圈定轮廓。对切片边缘、低对比度和相交轮廓的差异，保留双方原始版本用于仲裁。',
+    'im-repeatability': '以同一切片为配对单位，保留物理单位下的计量差异。复核差异较大样本时，同时查看轮廓分歧和倍率记录。',
+    'im-handbook': '通过视野编号把原图、掩膜和计量导出串联起来。归档包同时包含字段说明、倍率表和适用限制。',
+    'sh-evidence': '每条研究结论关联至少一个可检查的来源条目。材料登记时保留来源、日期、版本和适用范围。',
+    'sh-review': '复核记录包含问题描述、关联证据、处置人和状态。结论需要更新时，保留演示记录中对应的变更说明。',
+    'sh-units': '源数据保留原始单位，分析记录应能追溯换算。表头或图例中写明单位，测量条件独立记录。',
+  };
+
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  for (const node of nodes.filter(item => item.type === 'note')) {
+    const project = projects.find(item => item.id === node.project);
+    const linkedNotes = edges
+      .filter(edge => edge.source === node.id && byId.get(edge.target)?.type === 'note')
+      .map(edge => `- [[${byId.get(edge.target).label}]]`);
+    notes.push({
+      id: node.id,
+      folder: project?.name ?? '共享知识',
+      title: node.label,
+      markdown: [
+        '---',
+        `project: ${project?.name ?? '共享知识'}`,
+        'status: 演示草稿',
+        'tags: [研究记录, 演示数据]',
+        'updated: 2026-11-19',
+        '---',
+        '',
+        `# ${node.label}`,
+        '',
+        body[node.id],
+        '',
+        ...(linkedNotes.length ? ['## 关联笔记', '', ...linkedNotes, ''] : []),
+      ].join('\n'),
+    });
+  }
+
+  const activities = [
+    ['a01','tpms','tp-bc-check','整理压力参考的待核字段','Codex','2026-11-19 16:40','在演示工况输入检查表中标注了两条待确认的压力参考。'],
+    ['a02','imaging','im-run','更新复标差异清单','Codex','2026-11-19 14:15','在演示配对数据中标出需回看原图的视野编号。'],
+    ['a03','coatings','co-qc','补充环境箱读数','研究者','2026-11-19 11:20','登记湿干切换时的环境记录与一段待核的缺测区间。'],
+    ['a04','coatings','co-review','汇总边缘缺陷标记','Codex','2026-11-18 17:35','将有争议的示例图像整理为复核条目，并保留视野编号。'],
+    ['a05','tpms','tp-port-check','登记初次截面核查','研究者','2026-11-18 15:05','为流体域分隔检查附上截面，端口连续性进入待核清单。'],
+    ['a06','tpms','tp-extract','核对性能结果模板','Agent','2026-11-18 13:45','检查演示模板字段和单位，保留传热与压降的空白结果单元。'],
+    ['a07','imaging','im-arbitrate','准备分歧样本图册','Agent','2026-11-18 10:30','将标注差异与示例切片编号对应，等待研究者复核。'],
+    ['a08','imaging','im-dual','登记两组盲标版本','研究者','2026-11-17 17:18','记录两份样例掩膜的版本及待仲裁条目。'],
+    ['a09','coatings','co-scan','登记候选复测谱线','研究者','2026-11-17 15:10','根据演示频段检查标记复测候选，并附上装夹条件。'],
+    ['a10','coatings','co-prepare','核对样片编号','研究者','2026-11-10 12:10','核对批次记录与样片标签，归档随机分组清单。'],
+  ].map(([id, project, task, title, actor, date, summary]) => ({
+    id, project, task, title, actor, date, summary,
+  }));
+
+  const reviewExamples = {
+    'co-review': {
+      criterion: '样片编号、视野编号和拍摄方向可追溯，所有分歧都记录处置后，才可结束复核。',
+      openItem: 'C07 / F02 缺少方向标记，补齐后再判定。',
+    },
+  };
+  const materialExamples = {
+    'co-rater': [
+      { sample: 'C04 / F01', first: '边缘剥离', second: '边缘剥离', disposition: '判读一致' },
+      { sample: 'C07 / F02', first: '边缘剥离', second: '阴影', disposition: '缺方向标记，待补齐' },
+    ],
+  };
+  return { projects, nodes, edges, notes, tasks, materials, activities, reviewExamples, materialExamples };
+})();
+
+;
+
+const TYPES={project:["项目","#78e8ca"],note:["笔记","#83adff"],literature:["文献","#bfa0ff"],task:["任务","#f4bb79"],result:["成果","#f181a9"],dataset:["数据","#67d9f2"],method:["方法","#cbd780"]};
+const CENTERS={tpms:[285,200],coatings:[665,240],imaging:[505,465],shared:[483,302]};
+const NODE=new Map(DATA.nodes.map(n=>[n.id,n]));
+const baseEdges=DATA.edges;
+const graphLayout=new Map();
+let animation=0, resizeObserver=null, graphSession=null;
+let paletteCanvas=null;
+function makeGraph(canvas,nodes,edges,options={}){
+  const ctx=canvas.getContext('2d');
+  const points=nodes.map((n,i)=>{
+    const [cx,cy]=CENTERS[n.project]||CENTERS.shared;
+    const angle=i*2.39996, range=24+((i*79)%109);
+    const cached=graphLayout.get(n.id);
+    return {...n,cx,cy,x:cached?.x ?? cx+Math.cos(angle)*range,y:cached?.y ?? cy+Math.sin(angle)*range,vx:0,vy:0,degree:0};
+  });
+  const index=new Map(points.map(n=>[n.id,n]));
+  const links=edges.map(e=>({...e,a:index.get(e.source),b:index.get(e.target)})).filter(e=>e.a&&e.b);
+  for(const e of links){e.a.degree++;e.b.degree++}
+  const hubs=new Set(points.filter(n=>n.type==='project').map(n=>n.id));
+  for(const p of DATA.projects)points.filter(n=>n.project===p.id&&n.type==='note').sort((a,b)=>b.degree-a.degree).slice(0,2).forEach(n=>hubs.add(n.id));
+  const radius=n=> n.type==='project'?8.4:Math.min(7,3.1+n.degree*.34);
+  let w=0,h=0,ratio=1,scale=1,offsetX=0,offsetY=0,fitScale=1,heat=.6,drag=null,hover=null;
+  let paintedTheme,ink;
+  const fit=()=>{
+    const fitPoints=points.length?points:[{x:200,y:175},{x:740,y:519}];
+    const xs=fitPoints.map(n=>n.x),ys=fitPoints.map(n=>n.y);
+    const x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
+    const margin=options.mini?60:150;
+    fitScale=Math.min(w/Math.max(x1-x0+margin,220),h/Math.max(y1-y0+margin*.75,180),options.mini?1:1.7);
+    scale=fitScale;offsetX=w/2-scale*(x0+x1)/2;offsetY=h/2-scale*(y0+y1)/2;
+    draw();
+  };
+  function resize(){
+    w=canvas.clientWidth;h=canvas.clientHeight;ratio=devicePixelRatio||1;
+    canvas.width=Math.max(1,Math.round(w*ratio));canvas.height=Math.max(1,Math.round(h*ratio));fit();
+  }
+  function tick(temp){
+    for(const n of points){
+      n.vx+=(n.cx-n.x)*.008*temp;n.vy+=(n.cy-n.y)*.008*temp;
+    }
+    for(let i=0;i<points.length;i++){
+      const a=points[i];
+      for(let j=i+1;j<points.length;j++){
+        const b=points[j],dx=b.x-a.x||.001,dy=b.y-a.y;
+        const squared=dx*dx+dy*dy+8;
+        const repulsion=Math.min(.40,520/Math.pow(squared,1.5))*temp;
+        a.vx-=dx*repulsion;a.vy-=dy*repulsion;b.vx+=dx*repulsion;b.vy+=dy*repulsion;
+      }
+    }
+    for(const {a,b} of links){
+      const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1;
+      const preferred=a.project===b.project?(a.type==='project'||b.type==='project'?94:64):190;
+      const f=(d-preferred)/d*(a.project===b.project?.014:.005)*temp;
+      a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;
+    }
+    for(const n of points){
+      n.vx*=.71;n.vy*=.71;
+      if(drag?.node!==n){n.x+=n.vx;n.y+=n.vy}
+    }
+  }
+  function focused(){
+    const selected=options.mini?null:state.graph.selected;
+    const focus=new Set(selected?[selected]:[]);
+    const direct=links.filter(e=>e.source===selected||e.target===selected);
+    for(const e of direct){focus.add(e.source);focus.add(e.target)}
+    if(state.graph.hops===2){
+      for(const e of links){if(direct.some(d=>[d.source,d.target].includes(e.source)||[d.source,d.target].includes(e.target))){focus.add(e.source);focus.add(e.target)}}
+    }
+    return {selected,focus};
+  }
+  function draw(){
+    if(!w||!h)return;
+    const theme=document.documentElement.dataset.theme;
+    if(theme!==paintedTheme||!ink){
+      paintedTheme=theme;
+      const css=getComputedStyle(document.documentElement);
+      const roles=['grid','edge-selected','edge-neighbor','edge-dim','edge-local','edge-shared','hub','label-strong','label','label-halo',
+        ...Object.keys(TYPES).map(id=>'node-'+id),...DATA.projects.map(p=>'cluster-'+p.id)];
+      ink=Object.fromEntries(roles.map(role=>[role,css.getPropertyValue('--'+role).trim()]));
+    }
+    ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,w,h);
+    ctx.fillStyle=ink.grid;
+    const grid=22;
+    for(let x=((offsetX%grid)+grid)%grid;x<w;x+=grid)for(let y=((offsetY%grid)+grid)%grid;y<h;y+=grid)ctx.fillRect(x,y,1,1);
+    ctx.translate(offsetX,offsetY);ctx.scale(scale,scale);
+    const {selected,focus}=focused();
+    for(const project of DATA.projects){
+      const group=points.filter(n=>n.project===project.id);
+      if(!group.length)continue;
+      const [x,y]=CENTERS[project.id];
+      const radius=Math.min(180,105+group.length*1.8);
+      const glow=ctx.createRadialGradient(x,y,14,x,y,radius);
+      const color=ink['cluster-'+project.id];
+      glow.addColorStop(0,color+'16');glow.addColorStop(1,color+'00');
+      ctx.fillStyle=glow;ctx.fillRect(x-radius,y-radius,radius*2,radius*2);
+    }
+    for(const e of links){
+      const active=selected&&(e.a.id===selected||e.b.id===selected);
+      const nearby=focus.has(e.a.id)&&focus.has(e.b.id);
+      ctx.strokeStyle=active?ink['edge-selected']:nearby?ink['edge-neighbor']:selected?ink['edge-dim']:e.a.project===e.b.project?ink['edge-local']:ink['edge-shared'];
+      ctx.lineWidth=(active?1.55:.84)/scale;
+      ctx.beginPath();ctx.moveTo(e.a.x,e.a.y);ctx.lineTo(e.b.x,e.b.y);ctx.stroke();
+    }
+    const labeled=[];
+    const order=[...points].sort((a,b)=>Number(focus.has(a.id))-Number(focus.has(b.id)));
+    for(const n of order){
+      const r=radius(n),color=ink['node-'+n.type];
+      const active=selected===n.id||hover===n.id;
+      ctx.globalAlpha=!selected||focus.has(n.id)||active?1:.28;
+      if(active||n.type==='project'){
+        ctx.beginPath();ctx.arc(n.x,n.y,r+5,0,Math.PI*2);ctx.fillStyle=color+'30';ctx.fill();
+        ctx.beginPath();ctx.arc(n.x,n.y,r+2.8,0,Math.PI*2);ctx.strokeStyle=color+'b0';ctx.lineWidth=1/scale;ctx.stroke();
+      }
+      ctx.beginPath();ctx.arc(n.x,n.y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+      if(n.type==='project'){ctx.beginPath();ctx.arc(n.x,n.y,r*.48,0,Math.PI*2);ctx.fillStyle=ink.hub;ctx.fill()}
+      if(active||(!options.mini&&(hubs.has(n.id)||(selected&&focus.has(n.id)&&n.degree>3)||scale>fitScale*1.65)))labeled.push(n);
+    }
+    ctx.globalAlpha=1;
+    const rects=[];
+    labeled.sort((a,b)=>Number(b.id===selected||b.id===hover)-Number(a.id===selected||a.id===hover)||b.degree-a.degree);
+    for(const n of labeled){
+      const active=selected===n.id||hover===n.id;
+      if(selected&&!focus.has(n.id)&&!active)continue;
+      const size=n.type==='project'?13:11;
+      const fontSize=size/scale, label=n.type==='project'?(DATA.projects.find(p=>p.id===n.id)?.short||n.label):n.label;
+      ctx.font=(active||n.type==='project'?'650 ':'400 ')+fontSize+'px "Microsoft YaHei", sans-serif';
+      const dim=ctx.measureText(label).width;
+      const x=n.x+radius(n)+5/scale,y=n.y-4/scale;
+      if(!active&&rects.some(r=>x<r.x+r.w&&x+dim>r.x&&y-fontSize<r.y&&y>r.y-r.h))continue;
+      rects.push({x,y,w:dim,h:fontSize});
+      ctx.lineWidth=4/scale;ctx.strokeStyle=ink['label-halo'];ctx.lineJoin='round';
+      ctx.strokeText(label,x,y);ctx.fillStyle=active||n.type==='project'?ink['label-strong']:ink.label;ctx.fillText(label,x,y);
+    }
+    const meter=document.querySelector('#zoom-level');
+    if(meter&&!options.mini)meter.textContent=Math.round(scale/fitScale*100)+'%';
+  }
+  function zoom(mult,cx=w/2,cy=h/2){
+    const next=Math.max(fitScale*.32,Math.min(fitScale*5,scale*mult));
+    offsetX=cx-(cx-offsetX)*next/scale;offsetY=cy-(cy-offsetY)*next/scale;scale=next;draw();
+  }
+  function locate(id){
+    const n=index.get(id);if(!n)return;
+    offsetX=w/2-n.x*scale;offsetY=h/2-n.y*scale;draw();
+  }
+  function frame(){
+    if(heat>.018||drag?.node){
+      for(let i=0;i<2;i++)tick(heat);
+      heat*=.975;
+      if(!options.mini&&points.length===DATA.nodes.length)for(const n of points)graphLayout.set(n.id,{x:n.x,y:n.y});
+      draw();
+      animation=requestAnimationFrame(frame);
+    }else animation=0;
+  }
+  function start(){if(!animation)animation=requestAnimationFrame(frame)}
+  const position=e=>{const r=canvas.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top]};
+  function hit(x,y){
+    const gx=(x-offsetX)/scale,gy=(y-offsetY)/scale;
+    let best=null,dist=Infinity;
+    for(const n of points){
+      const d=Math.hypot(n.x-gx,n.y-gy);
+      if(d<(radius(n)+4/scale)&&d<dist){best=n;dist=d}
+    }
+    return best;
+  }
+  if(!options.mini){
+    canvas.addEventListener('pointerdown',e=>{
+      if(e.button!==0)return;
+      const [x,y]=position(e);drag={x,y,node:hit(x,y),dx:offsetX,dy:offsetY,moved:false,id:e.pointerId};
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointermove',e=>{
+      const [x,y]=position(e);
+      if(drag){
+        if(Math.hypot(x-drag.x,y-drag.y)>4)drag.moved=true;
+        if(!drag.moved)return;
+        if(drag.node){
+          drag.node.x=(x-offsetX)/scale;drag.node.y=(y-offsetY)/scale;heat=.52;start();
+        }else{offsetX=drag.dx+x-drag.x;offsetY=drag.dy+y-drag.y}
+      }else{
+        const target=hit(x,y),tip=document.querySelector('#graph-tip');
+        hover=target?.id;
+        if(tip){
+          tip.hidden=!target;
+          if(target){tip.textContent=target.label+' · '+TYPES[target.type][0];tip.style.transform='translate('+Math.min(x+12,Math.max(4,w-215))+'px,'+Math.max(8,y-34)+'px)'}
+        }
+        canvas.style.cursor=target?'pointer':'grab';
+      }
+      draw();
+    });
+    canvas.addEventListener('pointerup',()=>{
+      if(drag&&!drag.moved)selectNode(drag.node?.id??null,false);
+      drag=null;
+    });
+    canvas.addEventListener('pointercancel',()=>{drag=null});
+    canvas.addEventListener('pointerleave',()=>{hover=null;const tip=document.querySelector('#graph-tip');if(tip)tip.hidden=true;draw()});
+    canvas.addEventListener('wheel',e=>{e.preventDefault();const [x,y]=position(e);zoom(Math.exp(-e.deltaY*.0015),x,y)},{passive:false});
+    canvas.addEventListener('keydown',e=>{
+      if(['+','=','-','0','Escape'].includes(e.key)){e.stopPropagation();e.preventDefault()}
+      if(e.key==='+'||e.key==='=')zoom(1.2);
+      if(e.key==='-')zoom(1/1.2);
+      if(e.key==='0')fit();
+      if(e.key==='Escape')selectNode(null,false);
+    });
+  }
+  for(let i=0;i<(graphLayout.size?12:155);i++)tick(.82);
+  resize();resizeObserver=new ResizeObserver(resize);resizeObserver.observe(canvas);
+  if(!options.mini)start();
+  return {fit,zoom,draw,locate,points,links,hit,screen(id){const n=index.get(id);return n?[n.x*scale+offsetX,n.y*scale+offsetY]:null}};
+}
+function disposeGraph(){
+  if(animation)cancelAnimationFrame(animation);
+  animation=0;resizeObserver?.disconnect();resizeObserver=null;graphSession=null;paletteCanvas=null;
+}
+
+
+;
+
+const ICONS={
+ logo:'<path d="m3 14 6-9 6 4 6-3M3 14l6 5 6-10 6 8M9 5v14"/><circle cx="3" cy="14" r="1.2"/><circle cx="21" cy="6" r="1.2"/><circle cx="21" cy="17" r="1.2"/>',
+ dashboard:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+ projects:'<path d="M3 7h7l2 2h9v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zM3 7V5a1 1 0 0 1 1-1h5l2 2h8"/>',
+ graph:'<path d="m6 7 5 5m7-5-5 5m0 3 4 4M6 18l5-4"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="13" r="2"/><circle cx="18" cy="20" r="2"/><circle cx="5" cy="19" r="2"/>',
+ notes:'<path d="M5 3h10l4 4v14H5zM14 3v5h5M8 12h8m-8 4h8"/>',
+ materials:'<rect x="4" y="7" width="16" height="13" rx="2"/><path d="M3 4h18v4H3zm6 8h6"/>',
+ activity:'<path d="M2 12h4l3-6 5 12 3-6h5"/>',
+ search:'<circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/>',
+ tasks:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="m8 12 2.5 2.5L16 9"/>',
+ chevron:'<path d="m9 6 6 6-6 6"/>',
+ plus:'<path d="M12 5v14M5 12h14"/>',
+ minus:'<path d="M5 12h14"/>',
+ fit:'<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/><circle cx="12" cy="12" r="2"/>',
+ close:'<path d="m6 6 12 12M18 6 6 18"/>',
+ target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+ save:'<path d="M4 4h13l3 3v13H4zM8 4v6h8V4M8 20v-6h8v6"/>',
+ cpu:'<rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 2v3m6-3v3m-6 14v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3"/><rect x="9" y="9" width="6" height="6" rx="1"/>'
+};
+const icon=name=>'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICONS[name]+'</svg>';
+const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=(s,root=document)=>root.querySelector(s);
+const PROJECT=new Map(DATA.projects.map(p=>[p.id,p]));
+const NOTES=new Map(DATA.notes.map(n=>[n.id,n]));
+const TASKS=new Map(DATA.tasks.map(t=>[t.id,t]));
+const MATERIALS=new Map(DATA.materials.map(m=>[m.id,m]));
+const titles={dashboard:'工作总览',projects:'项目中心',project:'项目详情',graph:'知识图谱',notes:'知识工作区',materials:'材料与成果',activity:'任务与活动'};
+const sections=['dashboard','projects','graph','notes','materials','activity'];
+const STORE='workbench-proto-demo-v1';
+const paletteOptions=[['warm','清新粉蓝'],['cool','冷灰浅色'],['charcoal','中性炭灰']];
+let theme='warm';
+try{
+ const last=localStorage.getItem(STORE+'-theme');
+ if(paletteOptions.some(([id])=>id===last))theme=last;
+}catch{}
+document.documentElement.dataset.theme=theme;
+const stored=(()=>{try{return JSON.parse(localStorage.getItem(STORE))||{}}catch{return {}}})();
+const state={
+ route:'graph',id:'',tab:'概况',notesView:'分栏',noteId:NOTES.has('tp-architecture')?'tp-architecture':DATA.notes[0].id,
+ saved:stored.notes||{},draft:{},taskStatus:stored.tasks||{},review:null,
+ graph:{selected:null,type:'',project:'',relation:'',query:'',hops:1},
+ materials:{project:'',kind:'',query:''},activity:{project:'',status:'',view:'任务列表'}
+};
+const statuses=['待开始','进行中','待复核','已完成'];
+const typeColors=new Map(Object.entries(TYPES).map(([id,[,hex]])=>[hex,'var(--node-'+id+')']));
+const projectColors=new Map(DATA.projects.map(p=>[p.color,'var(--cluster-'+p.id+')']));
+const dot=color=>'<i class="dot" '+(color?'style="--dot:'+(typeColors.get(color)||projectColors.get(color)||color)+'"':'')+' aria-hidden="true"></i>';
+const pill=(s,c='')=>'<span class="pill '+c+'">'+esc(s)+'</span>';
+const statusPill=s=>pill(s,s==='已完成'?'mint':s==='待复核'?'warn':s==='进行中'?'blue':'');
+const taskStatus=t=>state.taskStatus[t.id]||t.status;
+const projectName=id=>PROJECT.get(id)?.short||'跨项目共享';
+const button=(label,attrs='',symbol='',cls='')=>'<button class="btn '+cls+'" '+attrs+'>'+ (symbol?icon(symbol):'')+esc(label)+'</button>';
+const ibtn=(label,attrs,symbol)=>'<button class="icon-btn" aria-label="'+esc(label)+'" title="'+esc(label)+'" '+attrs+'>'+icon(symbol)+'</button>';
+const opt=(items,value)=>items.map(([key,label])=>'<option value="'+esc(key)+'"'+(key===value?' selected':'')+'>'+esc(label)+'</option>').join('');
+const selector=(label,attrs,items,value)=>'<select class="select" aria-label="'+label+'" '+attrs+'>'+opt(items,value)+'</select>';
+const input=(label,attrs,value='',content='')=>'<div class="input-wrap">'+icon('search')+'<input aria-label="'+esc(label)+'" placeholder="'+esc(label)+'" '+attrs+' value="'+esc(value)+'">'+content+'</div>';
+const meter=(n,color)=>'<div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+n+'"><i style="width:'+n+'%;background:'+color+'"></i></div>';
+const projectOptions=[['','全部项目'],...DATA.projects.map(p=>[p.id,p.short]),['shared','跨项目共享']];
+const activities=[...DATA.activities].sort((a,b)=>b.date.localeCompare(a.date));
+let toastTimer;
+function toast(s){
+ const box=$('#toast');box.textContent=s;box.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>box.classList.remove('show'),2600);
+}
+function persist(){
+ try{localStorage.setItem(STORE,JSON.stringify({notes:state.saved,tasks:state.taskStatus}));return true}
+ catch{return false}
+}
+function head(label,title,desc,action=''){
+ return '<header class="page-head"><div><div class="section-tag mono">'+label+'</div><h1>'+esc(title)+'</h1><p>'+esc(desc)+'</p></div><div class="action-row">'+action+'</div></header>';
+}
+function actionPage(route,id=''){return 'data-route="'+route+'"'+(id?' data-id="'+esc(id)+'"':'')}
+function go(route,id='',tab=''){
+ const hash='#'+route+(id?'/'+encodeURIComponent(id):'');
+ if(location.hash!==hash)history.pushState({},'',hash);
+ routeTo(hash,tab);
+}
+function routeTo(hash,tab=''){
+ const path=hash.slice(1).split('/');
+ let [route,id='']=path;
+ try{id=decodeURIComponent(id)}catch{id=''}
+ if(!Object.hasOwn(titles,route))route='graph';
+ if(route==='project'&&!PROJECT.has(id))route='projects';
+ if(route==='project'&&(tab||state.route!==route||id!==state.id))state.tab=tab||'概况';
+ if(route==='notes'&&NOTES.has(id))state.noteId=id;
+ state.route=route;state.id=id;render();
+}
+function navigation(){
+ const active=state.route==='project'?'projects':state.route;
+ return '<aside class="side"><div class="brand"><div class="mark">'+icon('logo')+'</div><div><strong>科研工程工作台</strong><small>演示数据版</small></div></div><nav aria-label="工作台"><div class="side-label">工作台</div>'+
+   sections.map(id=>'<button aria-label="'+titles[id]+'" '+(id===active?'aria-current="page" ':'')+'class="nav-btn '+(id===active?'active':'')+'" '+actionPage(id)+'>'+icon(id)+'<span>'+titles[id]+'</span></button>').join('')+
+   '<div class="side-label">示例项目</div>'+DATA.projects.map(p=>'<button class="project-btn '+(state.route==='project'&&state.id===p.id?'active':'')+'" '+actionPage('project',p.id)+'>'+dot(p.color)+'<span>'+esc(p.short)+'</span></button>').join('')+'</nav>'+
+   '<div class="side-foot"><strong>'+dot()+'演示数据运行时</strong><small>未接入 RPM、Obsidian、RAG_Snowz 或 Codex</small></div></aside>';
+}
+function render(){
+ disposeGraph();
+ const contents={dashboard,projects,project:projectPage,graph:graphPage,notes:notesPage,materials:materialsPage,activity:activityPage};
+ const crumb=state.route==='project'?projectName(state.id):titles[state.route];
+ $('#app').innerHTML='<div class="app">'+navigation()+'<main class="main"><header class="top"><div class="crumb"><span class="muted">科研工程工作台</span>'+icon('chevron')+'<strong>'+esc(crumb)+'</strong></div><div class="top-actions"><button class="btn quick" data-command><span>'+icon('search')+'全局搜索</span><kbd class="key">Ctrl K</kbd></button>'+selector('界面色系','id="palette"',paletteOptions,theme)+pill('演示数据','mint')+'<span class="avatar" aria-label="本地演示工作区">研</span></div></header><div class="page">'+contents[state.route]()+'</div></main></div>';
+ if(state.route==='graph')mountGraph(false);
+ if(state.route==='dashboard')paletteCanvas=makeGraph($('#mini-graph'),DATA.nodes,allEdges(),{mini:true});
+ if(state.route==='notes')refreshNote();
+ if(state.route==='materials')refreshMaterials();
+ if(state.route==='activity')refreshActivity();
+}
+function chartCard(){
+ return '<section class="card card-pad"><div class="card-head"><div><h2>知识网络</h2><p class="muted small">'+DATA.nodes.length+' 个节点 · '+allEdges().length+' 条关系</p></div>'+pill('全局视图')+'</div><div class="mini"><canvas id="mini-graph" aria-label="知识网络概览"></canvas>'+button('探索全局图谱',actionPage('graph'),'graph','primary')+'</div></section>';
+}
+function dashboard(){
+ const open=DATA.tasks.filter(t=>taskStatus(t)!=='已完成');
+ const stats=[['示例项目',DATA.projects.length,'projects'],['待处理任务',open.length,'activity'],['知识笔记',DATA.notes.length,'notes'],['材料与成果',DATA.materials.length,'materials']];
+ return head('WORKSPACE','工作总览','查看示例项目的进度、知识关系和最近活动。',button('浏览项目',actionPage('projects'),'projects'))+
+ '<div class="stats">'+stats.map(([label,value,route])=>'<button class="card stat" '+actionPage(route)+'><div class="row"><div><span class="muted">'+label+'</span><strong>'+value+'</strong></div><span class="icon-box">'+icon(route)+'</span></div></button>').join('')+'</div>'+
+ '<div class="cols"><div class="stack">'+chartCard()+'<section class="card card-pad"><div class="card-head"><h2>项目进度</h2></div><div class="list">'+DATA.projects.map(p=>'<button class="list-row" '+actionPage('project',p.id)+'><span class="icon-box">'+dot(p.color)+'</span><div><strong>'+esc(p.name)+'</strong><small>'+esc(p.stage)+'</small>'+meter(p.progress,projectColors.get(p.color))+'</div><span class="mono muted">'+p.progress+'%</span></button>').join('')+'</div></section></div>'+
+ '<div class="stack"><section class="card card-pad"><div class="card-head"><h2>优先处理</h2>'+button('全部任务',actionPage('activity'),'','ghost')+'</div>'+taskList([...open].sort((a,b)=>Number(taskStatus(b)==='待复核')-Number(taskStatus(a)==='待复核')||a.due.localeCompare(b.due)).slice(0,4))+'</section><section class="card card-pad"><div class="card-head"><h2>最近活动</h2></div>'+timeline(activities.slice(0,3),true)+'</section></div></div>';
+}
+function projects(){
+ return head('PROJECTS','项目中心','按项目查看研究阶段、任务、知识和成果。')+
+ '<div class="project-grid">'+DATA.projects.map(p=>'<button class="card project-card" '+actionPage('project',p.id)+'><div class="row"><span class="icon-box" style="color:'+projectColors.get(p.color)+'">'+icon('projects')+'</span><span class="mono muted">'+esc(p.code)+'</span>'+statusPill(p.status)+'</div><h2>'+esc(p.name)+'</h2><p>'+esc(p.description)+'</p><div class="row"><span class="muted">'+esc(p.stage)+'</span><strong>'+p.progress+'%</strong></div>'+meter(p.progress,projectColors.get(p.color))+'</button>').join('')+'</div>';
+}
+function projectPage(){
+ const p=PROJECT.get(state.id), tasks=DATA.tasks.filter(t=>t.project===p.id), recent=activities.filter(a=>a.project===p.id);
+ const notes=DATA.notes.filter(n=>NODE.get(n.id).project===p.id);
+ const materials=DATA.materials.filter(m=>m.project===p.id);
+ const tabs=['概况','任务','知识笔记','材料与成果','活动'];
+ const pane={
+  '概况':()=>'<div class="cols"><div class="stack"><section class="card card-pad"><div class="card-head"><h2>里程碑</h2>'+pill(p.stage)+'</div>'+p.milestones.map(m=>'<div class="milestone">'+dot(m.done?'#68e4c6':'#788da5')+'<strong>'+esc(m.name)+'</strong><time>'+esc(m.date)+'</time>'+pill(m.done?'已完成':'待达成',m.done?'mint':'')+'</div>').join('')+'</section><section class="card card-pad"><div class="card-head"><h2>项目任务</h2><button class="textbtn" data-tab="任务">查看全部</button></div>'+taskList(tasks.filter(t=>taskStatus(t)!=='已完成').slice(0,4))+'</section></div><section class="card card-pad"><div class="card-head"><h2>项目活动</h2></div>'+timeline(recent.slice(0,5))+'</section></div>',
+  '任务':()=>'<section class="card card-pad">'+taskList(tasks)+'</section>',
+  '知识笔记':()=>'<section class="card card-pad">'+noteLinks(notes)+'</section>',
+  '材料与成果':()=>'<section class="card card-pad">'+materialTable(materials)+'</section>',
+  '活动':()=>'<section class="card card-pad">'+timeline(recent)+'</section>'
+ };
+ return head(esc(p.code),p.name,p.description,button('项目中心',actionPage('projects'))+button('查看项目图谱','data-project-graph="'+p.id+'"','graph','primary'))+
+ '<section class="card card-pad hero"><div class="row">'+statusPill(p.status)+'<span class="muted">当前阶段</span><strong>'+esc(p.stage)+'</strong></div><div class="bar"><div class="row"><strong>'+p.progress+'%</strong><span class="muted">示例里程碑进度</span></div>'+meter(p.progress,projectColors.get(p.color))+'</div></section>'+
+ '<div class="tabs" aria-label="项目详情视图">'+tabs.map(t=>'<button class="tab '+(state.tab===t?'active':'')+'" aria-pressed="'+(state.tab===t)+'" data-tab="'+t+'">'+t+'</button>').join('')+'</div>'+pane[state.tab]();
+}
+function taskList(tasks){
+ return '<div class="list">'+(tasks.length?tasks.map(t=>'<button class="list-row" data-task="'+t.id+'"><span class="icon-box">'+icon('tasks')+'</span><div><strong>'+esc(t.title)+'</strong><small>'+esc(projectName(t.project))+' · '+esc(t.owner)+' · '+esc(t.due)+'</small></div>'+statusPill(taskStatus(t))+'</button>').join(''):'<div class="blank">没有符合条件的任务</div>')+'</div>';
+}
+function timeline(items,withProject=false,withTask=true){
+ return '<div class="timeline">'+(items.length?items.map(a=>'<article class="event"><div><strong>'+esc(a.title)+'</strong><p>'+esc(a.summary)+'</p><div class="meta">'+pill(['Codex','Agent'].includes(a.actor)?a.actor+' · 模拟':a.actor,['Codex','Agent'].includes(a.actor)?'blue':'')+(withProject?pill(projectName(a.project)):'')+'<time>'+esc(a.date)+'</time></div>'+(withTask&&a.task?'<button class="textbtn small" data-task="'+a.task+'">查看任务 · '+esc(TASKS.get(a.task)?.title)+'</button>':'')+'</div></article>').join(''):'<div class="blank">暂无相关活动</div>')+'</div>';
+}
+function noteLinks(notes){
+ return notes.map(n=>'<button class="list-row" '+actionPage('notes',n.id)+'><span class="icon-box">'+icon('notes')+'</span><div><strong>'+esc(n.title)+'</strong><small>'+esc(n.folder)+'</small></div>'+icon('chevron')+'</button>').join('');
+}
+function dialog(title,body){
+ const d=$('#dialog');
+ d.innerHTML='<div class="inspect-title"><strong>'+esc(title)+'</strong>'+ibtn('关闭弹窗','data-close','close')+'</div><div class="dialog-body">'+body+'</div>';
+ if(!d.open)d.showModal();
+}
+function reviewBack(cls=''){
+ const t=TASKS.get(state.review?.task);
+ return t?button('返回原任务','data-review-back title="'+esc(t.title)+'"','tasks',cls):'';
+}
+function linkedRecords(id){
+ return allEdges().filter(e=>e.source===id||e.target===id)
+ .map(e=>({node:NODE.get(e.source===id?e.target:e.source),relation:e.relation}));
+}
+function relatedButton(node,role,attrs){
+ return '<button class="neighbor" '+attrs+'><span>'+dot(TYPES[node.type][1])+esc(node.label)+'</span><span class="rel">'+esc(role)+'</span></button>';
+}
+function showTask(id){
+ const t=TASKS.get(id);if(!t)return;
+ const example=DATA.reviewExamples[id], context=' data-review-from="'+id+'"';
+ const evidence=linkedRecords(id).filter(({node})=>MATERIALS.has(node.id)||NOTES.has(node.id));
+ const checks=example?'<div class="review-check"><strong>复核完成条件</strong><p>'+esc(example.criterion)+'</p><div><span class="pill warn">待确认项</span> '+esc(example.openItem)+'</div></div>':'';
+ const evidenceList=evidence.length?'<div class="inspect-section"><strong>关联材料与笔记</strong></div>'+evidence.map(({node,relation})=>{
+  const kind=MATERIALS.get(node.id)?.kind||'笔记';
+  const attrs=MATERIALS.has(node.id)?'data-material="'+node.id+'"':actionPage('notes',node.id);
+  return relatedButton(node,kind+' · '+relation,attrs+context);
+ }).join(''):'';
+ dialog(t.title,'<div class="row">'+pill(projectName(t.project))+statusPill(taskStatus(t))+'</div><p>'+esc(t.summary)+'</p><div class="row"><span class="muted">负责人</span>'+esc(t.owner)+'<span class="muted">截止</span>'+esc(t.due)+'</div>'+checks+evidenceList+
+ '<div class="inspect-section"><strong>任务活动</strong></div>'+timeline(activities.filter(a=>a.task===id),false,false)+
+ '<div class="row" style="margin:12px 0"><label for="task-state">演示状态</label>'+selector('演示状态','id="task-state" data-task-state="'+t.id+'"',statuses.map(s=>[s,s]),taskStatus(t))+'</div>'+
+ '<div class="action-row">'+button('打开所属项目',actionPage('project',t.project),'projects')+button('在图谱中定位','data-locate="'+t.id+'"'+context,'graph')+'</div>');
+}
+function materialTable(items){
+ if(!items.length)return '<div class="blank">没有符合条件的材料</div>';
+ return '<div class="table-wrap"><table class="table"><thead><tr><th>名称</th><th>类别</th><th>项目</th><th>格式</th><th>登记日期</th></tr></thead><tbody>'+
+ items.map(m=>'<tr><td><button class="textbtn" data-material="'+m.id+'">'+esc(m.title)+'</button></td><td>'+pill(m.kind)+'</td><td>'+esc(projectName(m.project))+'</td><td><span class="mono muted">'+esc(m.format)+'</span></td><td class="muted">'+esc(m.date)+'</td></tr>').join('')+'</tbody></table></div>';
+}
+function showMaterial(id){
+ const m=MATERIALS.get(id);if(!m)return;
+ const related=linkedRecords(id);
+ const rows=DATA.materialExamples[id];
+ const excerpt=rows?'<div class="inspect-section"><strong>演示记录节选</strong></div><div class="table-wrap"><table class="table review-table"><thead><tr><th>样片 / 视野</th><th>初评</th><th>复评</th><th>处置</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.sample)+'</td><td>'+esc(r.first)+'</td><td>'+esc(r.second)+'</td><td>'+esc(r.disposition)+'</td></tr>').join('')+'</tbody></table></div>':'';
+ dialog(m.title,'<div class="row">'+pill(m.kind,'blue')+pill(m.format)+pill(projectName(m.project))+'</div><p>'+esc(m.summary)+'</p><p class="small muted">演示材料记录 · '+esc(m.date)+'</p>'+excerpt+'<div class="action-row">'+button('在图谱中定位','data-locate="'+m.id+'"','graph','primary')+(state.review?reviewBack():PROJECT.has(m.project)?button('打开所属项目',actionPage('project',m.project),'projects'):'')+'</div><div class="inspect-section"><strong>关联依据与对象</strong></div>'+related.map(({node,relation})=>relatedButton(node,relation,'data-locate="'+node.id+'"')).join(''));
+}
+function materialsPage(){
+ const f=state.materials,kinds=[...new Set(DATA.materials.map(m=>m.kind))];
+ return head('LIBRARY','材料与成果','浏览样例文献、数据集和成果记录，沿关系查看研究上下文。')+
+ '<section class="card card-pad"><div class="filters">'+input('搜索材料','id="material-search"',f.query)+selector('材料项目','data-material-filter="project"',projectOptions,f.project)+selector('材料类别','data-material-filter="kind"',[['','全部类别'],...kinds.map(k=>[k,k])],f.kind)+'<span id="material-count" class="muted small"></span></div><div id="material-body"></div></section>';
+}
+function refreshMaterials(){
+ const f=state.materials,q=f.query.trim().toLowerCase();
+ const items=DATA.materials.filter(m=>(!f.project||f.project===m.project)&&(!f.kind||f.kind===m.kind)&&(!q||(m.title+' '+m.summary).toLowerCase().includes(q)));
+ $('#material-count').textContent=items.length+' 条';
+ $('#material-body').innerHTML=materialTable(items);
+}
+function activityPage(){
+ const f=state.activity;
+ return head('PROGRESS','任务与活动','查看任务状态与研究时间线，执行记录归入所属项目和任务。')+
+ '<div class="tabs">'+['任务列表','活动时间线'].map(v=>'<button class="tab '+(f.view===v?'active':'')+'" aria-pressed="'+(f.view===v)+'" data-activity-view="'+v+'">'+v+'</button>').join('')+'</div>'+
+ '<section class="card card-pad"><div class="filters">'+selector('活动项目','data-activity-filter="project"',projectOptions.filter(p=>p[0]!=='shared'),f.project)+(f.view==='任务列表'?selector('任务状态','data-activity-filter="status"',[['','全部状态'],...statuses.map(s=>[s,s])],f.status):'')+'<span id="activity-count" class="muted small"></span></div><div id="activity-body"></div></section>';
+}
+function refreshActivity(){
+ const f=state.activity;
+ const items=(f.view==='任务列表'?DATA.tasks.filter(t=>!f.status||taskStatus(t)===f.status):activities).filter(a=>!f.project||a.project===f.project);
+ $('#activity-count').textContent=items.length+' 条';
+ $('#activity-body').innerHTML=f.view==='任务列表'?taskList(items):timeline(items,true);
+}
+
+
+
+;
+
+const relOptions=['归属','引用','支持','产出','依赖','关联','笔记双链'];
+const noteText=id=>state.draft[id]??state.saved[id]??NOTES.get(id)?.markdown??'';
+const savedText=id=>state.saved[id]??NOTES.get(id)?.markdown??'';
+function splitMd(md){
+ const front=md.match(/^(?:\uFEFF)?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
+ return front?{yaml:front[1],body:md.slice(front[0].length)}:{yaml:'',body:md};
+}
+function frontProps(yaml){
+ return yaml.split(/\r?\n/).map(line=>line.match(/^([-\w\u4e00-\u9fff]+)\s*:\s*(.*)$/)).filter(Boolean).map(([,key,value])=>[key,value]);
+}
+function resolveLink(raw){
+ const title=raw.split('|')[0].split('#')[0].trim().replace(/\.md$/i,'');
+ return DATA.notes.find(n=>n.title===title||n.id===title);
+}
+function writtenLinks(markdown){
+ const clean=splitMd(markdown).body.replace(/^([ \t]{0,3})(?:\x60{3,}|~{3,})[^\r\n]*\r?\n[\s\S]*?^\1(?:\x60{3,}|~{3,})[ \t]*(?:\r?\n|$)/gm,'').replace(/\x60+[^\x60\n]*\x60+/g,'');
+ return [...new Set([...clean.matchAll(/\[\[([^\]\n]+)\]\]/g)].map(m=>resolveLink(m[1])?.id).filter(Boolean))];
+}
+function allEdges(){
+ const wiki=[];
+ for(const n of DATA.notes){
+  for(const id of writtenLinks(savedText(n.id)))if(id!==n.id)wiki.push({source:n.id,target:id,relation:'笔记双链'});
+ }
+ return [...baseEdges,...wiki];
+}
+function graphPage(){
+ const g=state.graph;
+ const clear='<button class="btn ghost small" data-reset-graph>重置视图</button>';
+ return head('KNOWLEDGE NETWORK','科研知识图谱','从研究问题、方法与证据，追到笔记、任务和成果。',reviewBack()+clear)+
+ '<section class="card graph-shell"><div class="graph-left"><div class="graph-tools">'+
+ input('搜索节点…','id="graph-search" autocomplete="off"',g.query,'<div id="graph-suggest" class="suggest" hidden></div>')+
+ selector('筛选节点类型','data-graph-filter="type"',[['','所有类型'],...Object.entries(TYPES).map(([id,t])=>[id,t[0]])],g.type)+
+ selector('筛选所属项目','data-graph-filter="project"',projectOptions,g.project)+
+ selector('筛选关系类型','data-graph-filter="relation"',[['','所有关系'],...relOptions.map(r=>[r,r])],g.relation)+
+ '</div><div class="graph-stage"><canvas id="graph-canvas" tabindex="0" aria-label="力导向知识网络。可用上方搜索选择节点，用加号、减号和零调整缩放"></canvas>'+
+ '<div class="graph-count mono" id="graph-count"></div><div id="graph-tip" class="graph-tip" hidden></div><div id="graph-empty" class="graph-empty" hidden>没有符合当前筛选条件的节点</div>'+
+ '<div class="graph-zoom">'+ibtn('缩小','data-zoom="out"','minus')+'<span class="mono" id="zoom-level">100%</span>'+ibtn('放大','data-zoom="in"','plus')+ibtn('适配当前网络','data-zoom="fit"','fit')+'</div></div>'+
+ '<footer class="graph-footer"><div class="legend" id="graph-legend"></div><span class="muted small">拖动节点 · 滚轮缩放</span></footer>'+
+ '</div><aside class="inspector" id="graph-inspector" aria-label="节点和关联详情"></aside></section>';
+}
+function currentNetwork(){
+ const g=state.graph;
+ let nodes=DATA.nodes.filter(n=>(!g.type||g.type===n.type)&&(!g.project||g.project===n.project));
+ const keys=new Set(nodes.map(n=>n.id));
+ const edges=allEdges().filter(e=>keys.has(e.source)&&keys.has(e.target)&&(!g.relation||e.relation===g.relation));
+ if(g.relation){
+  const linked=new Set(edges.flatMap(e=>[e.source,e.target]));
+  nodes=nodes.filter(n=>linked.has(n.id));
+ }
+ return {nodes,edges};
+}
+function graphChoices(){
+ const q=state.graph.query.trim().toLowerCase();
+ if(!q)return [];
+ return currentNetwork().nodes.filter(n=>[n.label,n.id,projectName(n.project),n.summary].some(x=>String(x).toLowerCase().includes(q))).sort((a,b)=>Number(!a.label.toLowerCase().includes(q))-Number(!b.label.toLowerCase().includes(q))).slice(0,8);
+}
+function graphSuggest(){
+ const target=$('#graph-suggest');if(!target)return;
+ const list=graphChoices();
+ target.hidden=!state.graph.query.trim();
+ target.innerHTML=list.length?list.map(n=>'<button data-pick="'+n.id+'">'+dot(TYPES[n.type][1])+'<span>'+esc(n.label)+'</span><small class="muted">'+TYPES[n.type][0]+'</small></button>').join(''):'<div class="blank small">当前筛选下没有匹配节点</div>';
+}
+function selectNode(id,locate=true){
+ if(id&&!graphSession?.points.some(n=>n.id===id))return;
+ state.graph.selected=id;
+ if(!id)state.graph.hops=1;
+ if(locate&&id)graphSession?.locate(id);
+ graphSession?.draw();
+ refreshInspector();
+}
+function mountGraph(refit=true){
+ disposeGraph();
+ const g=state.graph,{nodes,edges}=currentNetwork();
+ if(g.selected&&!nodes.some(n=>n.id===g.selected))g.selected=null;
+ const oldCanvas=$('#graph-canvas'),canvas=oldCanvas.cloneNode(false);
+ oldCanvas.replaceWith(canvas);
+ graphSession=makeGraph(canvas,nodes,edges);
+ $('#graph-count').innerHTML='<span><b>'+nodes.length+'</b> 节点</span><span><b>'+edges.length+'</b> 关系</span>';
+ $('#graph-empty').hidden=nodes.length!==0;
+ $('#graph-legend').innerHTML=Object.entries(TYPES).map(([id,[label,color]])=>'<button data-legend="'+id+'" aria-label="筛选'+label+'" aria-pressed="'+(g.type===id)+'" class="'+(g.type===id?'selected':'')+'">'+dot(color)+label+'</button>').join('');
+ if(refit)graphSession.fit();
+ refreshInspector();
+}
+function refreshInspector(){
+ const target=$('#graph-inspector');if(!target)return;
+ const g=state.graph,n=NODE.get(g.selected);
+ if(!n){
+  target.innerHTML='<div class="inspect-title"><div class="row">'+icon('graph')+'网络概况</div></div><div class="inspect-body"><span class="pill mint">'+dot()+'力导向视图</span><h2>研究知识网络</h2><p>选择节点查看研究摘要和关系，相邻节点随即高亮。拖动节点可观察周围关系重新排布。</p><div class="inspect-section"><strong>项目知识簇</strong></div>'+
+  DATA.projects.map(p=>'<button class="neighbor" data-cluster="'+p.id+'"><span>'+dot(p.color)+esc(p.short)+'</span><span class="rel">'+DATA.nodes.filter(n=>n.project===p.id).length+' 节点</span></button>').join('')+
+  '<div class="inspect-section"><strong>示例入口</strong></div><button class="neighbor" data-locate="tp-architecture"><span>'+dot(TYPES.note[1])+'扇区结构与流道假设</span><span class="rel">笔记</span></button></div>';
+  return;
+ }
+ const direct=graphSession.links.filter(e=>e.source===n.id||e.target===n.id);
+ const near=new Set(direct.map(e=>e.source===n.id?e.target:e.source));
+ const extended=new Set();
+ for(const e of graphSession.links){
+  if(near.has(e.source)&&!near.has(e.target)&&e.target!==n.id)extended.add(e.target);
+  if(near.has(e.target)&&!near.has(e.source)&&e.source!==n.id)extended.add(e.source);
+ }
+ const entry=NOTES.has(n.id)?button('在知识工作区打开',actionPage('notes',n.id),'notes','primary act'):TASKS.has(n.id)?button('查看任务','data-task="'+n.id+'"','tasks','primary act'):MATERIALS.has(n.id)?button('查看材料记录','data-material="'+n.id+'"','materials','primary act'):PROJECT.has(n.id)?button('打开项目',actionPage('project',n.id),'projects','primary act'):'';
+ const directList=direct.map(e=>{
+  const other=NODE.get(e.source===n.id?e.target:e.source);
+  return '<button class="neighbor" data-pick="'+other.id+'" title="'+esc(NODE.get(e.source).label+' '+e.relation+' '+NODE.get(e.target).label)+'"><span>'+dot(TYPES[other.type][1])+esc(other.label)+'</span><span class="rel">'+(e.source===n.id?'出 · ':'入 · ')+esc(e.relation)+'</span></button>';
+ }).join('');
+ target.innerHTML='<div class="inspect-title"><div class="row">'+icon('target')+'节点详情</div>'+ibtn('清除选择','data-clear-node','close')+'</div><div class="inspect-body"><div class="row"><span class="pill">'+dot(TYPES[n.type][1])+TYPES[n.type][0]+'</span>'+pill(projectName(n.project))+'</div><h2>'+esc(n.label)+'</h2><p>'+esc(n.summary)+'</p>'+entry+
+ '<div class="inspect-section"><strong>直接关系</strong>'+pill(direct.length+' 条')+'</div>'+
+ '<button class="btn ghost act" data-hops '+(extended.size?'':'disabled')+'>'+ (g.hops===1?'展开二阶邻域':'收起二阶邻域')+(extended.size?' · '+extended.size+' 节点':'')+'</button>'+
+ (directList||'<div class="blank small">当前筛选内没有直接关系</div>')+
+ (g.hops===2&&extended.size?'<div class="inspect-section"><strong>二阶邻居</strong>'+pill(extended.size+' 节点')+'</div>'+[...extended].map(id=>'<button class="neighbor" data-pick="'+id+'"><span>'+dot(TYPES[NODE.get(id).type][1])+esc(NODE.get(id).label)+'</span></button>').join(''):'')+'</div>';
+}
+function showInGraph(id){
+ if(!NODE.has(id))return;
+ Object.assign(state.graph,{selected:id,query:'',type:'',project:'',relation:'',hops:1});
+ go('graph');
+}
+function filesTree(query=''){
+ const groups=new Map();
+ for(const n of DATA.notes){
+  if(query&&!n.title.toLowerCase().includes(query.trim().toLowerCase()))continue;
+  if(!groups.has(n.folder))groups.set(n.folder,[]);
+  groups.get(n.folder).push(n);
+ }
+ return [...groups].map(([folder,notes])=>'<details '+(query||notes.some(n=>n.id===state.noteId)?'open':'')+'><summary>'+esc(folder)+'</summary>'+
+  notes.map(n=>'<button class="file '+(n.id===state.noteId?'active':'')+'" title="'+esc(n.title)+'.md" '+actionPage('notes',n.id)+'>'+icon('notes')+'<span>'+esc(n.title)+'.md</span></button>').join('')+'</details>').join('')||'<div class="blank">找不到笔记</div>';
+}
+function notesPage(){
+ const n=NOTES.get(state.noteId),view=state.notesView;
+ return head('KNOWLEDGE STUDIO','知识工作区','在同一处查阅、编辑并关联示例 Markdown 笔记。',reviewBack()+button('查看笔记图谱','data-locate="'+n.id+'"','graph'))+
+ '<section class="card workspace"><aside class="files" aria-label="文件树"><div class="inspect-title"><div class="row">'+icon('projects')+'笔记目录</div></div><div class="file-filter">'+input('查找笔记','id="file-search"')+'</div><div class="tree" id="file-tree">'+filesTree()+'</div></aside>'+
+ '<div class="studio"><div class="editor-bar"><div class="row"><strong>'+esc(n.title)+'.md</strong><span class="muted small" id="save-state"></span></div><div class="row"><div class="seg">'+['编辑','分栏','阅读'].map(v=>'<button class="'+(view===v?'active':'')+'" aria-pressed="'+(view===v)+'" data-note-view="'+v+'">'+v+'</button>').join('')+'</div>'+button('保存','id="save-note" data-save','save','primary')+'</div></div>'+
+ '<div class="edit-grid '+(view==='分栏'?'':'single')+'">'+
+ (view!=='阅读'?'<div class="source"><div class="pane-label">MARKDOWN 源文</div><textarea id="markdown-source" aria-label="Markdown 源文" spellcheck="false">'+esc(noteText(n.id))+'</textarea></div>':'')+
+ (view!=='编辑'?'<div class="preview"><div class="pane-label">阅读预览</div><article class="rendered" id="markdown-preview"></article></div>':'')+
+ '</div></div><aside class="properties" aria-label="笔记属性和链接"><div class="inspect-title"><div class="row">'+icon('notes')+'YAML 属性</div></div><div id="note-props"></div></aside></section>';
+}
+marked.use({
+ renderer:{html(){return ''},image(token){return esc(token.text||'图片引用')}},
+ extensions:[{
+  name:'wikilink',level:'inline',
+  start(src){return src.indexOf('[[')},
+  tokenizer(src){const m=src.match(/^\[\[([^\]\n]+)\]\]/);if(m)return {type:'wikilink',raw:m[0],target:m[1]}},
+  renderer(token){
+   const candidate=resolveLink(token.target),label=token.target.split('|').at(-1);
+   return candidate?'<button class="wikilink textbtn" title="打开笔记" '+actionPage('notes',candidate.id)+'>'+esc(label)+'</button>':'<span class="unresolved" title="演示库中没有此笔记">'+esc(token.raw)+'</span>';
+  }
+ }]
+});
+function refreshNote(){
+ const n=NOTES.get(state.noteId),content=noteText(n.id),parts=splitMd(content);
+ const markedPreview=$('#markdown-preview');
+ if(markedPreview)markedPreview.innerHTML=DOMPurify.sanitize(marked.parse(parts.body,{gfm:true}),{FORBID_TAGS:['img','iframe','form'],FORBID_ATTR:['href','src','srcset']});
+ const props=frontProps(parts.yaml);
+ const backlinks=DATA.notes.filter(m=>m.id!==n.id&&writtenLinks(noteText(m.id)).includes(n.id));
+ const outgoing=writtenLinks(content).map(id=>NOTES.get(id)).filter(Boolean);
+ const noteList=items=>items.map(m=>'<button class="neighbor" '+actionPage('notes',m.id)+'><span>'+icon('notes')+esc(m.title)+'</span></button>').join('')||'<small>暂无链接</small>';
+ $('#note-props').innerHTML='<div class="prop-list">'+(props.map(([key,value])=>'<div class="prop-row"><span class="muted">'+esc(key)+'</span><span>'+esc(value)+'</span></div>').join('')||'<span class="small muted">暂无可显示的属性</span>')+'</div>'+
+ '<div class="prop-section"><h3>反向链接 · '+backlinks.length+'</h3>'+noteList(backlinks)+'</div><div class="prop-section"><h3>出链 · '+outgoing.length+'</h3>'+noteList(outgoing)+'</div>';
+ const unsaved=content!==savedText(n.id);
+ $('#save-note').disabled=!unsaved;
+ $('#save-state').textContent=unsaved?'未保存':state.saved[n.id]!==undefined?'已保存':'示例笔记';
+}
+function saveNote(){
+ if(noteText(state.noteId)===savedText(state.noteId))return;
+ state.saved[state.noteId]=noteText(state.noteId);delete state.draft[state.noteId];
+ const success=persist();
+ refreshNote();toast(success?'已保存到此浏览器的演示数据':'已保存到本次会话，浏览器存储不可用');
+}
+function searchAll(){
+ const q=$('#command-input').value.trim().toLowerCase();
+ const terms=DATA.nodes.filter(n=>!q?n.type==='project'||NOTES.has(n.id):[n.label,n.summary,n.id].some(x=>String(x).toLowerCase().includes(q))||(NOTES.has(n.id)&&savedText(n.id).toLowerCase().includes(q))).slice(0,10);
+ $('#command-results').innerHTML=terms.length?terms.map(n=>{
+  const attrs=NOTES.has(n.id)?actionPage('notes',n.id):PROJECT.has(n.id)?actionPage('project',n.id):TASKS.has(n.id)?'data-task="'+n.id+'"':MATERIALS.has(n.id)?'data-material="'+n.id+'"':'data-locate="'+n.id+'"';
+  return '<button class="list-row" '+attrs+'><span class="icon-box">'+dot(TYPES[n.type][1])+'</span><div><strong>'+esc(n.label)+'</strong><small>'+TYPES[n.type][0]+' · '+esc(projectName(n.project))+'</small></div>'+icon('chevron')+'</button>';
+ }).join(''):'<div class="blank">找不到匹配的演示记录</div>';
+}
+function command(){
+ dialog('搜索演示工作区',input('搜索项目、笔记、任务或材料','id="command-input" autocomplete="off"')+'<div id="command-results" class="list" style="margin-top:8px"></div>');
+ searchAll();$('#command-input').focus();
+}
+document.addEventListener('click',e=>{
+ const b=e.target.closest('button');
+ if(!b)return;
+ const d=b.dataset;
+ if(d.reviewFrom&&state.review?.task!==d.reviewFrom){
+  state.review={task:d.reviewFrom,route:state.route,id:state.id,tab:state.tab};
+ }
+ if(d.reviewBack!==undefined){
+  const origin=state.review;
+  if(!origin)return;
+  state.review=null;
+  $('#dialog').close();
+  go(origin.route,origin.id,origin.tab);
+  showTask(origin.task);
+  return;
+ }
+ if(d.route){
+  if(b.closest('.side nav'))state.review=null;
+  if($('#dialog').open)$('#dialog').close();
+  if(d.route==='graph')Object.assign(state.graph,{selected:null,type:'',project:'',relation:'',query:'',hops:1});
+  go(d.route,d.id||'');return;
+ }
+ if(d.close!==undefined){$('#dialog').close();return}
+ if(d.command!==undefined){command();return}
+ if(d.task){showTask(d.task);return}
+ if(d.material){showMaterial(d.material);return}
+ if(d.tab){state.tab=d.tab;render();return}
+ if(d.activityView){state.activity.view=d.activityView;render();return}
+ if(d.projectGraph||d.cluster){
+  Object.assign(state.graph,{project:d.projectGraph||d.cluster,type:'',relation:'',selected:d.projectGraph||d.cluster,query:'',hops:1});
+  go('graph');return;
+ }
+ if(d.locate){if($('#dialog').open)$('#dialog').close();showInGraph(d.locate);return}
+ if(d.pick){
+  $('#graph-suggest').hidden=true;
+  selectNode(d.pick);return;
+ }
+ if(d.clearNode!==undefined){selectNode(null,false);return}
+ if(d.hops!==undefined){state.graph.hops=state.graph.hops===1?2:1;graphSession.draw();refreshInspector();return}
+ if(d.zoom){if(d.zoom==='fit')graphSession.fit();else graphSession.zoom(d.zoom==='in'?1.24:1/1.24);return}
+ if(d.resetGraph!==undefined){
+  Object.assign(state.graph,{project:'',type:'',relation:'',selected:null,query:'',hops:1});render();return;
+ }
+ if(d.legend){
+  state.graph.type=state.graph.type===d.legend?'':d.legend;
+  $('[data-graph-filter="type"]').value=state.graph.type;mountGraph();return;
+ }
+ if(d.noteView){state.notesView=d.noteView;render();return}
+ if(d.save!==undefined)saveNote();
+});
+document.addEventListener('change',e=>{
+ const el=e.target,d=el.dataset;
+ if(el.id==='palette'){
+  theme=el.value;
+  document.documentElement.dataset.theme=theme;
+  try{localStorage.setItem(STORE+'-theme',theme)}catch{}
+  (graphSession||paletteCanvas)?.draw();
+  return;
+ }
+ if(d.graphFilter){state.graph[d.graphFilter]=el.value;mountGraph();$('#graph-suggest').hidden=true;return}
+ if(d.materialFilter){state.materials[d.materialFilter]=el.value;refreshMaterials();return}
+ if(d.activityFilter){state.activity[d.activityFilter]=el.value;refreshActivity();return}
+ if(d.taskState){
+  state.taskStatus[d.taskState]=el.value;
+  const success=persist();render();showTask(d.taskState);
+  toast(success?'已更新演示任务状态':'状态已更新，保存范围为本次会话');
+ }
+});
+document.addEventListener('input',e=>{
+ const el=e.target;
+ if(el.id==='graph-search'){state.graph.query=el.value;graphSuggest()}
+ if(el.id==='markdown-source'){state.draft[state.noteId]=el.value;refreshNote()}
+ if(el.id==='file-search')$('#file-tree').innerHTML=filesTree(el.value);
+ if(el.id==='material-search'){state.materials.query=el.value;refreshMaterials()}
+ if(el.id==='command-input')searchAll();
+});
+document.addEventListener('pointerdown',e=>{
+ if(!e.target.closest('.input-wrap')&&$('#graph-suggest'))$('#graph-suggest').hidden=true;
+});
+document.addEventListener('keydown',e=>{
+ const mod=e.ctrlKey||e.metaKey;
+ if(mod&&e.key.toLowerCase()==='k'){e.preventDefault();command()}
+ if(mod&&e.key.toLowerCase()==='s'&&state.route==='notes'){e.preventDefault();saveNote()}
+ if(e.target.id==='graph-search'){
+  if(e.key==='Escape')$('#graph-suggest').hidden=true;
+  if(e.key==='Enter'){
+   const top=graphChoices()[0];
+   if(top){e.preventDefault();$('#graph-suggest').hidden=true;selectNode(top.id)}
+  }
+ }
+ if(e.target.id==='command-input'&&e.key==='Enter'){e.preventDefault();$('#command-results button')?.click()}
+});
+window.addEventListener('popstate',()=>routeTo(location.hash));
+routeTo(location.hash);
+
+</script>
+</body>
+</html>

@@ -114,4 +114,15 @@ function inject(data) {
   return data;
 }
 
-module.exports = { read, write, info, split, inject, file };
+/* RPM 适配配置（非密钥）。未配置时返回空串，由适配层回退到可覆盖的本机默认路径。 */
+function rpmConfig() {
+  const d = read();
+  return {
+    pythonPath: d.pythonPath || d.rpmPythonPath || '',
+    scriptPath: d.rpmScriptPath || '',
+    settingsPath: d.rpmSettingsPath || '',
+    timeoutMs: Number(d.rpmTimeoutMs || 0) || 0
+  };
+}
+
+module.exports = { read, write, info, split, inject, file, rpmConfig };

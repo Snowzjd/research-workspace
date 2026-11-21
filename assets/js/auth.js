@@ -156,6 +156,7 @@ function authMaskNeeded() {
   const st = authSt();
   if (!st.status) return false;
   if (st.status.locked) return true;        /* 有密码，等解锁 */
+  if (window.FullWorkspace?.enabled) return false;
   if (!st.status.hasAccount) return true;   /* 还没注册 */
   if (st.step === 'bind') return true;      /* 刚注册完：继续走绑定云端这一步 */
   return false;

@@ -4,10 +4,12 @@
    - 数据持久化 / 本地文件与文件夹打开 / 工程软件进程管理
    - `--smoke` 无头自检模式：验证渲染层在真实 Electron 环境可加载
    ========================================================================== */
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, clipboard } = require('electron');
 const { spawn, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { fileURLToPath } = require('node:url');
+const full = require('./full-product');
 const store = require('./store');
 const backup = require('./backup');
 const device = require('./device');
@@ -34,6 +36,23 @@ process.on('uncaughtException', err => {
 });
 
 const ROOT = path.join(__dirname, '..');
+const packagedConfig = require(path.join(ROOT, 'package.json'));
+const fullCandidate = packagedConfig.fullCandidate === true ||
+  [ROOT, path.dirname(process.execPath)].some(dir => fs.existsSync(path.join(dir, full.MARKER)));
+if (fullCandidate) {
+  try {
+    const daily = path.join(app.getPath('appData'), '个人科研工作台');
+    app.setPath('userData', full.isolatedDirectory(process.execPath, ROOT, daily));
+    if (process.argv.slice(1).some(arg => /^--(?:data-dir|api-port|user-data-dir|demo|shot|fresh|sync|handoff|account|update|github|nutstore|probe|dev|smoke|no-sandbox)(?:$|[-=])/.test(arg))) {
+      throw new Error('This candidate does not accept data, port, probe or security overrides');
+    }
+    apiServer.setChat(() => ({ ok: false, error: '候选版仅启用本机检索' }));
+    if (!app.requestSingleInstanceLock()) process.exit(0);
+  } catch (error) {
+    process.stderr.write('Candidate startup declined: ' + error.message + '\n');
+    process.exit(1);
+  }
+}
 const ICON_PATH = path.join(ROOT, 'icon.ico');
 const isDev = process.argv.includes('--dev');
 const isSmoke = process.argv.includes('--smoke');
@@ -95,6 +114,13 @@ if (process.argv.includes('--shot')) {
     : path.join(require('os').tmpdir(), 'rw-shot-' + Date.now()));
 }
 const isShot = process.argv.includes('--shot');
+const isShotStage3 = process.argv.includes('--shot-stage3');
+const isShotStage4 = process.argv.includes('--shot-stage4');
+const isShotDemo = process.argv.includes('--shot-demo');
+const isDemoCli = process.argv.includes('--demo') || isShotDemo || process.env.RESEARCH_WORKSPACE_DEMO === '1';
+const DEMO_API_PORT = 17323;
+const demoMarkerPath = path.join(path.dirname(process.execPath), 'DEMO-PORTABLE.txt');
+let isDemoPortable = !fullCandidate && (isDemoCli || fs.existsSync(demoMarkerPath));
 if (isSyncProbe) {
   app.setPath('userData', path.join(require('os').tmpdir(), 'rw-sync-' + Date.now()));
 }
@@ -104,6 +130,41 @@ let previewDir = '';
 if (isFreshPreview) {
   previewDir = path.join(require('os').tmpdir(), 'rw-preview-' + Date.now());
   app.setPath('userData', previewDir);
+}
+/* 独立测试实例也可指定 userData，不必搭配 --shot */
+const dataDirIdx = process.argv.indexOf('--data-dir');
+if (!fullCandidate && dataDirIdx > 0 && process.argv[dataDirIdx + 1] && !isFreshPreview) {
+  app.setPath('userData', path.resolve(process.argv[dataDirIdx + 1]));
+} else if (!fullCandidate && !isFreshPreview) {
+  /* 候选便携包标记：默认使用 exe 旁的 candidate-user-data，避免误写入日常 AppData。--data-dir 仍优先。 */
+  const marker = path.join(path.dirname(process.execPath), 'CANDIDATE-PORTABLE.txt');
+  const demoMarker = path.join(path.dirname(process.execPath), 'DEMO-PORTABLE.txt');
+  if (fs.existsSync(marker)) {
+    const cand = path.join(path.dirname(process.execPath), 'candidate-user-data');
+    fs.mkdirSync(cand, { recursive: true });
+    app.setPath('userData', cand);
+  } else if (fs.existsSync(demoMarker) || isDemoCli) {
+    /* 演示数据便携包：默认使用 exe 旁的 demo-user-data，避免误写入日常 AppData。--data-dir 仍优先。 */
+    isDemoPortable = true;
+    const packaged = (typeof app.isPackaged === 'boolean' && app.isPackaged) || fs.existsSync(demoMarker);
+    const demoDir = packaged
+      ? path.join(path.dirname(process.execPath), 'demo-user-data')
+      : path.join(require('os').tmpdir(), 'rw-demo-' + Date.now());
+    fs.mkdirSync(demoDir, { recursive: true });
+    app.setPath('userData', demoDir);
+  }
+}
+function requestedApiPort() {
+  if (fullCandidate) return full.PORT;
+  const i = process.argv.indexOf('--api-port');
+  if (i > 0 && process.argv[i + 1] && /^\d+$/.test(process.argv[i + 1])) {
+    return Number(process.argv[i + 1]);
+  }
+  if (process.env.RW_API_PORT && /^\d+$/.test(process.env.RW_API_PORT)) {
+    return Number(process.env.RW_API_PORT);
+  }
+  if (isDemoPortable) return DEMO_API_PORT;
+  return apiServer.DEFAULT_PORT;
 }
 
 /* ---------- 启动日志：桌面应用没有控制台，出问题只能靠落盘日志 ---------- */
@@ -141,8 +202,8 @@ function createWindow(opts = {}) {
     height: 940,
     minWidth: 1160,
     minHeight: 700,
-    backgroundColor: '#F4F4F7',
-    title: opts.title || '个人 AI 科研工程工作台',
+    backgroundColor: isDemoPortable || fullCandidate ? '#FFF9F5' : '#F4F4F7',
+    title: opts.title || (fullCandidate ? '个人科研工程工作台' : isDemoPortable ? '科研工程工作台 · 演示数据' : '个人 AI 科研工程工作台'),
     show: false,
     autoHideMenuBar: true,
     ...(fs.existsSync(ICON_PATH) ? { icon: ICON_PATH } : {}),
@@ -150,16 +211,30 @@ function createWindow(opts = {}) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: fullCandidate,
+      additionalArguments: fullCandidate ? ['--rw-full-bridge', '--rw-full-version=' + app.getVersion()] : [],
       spellcheck: false,
       /* 内置浏览器用 <webview> 渲染真实网页 */
-      webviewTag: true
+      webviewTag: !fullCandidate
     }
   });
 
-  win.loadFile(path.join(ROOT, 'index.html'), opts.query ? { query: opts.query } : undefined)
-    .then(() => logBoot('loadFile 已返回'))
-    .catch(err => logBoot('loadFile 失败: ' + ((err && err.message) || err)));
+  let pageLoaded = false;
+  let paintReady = false;
+  let startupFailed = false;
+  const showWindow = () => {
+    if (startupFailed || win.isDestroyed() || win.isVisible()) return;
+    win.show();
+    logBoot(`show() 已调用, isVisible=${win.isVisible()}, isMinimized=${win.isMinimized()}`);
+  };
+  const failStartup = detail => {
+    if (startupFailed) return;
+    startupFailed = true;
+    logBoot('Candidate startup failed: ' + detail);
+    apiServer.setWindow(null);
+    stopDesktopServices();
+    app.exit(1);
+  };
 
   /* 主路径：内容就绪后再显示，避免白屏 */
   /* 页面 <title> 会覆盖窗口标题，预览窗口需要固定住 */
@@ -169,36 +244,56 @@ function createWindow(opts = {}) {
 
   win.once('ready-to-show', () => {
     logBoot('ready-to-show 触发');
-    win.show();
-    logBoot(`show() 已调用, isVisible=${win.isVisible()}, isMinimized=${win.isMinimized()}`);
+    paintReady = true;
+    if (!fullCandidate || pageLoaded) showWindow();
   });
 
   /* 兜底：个别环境下 ready-to-show 可能不触发，加载完成即显示 */
   win.webContents.once('did-finish-load', () => {
+    if (startupFailed) return;
+    pageLoaded = true;
     logBoot(`did-finish-load, isVisible=${win.isVisible()}`);
-    if (!win.isVisible()) {
-      setTimeout(() => {
-        if (!win.isDestroyed() && !win.isVisible()) { win.show(); logBoot('兜底 show() 已调用'); }
-      }, 800);
-    }
+    if (fullCandidate) apiServer.setWindow(win);
+    if (paintReady) showWindow();
+    else if (!win.isVisible()) setTimeout(showWindow, 800);
   });
 
-  win.webContents.on('did-fail-load', (_e, code, desc, url) =>
-    logBoot(`did-fail-load: ${code} ${desc} ${url}`));
-  win.webContents.on('render-process-gone', (_e, d) =>
-    logBoot('render-process-gone: ' + JSON.stringify(d)));
+  win.webContents.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
+    logBoot(`did-fail-load: ${code} ${desc} ${url}`);
+    if (fullCandidate && !pageLoaded && isMainFrame && code !== -3) failStartup('main page load error ' + code);
+  });
+  if (fullCandidate) {
+    win.webContents.on('preload-error', () => failStartup('sandboxed preload failed'));
+  }
+  win.webContents.on('render-process-gone', (_e, d) => {
+    logBoot('render-process-gone: ' + JSON.stringify(d));
+    if (fullCandidate && d.reason === 'launch-failed') {
+      if (process.platform === 'win32' && d.exitCode === 49) {
+        logBoot('Chromium Windows sandbox could not create a restricted renderer token.');
+      }
+      failStartup('renderer launch error ' + d.exitCode);
+    }
+  });
   win.on('unresponsive', () => logBoot('窗口无响应'));
   win.on('closed', () => logBoot('窗口已关闭'));
 
   if (isDev) win.webContents.openDevTools({ mode: 'detach' });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (!fullCandidate) shell.openExternal(url);
     return { action: 'deny' };
   });
+  if (fullCandidate) win.webContents.on('will-navigate', event => event.preventDefault());
 
   /* 窗口重建后让 API 服务指向新窗口（外接 Agent 调用始终打到活跃窗口） */
-  apiServer.setWindow(win);
+  if (!fullCandidate) apiServer.setWindow(win);
+
+  win.loadFile(path.join(ROOT, isDemoPortable ? 'demo.html' : 'index.html'), opts.query ? { query: opts.query } : undefined)
+    .then(() => logBoot('loadFile 已返回'))
+    .catch(err => {
+      logBoot('loadFile 失败: ' + ((err && err.message) || err));
+      if (fullCandidate && !pageLoaded) failStartup('initial page could not be loaded');
+    });
 
   return win;
 }
@@ -247,16 +342,29 @@ app.whenReady().then(async () => {
      自检模式同样启动 —— 这样自检能顺带验证「外部接入通道」本身是否可用。 */
   const started = await apiServer.start({
     userDataDir: app.getPath('userData'),
+    port: requestedApiPort(),
+    strictPort: fullCandidate,
+    version: fullCandidate ? app.getVersion() : '',
+    searchKnowledge: fullCandidate ? () => ({ ok: false, code: 'deferred', error: 'RAG full-text search is deferred in this candidate.' }) : undefined,
     log: m => logBoot('[api] ' + m)
   });
   logBoot(started.ok ? `本地 API 就绪 http://127.0.0.1:${started.port}` : '本地 API 启动失败: ' + started.error);
+  if (isDemoPortable) {
+    logBoot('演示数据运行时：跳过 RPM 适配绑定，不初始化真实项目或知识网络接口');
+  } else {
+    try { bindRpmAdapter(); } catch (err) {
+      logBoot('RPM 只读适配层绑定失败: ' + String((err && err.message) || err));
+    }
+  }
 
   /* 有本机密码就先锁上：窗口起来后由渲染层显示解锁页 */
-  try {
-    const lk = account.bootLock();
-    logBoot(lk.locked ? '本机已锁定，等待解锁' : '本机未设密码，直接进入');
-  } catch (err) {
-    logBoot('启动锁定失败: ' + String((err && err.message) || err));
+  if (!fullCandidate) {
+    try {
+      const lk = account.bootLock();
+      logBoot(lk.locked ? '本机已锁定，等待解锁' : '本机未设密码，直接进入');
+    } catch (err) {
+      logBoot('启动锁定失败: ' + String((err && err.message) || err));
+    }
   }
 
   if (isFreshProbe) {
@@ -272,6 +380,33 @@ app.whenReady().then(async () => {
   if (isHandoffProbe) {
     const r = await require('./handoff-probe').run({ outPath: path.join(__dirname, 'probe-handoff-result.json') });
     app.exit(r.ok ? 0 : 1);
+    return;
+  }
+  if (isShotStage3) {
+    const outIdx = process.argv.indexOf('--shot-out');
+    const outDir = (outIdx > 0 && process.argv[outIdx + 1])
+      ? path.resolve(process.argv[outIdx + 1])
+      : path.join(ROOT, '.preview', 'stage3');
+    const r = await require('./shot-stage3').run({ ROOT, outDir });
+    app.exit(r && r.ok ? 0 : 1);
+    return;
+  }
+  if (isShotStage4) {
+    const outIdx = process.argv.indexOf('--shot-out');
+    const outDir = (outIdx > 0 && process.argv[outIdx + 1])
+      ? path.resolve(process.argv[outIdx + 1])
+      : path.join(ROOT, '.preview', 'stage4');
+    const r = await require('./shot-stage4').run({ ROOT, outDir });
+    app.exit(r && r.ok ? 0 : 1);
+    return;
+  }
+  if (isShotDemo) {
+    const outIdx = process.argv.indexOf('--shot-out');
+    const outDir = (outIdx > 0 && process.argv[outIdx + 1])
+      ? path.resolve(process.argv[outIdx + 1])
+      : path.join(ROOT, '.preview', 'proto-demo');
+    const r = await require('./shot-demo').run({ ROOT, outDir });
+    app.exit(r && r.ok ? 0 : 1);
     return;
   }
   if (isShot) {
@@ -335,7 +470,7 @@ app.whenReady().then(async () => {
   if (isSmoke) { await runSmoke(); return; }
 
   const win = createWindow();
-  apiServer.setWindow(win);
+  if (fullCandidate) initializeFullProduct(win, started.ok);
 
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
@@ -345,7 +480,313 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => { stopAll(); apiServer.stop(); });
+function stopDesktopServices() {
+  fullServices?.markdown.close();
+  fullServices?.codex.close();
+  stopAll();
+  apiServer.stop();
+}
+
+app.on('before-quit', stopDesktopServices);
+
+
+function parseWorkspaceData() {
+  if (fullCandidate) return readCanonicalWorkspace();
+  try {
+    const raw = store.readData();
+    if (!raw) return {};
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch (_) {
+    return {};
+  }
+}
+
+let fullServices;
+let fullWindow;
+const fullChannels = new Set([
+  'data:load', 'data:save', 'data:path', 'account:status', 'account:unlock',
+  'backup:info', 'backup:auto', 'backup:now', 'device:info',
+  'rpm:projectRoot', 'rpm:files', 'rpm:relations', 'rpm:rpm-audit',
+  'rpm:knowledgeSnapshot', 'rpm:knowledgeResolve', 'rpm:knowledgeOpenFile',
+  'full:status', 'full:vault:status', 'full:vault:choose', 'full:search', 'full:openMaterial', 'full:import', 'full:rpmProjects', 'full:rpmBinding',
+  'full:markdown:list', 'full:markdown:read', 'full:markdown:save', 'full:markdown:versions',
+  'full:markdown:restore', 'full:markdown:watch', 'full:markdown:unwatch',
+  'full:codex:capabilities', 'full:codex:pending', 'full:codex:discover', 'full:codex:bind', 'full:codex:list',
+  'full:codex:refresh', 'full:codex:handoff'
+]);
+
+function registerIpc(channel, handler) {
+  if (!fullCandidate) {
+    ipcMain.handle(channel, handler);
+    return;
+  }
+  if (!fullChannels.has(channel)) return;
+  ipcMain.handle(channel, (event, ...args) => {
+    const frame = event.senderFrame;
+    if (!fullWindow || event.sender !== fullWindow.webContents || frame !== event.sender.mainFrame ||
+        !frame.url.startsWith('file:') || !full.samePath(fileURLToPath(frame.url), path.join(ROOT, 'index.html'))) {
+      return { ok: false, code: 'untrusted_frame', error: '请求来源无效' };
+    }
+    return handler(event, ...args);
+  });
+}
+
+async function registeredProjectRoot(projectId) {
+  const ctx = rpmContext();
+  const project = ctx.listWorkbenchProjects().find(row => row.id === projectId);
+  if (!project) return null;
+  const { resolved, listed } = await require('./rpm-http').resolveForProject(ctx, project);
+  const registeredRoot = listed.ok && listed.data[resolved.rpmProjectId];
+  if (!resolved.ok || !resolved.rpmBound || !registeredRoot || !full.samePath(registeredRoot, resolved.resolvedRoot)) return null;
+  return {
+    root: resolved.resolvedRoot,
+    rpmProjectId: resolved.rpmProjectId,
+    registeredRoots: Object.values(listed.data).filter(value => typeof value === 'string' && path.isAbsolute(value)),
+    metadataOnly: full.metadataOnly(resolved.rpmProjectId, resolved.resolvedRoot)
+  };
+}
+
+async function codexReferences(project) {
+  const result = await require('./rpm-knowledge').querySnapshot(rpmContext().getConfig(), { projectId: project.rpmProjectId });
+  if (!result.ok) return null;
+  const ids = new Set();
+  for (const record of [...(result.files || []), ...(result.nodes || [])]) {
+    const scoped = record.project_id === project.rpmProjectId || record.project_ids?.includes(project.rpmProjectId);
+    if (!scoped) continue;
+    if (record.id) ids.add(record.id);
+    if (record.file_id) ids.add(record.file_id);
+  }
+  return ids;
+}
+
+async function codexProjectRoot(projectId) {
+  const project = await registeredProjectRoot(projectId);
+  if (!project || project.metadataOnly) return null;
+  const inspected = require('./project-root').inspectPath(project.root);
+  if (!inspected.exists || inspected.hasReparseInPath || !full.samePath(inspected.realPath, project.root)) return null;
+  return project;
+}
+
+function validatedVaultDirectory(folder) {
+  if (typeof folder !== 'string' || !path.isAbsolute(folder) || folder.startsWith('\\') ||
+      full.samePath(folder, path.parse(folder).root) || full.metadataOnly('', folder)) return '';
+  const checked = require('./project-root').inspectPath(folder);
+  try {
+    return checked.exists && !checked.hasReparseInPath && full.samePath(folder, checked.realPath) &&
+      fs.statSync(checked.realPath).isDirectory() ? checked.realPath : '';
+  } catch (_) { return ''; }
+}
+
+function configuredVault(userData) {
+  if (process.env.RW_VAULT_ROOT) return validatedVaultDirectory(process.env.RW_VAULT_ROOT);
+  try {
+    const file = path.join(userData, 'vault-config.json');
+    const info = fs.lstatSync(file);
+    if (!info.isFile() || info.nlink !== 1 || info.size > 16384 || !full.samePath(file, fs.realpathSync.native(file))) return '';
+    return validatedVaultDirectory(JSON.parse(fs.readFileSync(file, 'utf8')).vaultRoot);
+  } catch (_) { return ''; }
+}
+
+function initializeFullProduct(win, apiReady) {
+  fullWindow = win;
+  const { createMarkdownService } = require('./full-markdown');
+  const { createSearch } = require('./full-search');
+  const userData = app.getPath('userData');
+  const notify = (channel, data) => { if (!win.isDestroyed()) win.webContents.send(channel, data); };
+  const vaultRoot = configuredVault(userData);
+  const markdown = createMarkdownService({
+    vaultRoot,
+    backupDir: path.join(userData, 'markdown-versions'),
+    resolveProject: registeredProjectRoot,
+    onChange: event => notify('full:markdown:change', event)
+  });
+
+  const search = createSearch({
+    readWorkspace: parseWorkspaceData,
+    searchRpm: (projectId, query) => handleRpmQuery('files', projectId, { query, limit: 15 }),
+    readGraph: () => require('./rpm-knowledge').querySnapshot(rpmContext().getConfig()),
+    listNotes: query => markdown.list(query)
+  });
+  const { createCodexCollaboration } = require('./codex-collaboration');
+  const codex = createCodexCollaboration({
+    file: path.join(userData, 'codex-executions.json'),
+    readWorkspace: readCanonicalWorkspace,
+    resolveProject: codexProjectRoot,
+    onChange: change => notify('full:codex:change', change)
+  });
+  fullServices = { markdown, search, codex, apiReady, vaultRoot };
+
+}
+
+function readCanonicalWorkspace() {
+  try {
+    return JSON.parse(fs.readFileSync(store.dataFile(), 'utf8'));
+  } catch (_) { return {}; }
+}
+
+function saveWorkspaceData(json) {
+  if (!fullCandidate) return store.writeData(json);
+  try {
+    const data = JSON.parse(json);
+    if (!Array.isArray(data.projects) || !Array.isArray(data.tasks)) throw new Error('Invalid workspace');
+    if (fs.existsSync(store.dataFile()) && !Array.isArray(readCanonicalWorkspace().projects)) {
+      return { ok: false, error: '当前工作台数据无法读取，请备份后使用导入恢复' };
+    }
+    full.atomicWrite(store.dataFile(), JSON.stringify(data));
+    return { ok: true };
+  } catch (_) { return { ok: false, error: '工作台数据格式无效' }; }
+}
+
+if (fullCandidate) {
+  const unavailable = { ok: false, code: 'unavailable', error: '工作台连接还未就绪' };
+  registerIpc('full:status', () => ({ ok: true, apiReady: !!fullServices?.apiReady, apiPort: full.PORT, version: full.VERSION }));
+  registerIpc('full:vault:status', () => ({
+    ok: true, bound: Boolean(fullServices?.vaultRoot), launchOverride: Boolean(process.env.RW_VAULT_ROOT)
+  }));
+  registerIpc('full:vault:choose', async () => {
+    if (!fullServices) return unavailable;
+    if (process.env.RW_VAULT_ROOT) return { ok: false, error: '当前启动已指定 Vault 目录' };
+    const selected = await dialog.showOpenDialog(fullWindow, {
+      title: '选择当前候选使用的中央 Markdown Vault', properties: ['openDirectory']
+    });
+    if (selected.canceled) return { ok: false, code: 'cancelled' };
+    const vaultRoot = validatedVaultDirectory(selected.filePaths[0]);
+    if (!vaultRoot) return { ok: false, error: '目录无效、受保护或经过重定向' };
+    try {
+      full.atomicWrite(path.join(app.getPath('userData'), 'vault-config.json'), JSON.stringify({ vaultRoot }));
+      return { ok: true, restartRequired: true };
+    } catch (_) { return { ok: false, error: '无法保存候选 Vault 设置' }; }
+  });
+  async function registeredRpmProjects() {
+    const result = await require('./rpm-adapter').listProjects(rpmContext().getConfig());
+    return result.ok ? { ok: true, projects: result.projects }
+      : { ok: false, code: result.code, error: 'RPM 项目登记表不可用' };
+  }
+  registerIpc('full:rpmProjects', registeredRpmProjects);
+  registerIpc('full:rpmBinding', async (_e, payload) => {
+    const result = await registeredRpmProjects();
+    if (!result.ok) return result;
+    const binding = result.projects.find(row => row.rpmProjectId === payload?.rpmProjectId);
+    if (!binding) return { ok: false, error: '该项目不在 RPM 登记表中' };
+    const valid = require('./project-root').inspectPath(binding.rpmRoot);
+    return valid.exists && !valid.hasReparseInPath && full.samePath(valid.realPath, binding.rpmRoot)
+      ? { ok: true, binding } : { ok: false, error: 'RPM 登记项目的真实根目录不可用' };
+  });
+  for (const method of ['list', 'read', 'save', 'versions', 'restore', 'watch', 'unwatch']) {
+    registerIpc('full:markdown:' + method, (_e, payload) => fullServices?.markdown[method](payload || {}) || unavailable);
+  }
+  registerIpc('full:search', (_e, query) => fullServices?.search.search(query) || unavailable);
+  for (const method of ['capabilities', 'pending', 'discover', 'bind', 'list', 'refresh']) {
+    registerIpc('full:codex:' + method, async (_event, payload) => {
+      try { return await fullServices?.codex[method](payload || {}) || unavailable; }
+      catch (_) { return { ok: false, code: 'codex_unavailable', error: 'Codex 本机连接或执行记录暂不可用' }; }
+    });
+  }
+  registerIpc('full:codex:handoff', async (_event, payload) => {
+    if (!fullServices) return unavailable;
+    try {
+      const draft = await require('./codex-handoff').createHandoff({
+        context: payload, readWorkspace: readCanonicalWorkspace, resolveProject: codexProjectRoot,
+        resolveReferences: codexReferences
+      });
+      if (!draft.ok) return draft;
+      clipboard.writeText(draft.text);
+      return { ok: true, mode: 'copy' };
+    } catch (_) {
+      return { ok: false, code: 'handoff_unavailable', error: '无法核对项目或写入本机剪贴板' };
+    }
+  });
+  registerIpc('full:openMaterial', async (_e, payload) => {
+    const project = await handleRpmQuery('root', payload?.projectId);
+    if (!project.ok || !project.rpmBound || !project.rpmProjectId || !project.resolvedRoot) {
+      return { ok: false, error: '项目尚未绑定 RPM' };
+    }
+    return openFullRpmFile(project.rpmProjectId, payload?.id);
+  });
+  registerIpc('full:import', async () => {
+    const selected = await dialog.showOpenDialog(fullWindow, {
+      title: '选择要复制到候选版的 workspace-data.json', properties: ['openFile'],
+      filters: [{ name: '工作台数据', extensions: ['json'] }]
+    });
+    if (selected.canceled) return { ok: false, code: 'cancelled' };
+    const action = await dialog.showMessageBox(fullWindow, {
+      type: 'warning', buttons: ['取消', '备份并导入'], defaultId: 0, cancelId: 0,
+      message: '将选中的工作台数据复制到候选版？',
+      detail: '导入会替换候选版数据并备份当前候选版。原始文件保持原样。'
+    });
+    if (!action.response) return { ok: false, code: 'cancelled' };
+    try { return full.importWorkspace(selected.filePaths[0], store.dataFile()); }
+    catch (_) { return { ok: false, error: '工作台数据无法读取或备份，导入未完成' }; }
+  });
+}
+
+async function openFullRpmFile(projectId, fileId) {
+  if (full.metadataOnly(projectId)) return { ok: false, error: '此项目仅接入元数据', opened: false };
+  const knowledge = require('./rpm-knowledge');
+  const result = await knowledge.queryResolve(rpmContext().getConfig(), projectId, fileId);
+  if (!result.ok) return { ...result, opened: false };
+  const file = result.file;
+  if (!file?.path || !file.relative_path) return { ok: false, error: '原件无法定位', opened: false };
+  const relative = file.relative_path.split(/[\\/]/);
+  const root = path.resolve(file.path, ...relative.map(() => '..'));
+  const target = full.safeDocument(root, file.relative_path);
+  if (!target || !full.samePath(target, file.path)) return { ok: false, error: '原件路径或格式不可打开', opened: false };
+  const error = await shell.openPath(target);
+  return error ? { ok: false, error: '系统无法打开原件', opened: false } : { ok: true, opened: true };
+}
+
+function rpmContext() {
+  const rpmAdapter = require('./rpm-adapter');
+  return {
+    getConfig() {
+      if (fullCandidate) return {};
+      const fromDevice = device.rpmConfig ? device.rpmConfig() : {};
+      const data = parseWorkspaceData();
+      return rpmAdapter.configFrom(fromDevice, data);
+    },
+    getRootDir() {
+      if (fullCandidate) return '';
+      try { return String((device.read() || {}).rootDir || ''); } catch (_) { return ''; }
+    },
+    getBindings() {
+      const data = parseWorkspaceData();
+      const map = (data.settings && data.settings.rpmBindings) || {};
+      const out = { ...map };
+      (data.projects || []).forEach(p => {
+        if (!p || !p.id) return;
+        if (p.rpmRoot || p.rpmProjectId || p.projectRoot) {
+          out[p.id] = Object.assign({}, out[p.id], {
+            rpmProjectId: p.rpmProjectId || (out[p.id] && out[p.id].rpmProjectId) || '',
+            rpmRoot: p.rpmRoot || p.projectRoot || (out[p.id] && out[p.id].rpmRoot) || ''
+          });
+        }
+      });
+      return out;
+    },
+    listWorkbenchProjects() {
+      const data = parseWorkspaceData();
+      return Array.isArray(data.projects) ? data.projects : [];
+    }
+  };
+}
+
+function bindRpmAdapter() {
+  apiServer.setRpmContext(rpmContext());
+}
+
+async function handleRpmQuery(kind, projectId, opts) {
+  try {
+    const rpmHttp = require('./rpm-http');
+    const ctx = rpmContext();
+    if (kind === 'root') return await rpmHttp.queryRoot(ctx, projectId);
+    if (kind === 'files') return await rpmHttp.queryFiles(ctx, projectId, opts || {});
+    if (kind === 'relations') return await rpmHttp.queryRelations(ctx, projectId);
+    if (kind === 'rpm-audit') return await rpmHttp.queryAudit(ctx, projectId);
+    return { ok: false, error: '未知查询' };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+}
 
 function stopAll() {
   children.forEach(({ child }) => { try { killTree(child.pid); } catch (_) {} });
@@ -364,18 +805,22 @@ function killTree(pid) {
 /* ==========================================================================
    IPC：数据持久化
    ========================================================================== */
-ipcMain.handle('data:load', () => store.readData());
-ipcMain.handle('data:save', (_e, json) => store.writeData(json));
-ipcMain.handle('data:reset', () => store.resetData());
-ipcMain.handle('data:path', () => store.dataFile());
+registerIpc('data:load', () => {
+  if (!fullCandidate) return store.readData();
+  const data = readCanonicalWorkspace();
+  return Array.isArray(data.projects) ? JSON.stringify(data) : null;
+});
+registerIpc('data:save', (_e, json) => saveWorkspaceData(json));
+registerIpc('data:reset', () => store.resetData());
+registerIpc('data:path', () => store.dataFile());
 
 /* ==========================================================================
    IPC：数据备份（真备份 —— 副本落盘，可列历史、可恢复）
    ========================================================================== */
-ipcMain.handle('device:info', () => device.info());
+registerIpc('device:info', () => fullCandidate ? { deviceId: 'full-candidate', deviceName: '便携候选版' } : device.info());
 
 /* 多设备同步：三方合并（纯逻辑，不读写文件） */
-ipcMain.handle('sync:merge', (_e, payload) => {
+registerIpc('sync:merge', (_e, payload) => {
   try { return syncMerge.merge(payload || {}); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
@@ -386,34 +831,36 @@ ipcMain.handle('sync:merge', (_e, payload) => {
    --------------------------------------------------------------------------
    身份存在数据文件里（随同步走），本机密码与云端凭证存在 device.json（不参与同步）。
    ========================================================================== */
-ipcMain.handle('account:status', () => {
+registerIpc('account:status', () => {
+  if (fullCandidate) return { ok: true, registered: false, locked: false };
   try { return account.status(); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('account:providers', () => cloud.catalog());
-ipcMain.handle('account:register', (_e, payload) => {
+registerIpc('account:providers', () => cloud.catalog());
+registerIpc('account:register', (_e, payload) => {
   try { return account.register(payload || {}); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('account:rename', (_e, name) => {
+registerIpc('account:rename', (_e, name) => {
   try { return account.renameAccount(name); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('account:setPass', (_e, p) => {
+registerIpc('account:setPass', (_e, p) => {
   try { return account.setPass(p); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('account:clearPass', () => account.clearPass());
-ipcMain.handle('account:unlock', (_e, p) => {
+registerIpc('account:clearPass', () => account.clearPass());
+registerIpc('account:unlock', (_e, p) => {
+  if (fullCandidate) return { ok: false, error: '便携候选版使用独立本机数据' };
   try { return account.unlock(p); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('account:lock', () => account.lock());
-ipcMain.handle('account:testCloud', async (_e, cfg) => {
+registerIpc('account:lock', () => account.lock());
+registerIpc('account:testCloud', async (_e, cfg) => {
   try { return await account.testCloud(cfg || {}); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('account:bind', async (_e, cfg) => {
+registerIpc('account:bind', async (_e, cfg) => {
   try {
     const r = await account.bind(cfg || {});
     if (r && r.ok) {
@@ -424,14 +871,14 @@ ipcMain.handle('account:bind', async (_e, cfg) => {
     return r;
   } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('account:unbind', () => {
+registerIpc('account:unbind', () => {
   try {
     const r = account.unbind();
     syncCloud.clearBase();
     return r;
   } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('account:resetLocal', () => {
+registerIpc('account:resetLocal', () => {
   try {
     const r = account.resetLocal();
     syncCloud.clearBase();
@@ -455,7 +902,7 @@ function writingRootMissingError(payload) {
     + who
     + '不会猜测盘符，也不会写到别的位置。';
 }
-ipcMain.handle('doc:save-writing', (_e, payload) => {
+registerIpc('doc:save-writing', (_e, payload) => {
   try {
     const root = String(device.info().rootDir || '').trim();
     if (!root) return { ok: false, error: writingRootMissingError(payload), code: 'root_missing' };
@@ -473,15 +920,15 @@ ipcMain.handle('doc:save-writing', (_e, payload) => {
     return { ok: false, error: String((err && err.message) || err) };
   }
 });
-ipcMain.handle('update:info', () => {
+registerIpc('update:info', () => {
   try { return updater.info(); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('update:check', async () => {
+registerIpc('update:check', async () => {
   try { return await updater.check(); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('update:apply', async () => {
+registerIpc('update:apply', async () => {
   try {
     const r = await updater.apply();
     /* bat 在等主进程退出，这里给渲染层一拍时间弹提示再退 */
@@ -489,11 +936,11 @@ ipcMain.handle('update:apply', async () => {
     return r;
   } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('update:setSource', (_e, v) => {
+registerIpc('update:setSource', (_e, v) => {
   try { return updater.setSource(v); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('cloud:probe', async () => {
+registerIpc('cloud:probe', async () => {
   try { return await syncCloud.probeRemote(); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
@@ -501,7 +948,7 @@ ipcMain.handle('cloud:probe', async () => {
 /* ==========================================================================
    IPC：同步入口（绑了云端走云端，否则退回本地目录载体）
    ========================================================================== */
-ipcMain.handle('sync:info', async () => {
+registerIpc('sync:info', async () => {
   try {
     const b = account.currentBinding();
     if (b && b.kind === 'webdav') {
@@ -530,8 +977,8 @@ ipcMain.handle('sync:info', async () => {
     return { ok: false, enabled: false, dir: '', peers: [], error: String((err && err.message) || err) };
   }
 });
-ipcMain.handle('sync:setDir', (_e, dir) => syncCarrier.setDir(dir));
-ipcMain.handle('sync:run', async (_e, opts) => {
+registerIpc('sync:setDir', (_e, dir) => syncCarrier.setDir(dir));
+registerIpc('sync:run', async (_e, opts) => {
   try {
     const b = account.currentBinding();
     if (b) return await syncCloud.run(opts || {});
@@ -546,9 +993,9 @@ ipcMain.handle('sync:run', async (_e, opts) => {
    - 数据包 .json：导到 U 盘或发出去，另一台导入时走同一套三方合并
    - 交接单 .md：给人或给 AI 读的现状摘要，不参与合并
    ========================================================================== */
-ipcMain.handle('handoff:info', () => handoff.info());
+registerIpc('handoff:info', () => handoff.info());
 
-ipcMain.handle('handoff:export', async () => {
+registerIpc('handoff:export', async () => {
   const win = BrowserWindow.getAllWindows()[0];
   if (!win) return { ok: false, error: '没有可用窗口' };
   const r = await dialog.showSaveDialog(win, {
@@ -561,7 +1008,7 @@ ipcMain.handle('handoff:export', async () => {
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
 
-ipcMain.handle('handoff:import', async () => {
+registerIpc('handoff:import', async () => {
   const win = BrowserWindow.getAllWindows()[0];
   if (!win) return { ok: false, error: '没有可用窗口' };
   const r = await dialog.showOpenDialog(win, {
@@ -574,7 +1021,7 @@ ipcMain.handle('handoff:import', async () => {
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
 
-ipcMain.handle('handoff:apply', (_e, opts) => {
+registerIpc('handoff:apply', (_e, opts) => {
   try {
     const o = opts || {};
     if (!o.file) return { ok: false, error: '缺少文件路径' };
@@ -582,7 +1029,7 @@ ipcMain.handle('handoff:apply', (_e, opts) => {
   } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
 
-ipcMain.handle('handoff:doc', async () => {
+registerIpc('handoff:doc', async () => {
   const win = BrowserWindow.getAllWindows()[0];
   if (!win) return { ok: false, error: '没有可用窗口' };
   const r = await dialog.showSaveDialog(win, {
@@ -594,36 +1041,36 @@ ipcMain.handle('handoff:doc', async () => {
   try { return handoff.exportDoc(r.filePath); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });
-ipcMain.handle('backup:info', () => backup.info());
-ipcMain.handle('backup:now', () => backup.create('manual'));
-ipcMain.handle('backup:auto', () => backup.auto());
-ipcMain.handle('backup:restore', (_e, name) => backup.restore(name));
+registerIpc('backup:info', () => backup.info());
+registerIpc('backup:now', () => backup.create('manual'));
+registerIpc('backup:auto', () => backup.auto());
+registerIpc('backup:restore', (_e, name) => backup.restore(name));
 
 /* ==========================================================================
    IPC：本地文件 / 文件夹
    ========================================================================== */
-ipcMain.handle('shell:openPath', async (_e, target) => {
+registerIpc('shell:openPath', async (_e, target) => {
   if (!target) return { ok: false, error: '路径为空' };
   if (!fs.existsSync(target)) return { ok: false, error: `路径不存在：${target}` };
   const err = await shell.openPath(target);
   return err ? { ok: false, error: err } : { ok: true };
 });
 
-ipcMain.handle('shell:showItem', async (_e, target) => {
+registerIpc('shell:showItem', async (_e, target) => {
   if (!target || !fs.existsSync(target)) return { ok: false, error: `路径不存在：${target}` };
   shell.showItemInFolder(target);
   return { ok: true };
 });
 
-ipcMain.handle('fs:exists', async (_e, target) => {
+registerIpc('fs:exists', async (_e, target) => {
   try { return { ok: true, exists: !!target && fs.existsSync(target) }; }
   catch (err) { return { ok: false, error: String(err.message) }; }
 });
 
-ipcMain.handle('fs:ensureStructure', (_e, payload) => store.ensureStructure(payload));
+registerIpc('fs:ensureStructure', (_e, payload) => store.ensureStructure(payload));
 
 /* 删除项目文件夹：走系统回收站，可还原；并加多重防误删护栏 */
-ipcMain.handle('fs:trashPath', async (_e, target) => {
+registerIpc('fs:trashPath', async (_e, target) => {
   try {
     if (!target || typeof target !== 'string') return { ok: false, error: '未指定路径' };
     const abs = path.resolve(target);
@@ -642,7 +1089,7 @@ ipcMain.handle('fs:trashPath', async (_e, target) => {
 });
 
 /* 打开「全新安装预览」窗口：独立进程 + 临时 userData */
-ipcMain.handle('app:previewFresh', async () => {
+registerIpc('app:previewFresh', async () => {
   try {
     const { spawn } = require('child_process');
     const args = app.isPackaged ? ['--fresh-preview'] : [app.getAppPath(), '--fresh-preview'];
@@ -654,7 +1101,7 @@ ipcMain.handle('app:previewFresh', async () => {
   }
 });
 
-ipcMain.handle('dialog:pickDirectory', async () => {
+registerIpc('dialog:pickDirectory', async () => {
   const win = BrowserWindow.getAllWindows()[0];
   if (!win) return null;
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] });
@@ -664,7 +1111,7 @@ ipcMain.handle('dialog:pickDirectory', async () => {
 /* ==========================================================================
    IPC：工程软件进程管理
    ========================================================================== */
-ipcMain.handle('app:launch', async (_e, payload = {}) => {
+registerIpc('app:launch', async (_e, payload = {}) => {
   const { name = '未命名', args = [] } = payload;
   const execPath = expandEnv(payload.execPath);
   const cwdRaw = expandEnv(payload.cwd);
@@ -693,7 +1140,7 @@ ipcMain.handle('app:launch', async (_e, payload = {}) => {
   }
 });
 
-ipcMain.handle('app:stop', async (_e, name) => {
+registerIpc('app:stop', async (_e, name) => {
   const rec = children.get(name);
   if (!rec) return { ok: false, error: '该程序不是由工作台启动的，无法在此结束' };
   try {
@@ -705,11 +1152,11 @@ ipcMain.handle('app:stop', async (_e, name) => {
   }
 });
 
-ipcMain.handle('app:list', async () =>
+registerIpc('app:list', async () =>
   Array.from(children.entries()).map(([name, r]) => ({ name, pid: r.pid, startedAt: r.startedAt })));
 
 /* 模板导入/导出：公开 JSON 格式，便于团队共享项目模板 */
-ipcMain.handle('templates:export', async (_e, payload) => {
+registerIpc('templates:export', async (_e, payload) => {
   try {
     const win = BrowserWindow.getAllWindows()[0];
     const r = await dialog.showSaveDialog(win, {
@@ -725,7 +1172,7 @@ ipcMain.handle('templates:export', async (_e, payload) => {
   }
 });
 
-ipcMain.handle('templates:import', async () => {
+registerIpc('templates:import', async () => {
   try {
     const win = BrowserWindow.getAllWindows()[0];
     const r = await dialog.showOpenDialog(win, {
@@ -742,7 +1189,45 @@ ipcMain.handle('templates:import', async () => {
 });
 
 /* 材料双视图：扫描项目目录的真实磁盘内容（只读一层子目录，避免大目录拖慢） */
-ipcMain.handle('materials:scan', (_e, payload) => {
+registerIpc('rpm:projectRoot', (_e, id) => handleRpmQuery('root', id));
+registerIpc('rpm:files', (_e, id, opts) => handleRpmQuery('files', id, opts));
+registerIpc('rpm:relations', (_e, id) => handleRpmQuery('relations', id));
+registerIpc('rpm:rpm-audit', (_e, id) => handleRpmQuery('rpm-audit', id));
+
+registerIpc('rpm:knowledgeSnapshot', async (_e, opts) => {
+  try {
+    const rpmKnowledge = require('./rpm-knowledge');
+    return await rpmKnowledge.querySnapshot(rpmContext().getConfig(), opts || {});
+  } catch (err) {
+    return { ok: false, schema_version: 1, code: 'read_failed', error: String((err && err.message) || err) };
+  }
+});
+registerIpc('rpm:knowledgeResolve', async (_e, opts) => {
+  try {
+    const rpmKnowledge = require('./rpm-knowledge');
+    const projectId = opts && opts.projectId;
+    const fileId = opts && (opts.fileId || opts.sourceId);
+    return await rpmKnowledge.queryResolve(rpmContext().getConfig(), projectId, fileId);
+  } catch (err) {
+    return { ok: false, schema_version: 1, code: 'read_failed', error: String((err && err.message) || err) };
+  }
+});
+/* 渲染层只能传 project_id + source/file id；忽略任何绝对路径参数。 */
+registerIpc('rpm:knowledgeOpenFile', async (_e, opts) => {
+  try {
+    const rpmKnowledge = require('./rpm-knowledge');
+    const projectId = opts && opts.projectId;
+    const fileId = opts && (opts.fileId || opts.sourceId);
+    if (fullCandidate) return await openFullRpmFile(projectId, fileId);
+    return await rpmKnowledge.openResolvedFile(rpmContext().getConfig(), projectId, fileId);
+  } catch (err) {
+    return { ok: false, schema_version: 1, code: 'read_failed', error: String((err && err.message) || err), opened: false };
+  }
+});
+
+
+
+registerIpc('materials:scan', (_e, payload) => {
   try {
     const root = String(device.info().rootDir || '');
     if (!root) return { ok: false, error: '尚未设置工作区根目录' };
@@ -755,7 +1240,14 @@ ipcMain.handle('materials:scan', (_e, payload) => {
     try {
       if (fs.lstatSync(dir).isSymbolicLink()) linkTarget = fs.realpathSync(dir);
     } catch (_) { linkTarget = ''; }
-    const excludedName = (name) => /曹妃甸|rag[_-]?snowz|RAG引擎|知识库引擎/i.test(String(name || ''));
+    const scanExclude = require('../assets/js/scan-exclude');
+    const settings = (() => {
+      try {
+        const data = parseWorkspaceData();
+        return (data && data.settings) || {};
+      } catch (_) { return {}; }
+    })();
+    const excludedName = (name) => scanExclude.isExcluded(name, settings);
     const out = [];
     const seen = new Set();
     let projectReal = dir;
@@ -825,7 +1317,7 @@ function fmtSize(b) {
 }
 
 /* Sprint B：解析拖入的快捷方式/程序/文件夹（禁止让用户手填路径） */
-ipcMain.handle('app:resolve-dropped', (_e, absPath) => {
+registerIpc('app:resolve-dropped', (_e, absPath) => {
   try {
     const p = String(absPath || '').trim();
     if (!p) return { ok: false, error: '没有拿到文件路径' };
@@ -859,7 +1351,7 @@ ipcMain.handle('app:resolve-dropped', (_e, absPath) => {
   }
 });
 
-ipcMain.handle('dialog:pickExecutable', async () => {
+registerIpc('dialog:pickExecutable', async () => {
   const win = BrowserWindow.getAllWindows()[0];
   if (!win) return null;
   const r = await dialog.showOpenDialog(win, {
@@ -899,7 +1391,7 @@ function expandEnv(p) {
   return s.replace(/%([^%]+)%/g, (_, k) => process.env[k] || process.env[k.toUpperCase()] || '');
 }
 
-ipcMain.handle('launch:pick', async (_e, mode = 'any') => {
+registerIpc('launch:pick', async (_e, mode = 'any') => {
   const win = BrowserWindow.getAllWindows()[0];
   if (!win) return null;
   const FILTERS = {
@@ -915,7 +1407,7 @@ ipcMain.handle('launch:pick', async (_e, mode = 'any') => {
   return r.canceled ? null : r.filePaths[0];
 });
 
-ipcMain.handle('launch:resolve', async (_e, target) => {
+registerIpc('launch:resolve', async (_e, target) => {
   if (!target) return { ok: false, error: '路径为空' };
   if (!fs.existsSync(target)) return { ok: false, error: `路径不存在：${target}` };
 
@@ -970,20 +1462,20 @@ ipcMain.handle('launch:resolve', async (_e, target) => {
 /* ==========================================================================
    IPC：AI 接入
    ========================================================================== */
-ipcMain.handle('ai:providers', () => ai.PROVIDERS);
-ipcMain.handle('ai:keyState', () => ai.keyState());
-ipcMain.handle('ai:setKey', (_e, plain) => ai.saveKey(plain));
-ipcMain.handle('ai:chat', (_e, cfg) => ai.chat(cfg));
-ipcMain.handle('ai:test', (_e, cfg) => ai.test(cfg));
+registerIpc('ai:providers', () => ai.PROVIDERS);
+registerIpc('ai:keyState', () => ai.keyState());
+registerIpc('ai:setKey', (_e, plain) => ai.saveKey(plain));
+registerIpc('ai:chat', (_e, cfg) => ai.chat(cfg));
+registerIpc('ai:test', (_e, cfg) => ai.test(cfg));
 
 /* ==========================================================================
    IPC：外部 RAG 检索
    配置（地址 / 条数 / 开关）由渲染层随请求带上，令牌只在主进程读写，
    这样 rag.js 无需知道数据文件长什么样。
    ========================================================================== */
-ipcMain.handle('rag:state', () => rag.state());
-ipcMain.handle('rag:setToken', (_e, plain) => rag.saveToken(plain));
-ipcMain.handle('rag:health', (_e, cfg = {}) => rag.health(cfg));
+registerIpc('rag:state', () => rag.state());
+registerIpc('rag:setToken', (_e, plain) => rag.saveToken(plain));
+registerIpc('rag:health', (_e, cfg = {}) => rag.health(cfg));
 /* 检索 / 问答失败且服务不在线时，按设置里的启动命令自动拉起，再重发一次（见 kb-service.js） */
 kbService.setHealth(cfg => rag.health(cfg));
 kbService.setNotifier(payload => {
@@ -991,13 +1483,13 @@ kbService.setNotifier(payload => {
     try { if (!w.isDestroyed()) w.webContents.send('kb:status', payload); } catch (_) {}
   }
 });
-kbService.startIdleTimer(60000);
-ipcMain.handle('rag:search', (_e, cfg = {}) => kbService.withService(cfg, () => rag.search(cfg)));
-ipcMain.handle('rag:ask', (_e, cfg = {}) => kbService.withService(cfg, () => rag.ask(cfg)));
-ipcMain.handle('kb:start', (_e, cfg = {}) => kbService.ensureUp(cfg, { manual: true }));
-ipcMain.handle('kb:stop', (_e, cfg = {}) => kbService.stop(cfg, { reason: 'manual' }));
-ipcMain.handle('kb:status', () => kbService.status());
-ipcMain.handle('rag:reindex', (_e, cfg = {}) => rag.reindex(cfg));
+if (!fullCandidate) kbService.startIdleTimer(60000);
+registerIpc('rag:search', (_e, cfg = {}) => kbService.withService(cfg, () => rag.search(cfg)));
+registerIpc('rag:ask', (_e, cfg = {}) => kbService.withService(cfg, () => rag.ask(cfg)));
+registerIpc('kb:start', (_e, cfg = {}) => kbService.ensureUp(cfg, { manual: true }));
+registerIpc('kb:stop', (_e, cfg = {}) => kbService.stop(cfg, { reason: 'manual' }));
+registerIpc('kb:status', () => kbService.status());
+registerIpc('rag:reindex', (_e, cfg = {}) => rag.reindex(cfg));
 
 /* ==========================================================================
    IPC：外部 Agent 接入（本地 API）
@@ -1086,15 +1578,15 @@ function buildMcpConfig() {
   };
 }
 
-ipcMain.handle('api:info', () => apiServer.info());
-ipcMain.handle('api:rotate', () => { apiServer.rotateToken(); return apiServer.info(); });
-ipcMain.handle('api:mcpConfig', () => buildMcpConfig());
+registerIpc('api:info', () => apiServer.info());
+registerIpc('api:rotate', () => { apiServer.rotateToken(); return apiServer.info(); });
+registerIpc('api:mcpConfig', () => buildMcpConfig());
 
 /* ---------- 一键连接：检测 / 写入 / 移除 MCP 客户端配置 ---------- */
-ipcMain.handle('conn:scan', () => ({ ok: true, clients: connectors.scan(), entryReady: fs.existsSync(buildEntry().args[0]) }));
-ipcMain.handle('conn:apply', (_e, id) => connectors.applyTo(id, buildEntry()));
-ipcMain.handle('conn:remove', (_e, id) => connectors.removeFrom(id));
-ipcMain.handle('conn:prompt', () => {
+registerIpc('conn:scan', () => ({ ok: true, clients: connectors.scan(), entryReady: fs.existsSync(buildEntry().args[0]) }));
+registerIpc('conn:apply', (_e, id) => connectors.applyTo(id, buildEntry()));
+registerIpc('conn:remove', (_e, id) => connectors.removeFrom(id));
+registerIpc('conn:prompt', () => {
   const info = apiServer.info();
   return {
     ok: true,
@@ -1107,7 +1599,7 @@ ipcMain.handle('conn:prompt', () => {
 });
 
 /* 导出接入手册为文件：内容直接取自 /agent-setup，保证与链接所见完全一致 */
-ipcMain.handle('conn:export', async () => {
+registerIpc('conn:export', async () => {
   const win = BrowserWindow.getAllWindows()[0];
   if (!win) return { ok: false, error: '没有可用窗口' };
   const info = apiServer.info();
@@ -1129,7 +1621,7 @@ ipcMain.handle('conn:export', async () => {
     return { ok: false, error: String((err && err.message) || err) };
   }
 });
-ipcMain.handle('conn:reveal', async (_e, id) => {
+registerIpc('conn:reveal', async (_e, id) => {
   const t = connectors.TARGETS.find(x => x.id === id);
   if (!t) return { ok: false, error: '未知客户端' };
   const cfg = connectors.expand(t.files[0]);
