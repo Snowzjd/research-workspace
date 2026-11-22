@@ -213,6 +213,17 @@ async function queryFiles(ctx, id, opts) {
   if (rejected) return rejected;
   const options = opts || {};
   const root = got.resolved.resolvedRoot;
+  if (options.catalog === true) {
+    const result = await require('./rpm-knowledge').queryMaterialCatalog(got.cfg, got.resolved.rpmProjectId, options);
+    if (!result.ok) return { ...result, httpStatus: 400 };
+    const payload = filesPayload(root, { data: { matches: result.files, total: result.total } });
+    return { ...payload, rpmProjectId: got.resolved.rpmProjectId, id, categories: result.categories };
+  }
+  if (options.fileIds !== undefined) {
+    const result = await require('./rpm-knowledge').queryMaterialFiles(got.cfg, got.resolved.rpmProjectId, options.fileIds);
+    if (!result.ok) return { ...result, httpStatus: 400 };
+    return { ...filesPayload(root, { data: { matches: result.files } }), rpmProjectId: got.resolved.rpmProjectId, id };
+  }
   const found = await rpmAdapter.searchFiles(root, options.query || '', {
     category: options.category || '',
     relatedTo: options.relatedTo || options.related_to || '',

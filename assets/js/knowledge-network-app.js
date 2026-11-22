@@ -54,10 +54,33 @@
 
   function boot(host, options) {
   const forceDirected = window.workspace?.full?.enabled === true;
+  const references = window.workspace?.full?.markdown?.references;
   if (forceDirected) {
     host.classList.add('fw-force-graph');
     const mark = host.querySelector('.brand strong');
     if (mark) mark.textContent = '知识图谱';
+    host.querySelector('.brand strong + span').textContent = '探索研究关系';
+    host.querySelector('[data-view="relation"]').textContent = '局部探索';
+    host.querySelector('[data-view="project"]').textContent = '完整项目网络';
+    const sources = host.querySelector('#sources');
+    const layer = document.createElement('select');
+    layer.id = 'kn-relation-layer';
+    layer.setAttribute('aria-label', '关系范围');
+    for (const [value, label] of [['research', '科研关系'], ['citation', '来源引用'], ['organization', '文件与归属']]) {
+      layer.add(new Option(label, value));
+    }
+    const layerLabel = document.createElement('label');
+    layerLabel.className = 'field-caption select-label';
+    layerLabel.htmlFor = layer.id;
+    layerLabel.textContent = '关系范围';
+    if (references) layer.add(new Option('笔记引用', 'notes'));
+    const noteScope = document.createElement('select');
+    noteScope.id = 'kn-note-scope';
+    noteScope.setAttribute('aria-label', '笔记引用范围');
+    noteScope.hidden = true;
+    sources.closest('label').before(layerLabel, layer, noteScope);
+    sources.parentElement.lastChild.textContent = ' 从材料索引显示部分文件';
+    host.querySelector('.live-marker').hidden = true;
   }
   const KINDS = {
     project: ['项目', '#18594b', '#e0f2e8', 0],
@@ -77,6 +100,7 @@
     paper: ['论文', '#407147', '#e9f2e6', 4],
     patent: ['专利', '#49713e', '#eff4e8', 4],
     deliverable: ['研究成果', '#317349', '#e4f4e9', 4],
+    note: ['Markdown 笔记', '#476887', '#e9f1f7', 5],
     source: ['来源文件', '#55716f', '#f0f5f3', 5],
     task: ['任务', '#476877', '#eff5f7', 5]
   };
@@ -106,7 +130,7 @@
   const clean = value => String(value == null ? '' : value);
   const statusName = value => STATUSES[value] || (Array.isArray(value) ? value.map(statusName).join(' / ') : value) || '待确认';
   const kind = type => KINDS[type] || [type || '其他', '#596f75', '#edf3f2', 3];
-  const relationName = label => ({membership:'项目归属', source:'证据来源', related_to:'关联', uses:'使用', supports:'支持', derived_from:'派生自', validates:'验证', supersedes:'取代'}[label] || label);
+  const relationName = label => ({membership:'项目归属', source:'证据来源', note_reference:'笔记引用', related_to:'关联', uses:'使用', supports:'支持', derived_from:'派生自', validates:'验证', supersedes:'取代'}[label] || label);
   const partOf = (item, projectId) => (item.project_ids || [item.project_id]).includes(projectId);
   const ownerScope = () => state.view==='global' ? state.globalFilter || null : state.project;
   const split = (value, length) => {
@@ -163,7 +187,7 @@
   let data = null;
   const state = {
     view: 'global', project: null, selected: null, focus: null,
-    depth: 1, hidden: new Set(), explicit: new Set(), branches: new Set(), relation: '', showSources: false,
+    depth: 1, layer: 'research', hidden: new Set(), explicit: new Set(), branches: new Set(), relation: '', showSources: false,
     globalFilter: '', directionFilter: '', revision: null, panel: 'node', edge: null, changes: [], handle: null,
     loading: false, incomplete: false, stale: false, error: null, generated_at: '', registry_complete: true
   };
@@ -174,8 +198,8 @@
   const canvas = byId('graph');
   if (forceDirected) {
     byId('title').textContent = '全局知识图谱';
-    byId('network-title').textContent = 'RPM 知识网络';
-    byId('subtitle').textContent = '正在读取 RPM 登记。';
+    byId('network-title').textContent = '知识网络';
+    byId('subtitle').textContent = '正在加载项目知识…';
     ['project', 'relation'].forEach(view => { host.querySelector('[data-view="' + view + '"]').disabled = true; });
   }
   const cy = cytoscape({
@@ -190,6 +214,7 @@
         'font-family':'Segoe UI, Microsoft YaHei UI, Noto Sans SC, sans-serif','font-size':'data(fontSize)','font-weight':600,
         'line-height':1.35,'color':'data(ink)','text-justification':'center'
       }},
+      {selector:'.peripheral',style:{opacity:.24}},
       {selector:'node.focused',style:{'border-width':3,'border-color':'data(ink)','font-weight':700}},
       {selector:'node.accent',style:{'color':forceDirected ? '#26364a' : 'white','background-color':forceDirected ? '#da7e9a' : '#175849','border-color':forceDirected ? '#a54665' : '#175849','font-weight':700}},
       {selector:'node.shared',style:{'border-style':'dashed','border-width':2}},
@@ -208,14 +233,165 @@
     ]
   });
 
+  const noteLayer = { scope: '', result: null, selected: null, focus: null, edge: null, pending: false, generation: 0, depth: 1, error: '' };
+  const isNoteLayer = () => state.layer === 'notes';
+  const scopes = () => window.FullWorkspace?.referenceScopes?.() || [];
+  const noteWarning = { unresolved: '找不到目标笔记', ambiguous: '存在同名候选，请填写相对路径',
+    invalid: '链接路径不在当前笔记范围', unchecked: '部分范围未完成扫描，目标待核对' };
+
+  function selectNote(id, focus = false) {
+    if (!noteLayer.result?.notes.some(row => row.id === id)) return;
+    noteLayer.selected = id;
+    noteLayer.edge = null;
+    if (focus) {
+      noteLayer.focus = id;
+      noteLayer.depth = 1;
+      render(true);
+    } else { styleSelection(); renderDetails(); }
+  }
+
+  function chooseNoteScope(projectId) {
+    Object.assign(noteLayer, { scope: projectId, result: null, selected: null, focus: null, edge: null,
+      pending: false, generation: noteLayer.generation + 1, depth: 1, error: '' });
+    render(true);
+    void readNotes();
+  }
+
+  async function readNotes() {
+    if (!isNoteLayer() || !references || noteLayer.pending) return;
+    const generation = noteLayer.generation;
+    noteLayer.pending = true;
+    updateStatus();
+    try {
+      const result = await references({ projectId: noteLayer.scope || undefined, ifRevision: noteLayer.result?.revision });
+      if (!isNoteLayer() || generation !== noteLayer.generation) return;
+      if (!result?.ok) {
+        noteLayer.error = result?.message || '无法读取当前范围的笔记引用';
+        if (noteLayer.result) {
+          noteLayer.result = null;
+          render(false);
+        }
+        return;
+      }
+      noteLayer.error = '';
+      if (result.notModified) return;
+      const initial = !noteLayer.result;
+      noteLayer.result = result;
+      const ids = new Set(result.notes.map(note => note.id));
+      if (!ids.has(noteLayer.selected)) noteLayer.selected = null;
+      if (!ids.has(noteLayer.focus)) noteLayer.focus = null;
+      const hasEdge = result.links.some(row => row.targetId && noteEdgeId(row) === noteLayer.edge);
+      if (!hasEdge) noteLayer.edge = null;
+      render(initial);
+      window.FullWorkspace?.graphReady();
+    } catch (_) {
+      if (generation === noteLayer.generation) noteLayer.error = '无法读取当前范围的笔记引用';
+    } finally {
+      if (generation === noteLayer.generation) {
+        noteLayer.pending = false;
+        updateStatus();
+      }
+    }
+  }
+
+  const noteEdgeId = row => 'edge-' + row.sourceId + ':' + row.targetId;
+  function noteGraph() {
+    const view = noteLayer.result;
+    const distance = new Map();
+    if (!view) return { nodes: [], edges: [], distance };
+    const included = new Set();
+    const edges = new Map();
+    const adjacent = new Map();
+    function neighbor(from, to) {
+      if (!adjacent.has(from)) adjacent.set(from, new Set());
+      adjacent.get(from).add(to);
+    }
+    for (const row of view.links) {
+      included.add(row.sourceId);
+      if (!row.targetId) continue;
+      included.add(row.targetId);
+      const id = noteEdgeId(row);
+      if (!edges.has(id)) {
+        edges.set(id, { id, source: row.sourceId, target: row.targetId, relation_type: 'note_reference' });
+        neighbor(row.sourceId, row.targetId);
+        neighbor(row.targetId, row.sourceId);
+      }
+    }
+    if (noteLayer.focus) {
+      included.clear();
+      let frontier = [noteLayer.focus];
+      distance.set(noteLayer.focus, 0);
+      included.add(noteLayer.focus);
+      for (let depth = 1; depth <= noteLayer.depth; depth++) {
+        const next = [];
+        for (const id of frontier) {
+          for (const other of adjacent.get(id) || []) {
+            if (included.has(other)) continue;
+            included.add(other);
+            distance.set(other, depth);
+            next.push(other);
+          }
+        }
+        frontier = next;
+      }
+    }
+    return { nodes: view.notes.filter(note => included.has(note.id)).map(note => ({ ...note, title: note.name, type: 'note' })),
+      edges: [...edges.values()].filter(edge => included.has(edge.source) && included.has(edge.target)), distance };
+  }
+
+  function renderNoteDetails(target) {
+    target.replaceChildren();
+    const view = noteLayer.result;
+    const selected = view?.notes.find(row => row.id === noteLayer.selected);
+    byId('return-focus').hidden = !noteLayer.edge;
+    byId('inspect-caption').textContent = noteLayer.edge ? '笔记引用详情' : '笔记引用';
+    const open = row => window.FullWorkspace?.openReferenceNote(noteLayer.scope, row.path, row.id);
+    if (noteLayer.focus) target.append(button('返回全部笔记引用', () => {
+      noteLayer.focus = null;
+      noteLayer.edge = null;
+      render(true);
+    }));
+    if (!view) {
+      target.append(text('p', noteLayer.error || '正在读取当前范围的 Markdown 原件。'));
+      return;
+    }
+    const rows = noteLayer.edge ? view.links.filter(row => row.targetId && noteEdgeId(row) === noteLayer.edge) :
+      selected ? view.links.filter(row => row.sourceId === selected.id || row.targetId === selected.id) :
+      view.links.filter(row => !row.targetId);
+    if (selected && !noteLayer.edge) {
+      target.append(text('h2', selected.name), text('p', selected.path),
+        button('打开 Markdown 原件', () => open(selected)),
+        button('以此笔记探索引用', () => selectNote(selected.id, true)));
+    } else if (noteLayer.edge) target.append(text('h2', '笔记引用'));
+    else target.append(text('h2', '待解析引用'),
+      text('p', rows.length ? rows.length + ' 条引用需要核对。' : '当前无待解析引用。'));
+    if (!rows.length && selected) target.append(text('p', '当前范围没有这份笔记的引用。'));
+    const files = new Map(view.notes.map(file => [file.id, file]));
+    const list = text('div', null, 'related-list');
+    for (const row of rows.slice(0, 100)) {
+      const entry = text('div', null, 'claim-box');
+      const to = files.get(row.targetId);
+      const from = files.get(row.sourceId);
+      entry.append(text('strong', row.label || row.text),
+        text('p', row.sourcePath + ' · 第 ' + row.line + ' 行' + (row.column ? '第 ' + row.column + ' 列' : '')),
+        text('p', to ? '目标 · ' + to.path : noteWarning[row.status] || '待解析引用'));
+      if (from && (!selected || from.id !== selected.id)) entry.append(button('打开来源笔记', () => open(from)));
+      if (to && (!selected || to.id !== selected.id)) entry.append(button('打开目标笔记', () => open(to)));
+      list.append(entry);
+    }
+    if (rows.length > 100) list.append(text('p', '这里显示前 100 条。可选择笔记查看其引用。'));
+    target.append(list);
+  }
+
   function switchProject(id) {
     if (!data?.projects.has(id)) return;
     Object.assign(state,{project:id, selected:featured(id), view:'project', focus:null, panel:'node', edge:null, relation:'', depth:1});
     state.hidden.clear(); state.explicit.clear(); state.branches.clear(); state.showSources=false;
+    state.directionFilter = '';
     render(true);
   }
   function switchView(view) {
-    if (!data) return;
+    if (isNoteLayer() || !data) return;
     if (view === 'relation') {
       trace(state.selected || state.project);
       return;
@@ -231,12 +407,19 @@
     const node = data.nodes.get(id);
     if (!partOf(node, state.project)) state.project = node.project_id || node.project_ids[0];
     Object.assign(state,{view:'relation', focus:id, selected:id, panel:'node', edge:null, relation:'', depth:1});
+    if (forceDirected && node.type === 'source' && state.layer === 'research') state.layer = 'citation';
+    state.directionFilter = '';
     state.hidden.clear(); state.explicit.clear(); state.branches.clear();
     render(true);
   }
   function selectNode(id, {fromSearch=false} = {}) {
+    if (isNoteLayer()) return selectNote(id, fromSearch);
     const node = data.nodes.get(id);
     if (!node) return;
+    if (forceDirected && fromSearch && node.type !== 'project') {
+      trace(id);
+      return;
+    }
     const reframe = fromSearch || (state.view === 'global' && node.type === 'project');
     if (reframe) {
       if (!partOf(node, state.project)) {
@@ -253,6 +436,13 @@
     else { styleSelection(); renderDetails(); }
   }
 
+  function inLayer(edge) {
+    if (!forceDirected) return true;
+    if (state.layer === 'research') return edge.origin === 'research_relation';
+    if (state.layer === 'citation') return edge.origin === 'knowledge_citation';
+    return ['project_membership', 'index_membership', 'file_relation'].includes(edge.origin);
+  }
+
   function nodesUnderDirection(dirId) {
     const keep = new Set([dirId]);
     const dir = data && data.nodes.get(dirId);
@@ -263,7 +453,7 @@
     while (added) {
       added = false;
       for (const e of data.edges.values()) {
-        const research = e.origin === 'research_relation' || ['uses','supports','derived_from','validates','supersedes','related_to'].includes(e.relation_type);
+        const research = e.origin === 'research_relation';
         if (!research) continue;
         if (keep.has(e.source) && !keep.has(e.target)) { keep.add(e.target); added = true; }
         if (keep.has(e.target) && !keep.has(e.source)) { keep.add(e.source); added = true; }
@@ -272,14 +462,27 @@
     return keep;
   }
   function visibleGraph() {
+    if (isNoteLayer()) return noteGraph();
     if (!data) return {nodes:[], edges:[], distance:new Map()};
     const picked = state.view === 'global'
       ? [...data.nodes.values()].filter(n => forceDirected || ['project','direction'].includes(n.type) || (n.project_ids?.length > 1 && n.type !== 'source'))
       : [...data.nodes.values()].filter(n => partOf(n, state.project));
+    const sources = new Set(state.explicit);
+    if (forceDirected && state.layer !== 'research') {
+      const scope = ownerScope();
+      for (const edge of data.edges.values()) {
+        if (!inLayer(edge) || (scope && !partOf(edge, scope))) continue;
+        if (state.layer === 'organization' && edge.origin === 'index_membership' && !state.showSources) continue;
+        if (sources.size >= 80) break;
+        for (const endpoint of [edge.source, edge.target]) {
+          if (data.nodes.get(endpoint)?.type === 'source') sources.add(endpoint);
+        }
+      }
+    }
     const pool = new Map(picked.filter(n =>
       (state.view !== 'global' || !state.globalFilter || partOf(n,state.globalFilter)) &&
       (!state.hidden.has(n.type) || n.id === state.focus) &&
-      (n.type !== 'source' || state.showSources || state.explicit.has(n.id) || n.id === state.focus)
+      (n.type !== 'source' || (forceDirected ? sources.has(n.id) : state.showSources || state.explicit.has(n.id)) || n.id === state.focus)
     ).map(n => [n.id,n]));
     if (state.directionFilter && data.nodes.has(state.directionFilter)) {
       const keep = nodesUnderDirection(state.directionFilter);
@@ -288,12 +491,12 @@
       }
     }
     let edges = [...data.edges.values()].filter(e =>
-      pool.has(e.source) && pool.has(e.target) &&
+      inLayer(e) && pool.has(e.source) && pool.has(e.target) &&
       (state.view === 'global' ? forceDirected || e.relation_type === 'membership' : !e.project_id || partOf(e, state.project)) &&
       (!state.relation || e.relation_type === state.relation)
     );
     const distance = new Map();
-    if (!state.relation) {
+    if (!forceDirected && !state.relation) {
       edges=edges.filter(e=>e.relation_type!=='indexed_file' || (forceDirected && (state.showSources || state.explicit.has(e.source) || state.explicit.has(e.target))) ||
         state.view==='relation' && (e.source===state.focus||e.target===state.focus) &&
         data.nodes.get(state.focus)?.type==='project');
@@ -420,7 +623,8 @@
     };
   }
 
-  let fitting = false;
+  let canvasSize = null;
+  let pendingFit = false;
   function captureCamera() {
     if (!cy) return null;
     return { zoom: cy.zoom(), pan: { x: cy.pan().x, y: cy.pan().y } };
@@ -431,22 +635,28 @@
     cy.pan(cam.pan);
   }
   function graphFit() {
-    if (fitting) return;
-    fitting = true;
-    try {
-      cy.resize();
+    pendingFit = true;
+    resizeCanvas();
+  }
+  function resizeCanvas() {
+    const width = canvas.clientWidth, height = canvas.clientHeight;
+    if (!width || !height) return;
+    const previous = canvasSize;
+    canvasSize = { width, height };
+    cy.resize();
+    if (pendingFit) {
+      pendingFit = false;
       if (!cy.nodes().length) return;
       const pad = 48;
       cy.fit(cy.elements(), pad);
       const box = cy.elements().boundingBox({ includeLabels: true });
-      const w = cy.width(), h = cy.height();
-      if (w > pad * 2 && h > pad * 2 && box.w > 0 && box.h > 0) {
-        const need = Math.min((w - pad * 2) / box.w, (h - pad * 2) / box.h, 1.12);
-        if (need < cy.zoom() - 0.01) cy.zoom({ level: need, renderedPosition: { x: w / 2, y: h / 2 } });
+      if (width > pad * 2 && height > pad * 2 && box.w > 0 && box.h > 0) {
+        const need = Math.min((width - pad * 2) / box.w, (height - pad * 2) / box.h, 1.12);
+        if (need < cy.zoom() - 0.01) cy.zoom({ level: need, renderedPosition: { x: width / 2, y: height / 2 } });
         cy.center();
       }
-    } finally {
-      fitting = false;
+    } else if (previous && (previous.width !== width || previous.height !== height)) {
+      cy.panBy({ x: (width - previous.width) / 2, y: (height - previous.height) / 2 });
     }
   }
   let graphTopology = '';
@@ -491,26 +701,29 @@
     const topology = forceDirected ? JSON.stringify([nodes.map(n => n.data.id), edges.map(e => e.data.id)]) : '';
     cy.batch(()=>{cy.elements().remove(); cy.add([...nodes,...edges]);});
     if (forceDirected && nodes.length && (fit || graphTopology !== topology)) {
-      cy.layout({
-        name: 'cose', animate: false, fit: false, randomize: true,
-        nodeRepulsion: 12000, idealEdgeLength: 88, nodeOverlap: 16,
-        nodeDimensionsIncludeLabels: true, componentSpacing: 85, numIter: 650
-      }).run();
+      const config = isNoteLayer() && nodes.length > 160
+        ? { name: 'circle', animate: false, fit: false, spacingFactor: 1.35 }
+        : { name: 'cose', animate: false, fit: false, randomize: true,
+          nodeRepulsion: 12000, idealEdgeLength: 88, nodeOverlap: 16,
+          nodeDimensionsIncludeLabels: true, componentSpacing: 85, numIter: 650 };
+      cy.layout(config).run();
     }
     graphTopology = topology;
-    if (fit) {
-      graphFit();
-      setTimeout(() => { try { graphFit(); } catch (_) {} }, 60);
-    } else if (camera) {
-      restoreCamera(camera);
-    }
     const lanes = byId('lanes');
     lanes.replaceChildren(...positions.labels.map(label=>text('span',label,'lane')));
     lanes.hidden=!positions.labels.length;
     lanes.style.gridTemplateColumns='repeat('+Math.max(positions.labels.length,1)+',minmax(0,1fr))';
-    byId('graph-count').textContent=nodes.length+' 节点 · '+edges.length+' 关系';
+    const limited = forceDirected && state.layer === 'organization' && state.showSources;
+    byId('graph-count').textContent=nodes.length+' 节点 · '+edges.length+' 关系' + (limited ? ' · 文件样本，完整列表见材料与成果' : '');
+    if (forceDirected && state.layer === 'research' && !edges.length) {
+      byId('graph-count').textContent = nodes.length + ' 节点 · 暂无已登记的科研关系';
+    }
+    if (isNoteLayer()) {
+      const pending = noteLayer.result?.links.filter(row => !row.targetId).length || 0;
+      byId('graph-count').textContent = nodes.length + ' 笔记 · ' + edges.length + ' 引用 · ' + pending + ' 待解析';
+    }
     byId('empty-graph').hidden=Boolean(nodes.length);
-    byId('empty-graph').textContent='此条件下没有可显示的节点或关系。';
+    byId('empty-graph').textContent=isNoteLayer() ? '当前范围没有可绘制的笔记引用。' : '此条件下没有可显示的节点或关系。';
     const present = [...new Set(info.nodes.map(n=>n.type))];
     const legend = byId('legend');
     legend.replaceChildren(...present.map(type => {
@@ -518,14 +731,20 @@
       return append(text('span',null,'legend-item'),icon,text('span',kind(type)[0]));
     }));
     styleSelection();
+    if (fit) graphFit();
+    else if (camera) restoreCamera(camera);
   }
   function styleSelection() {
-    cy.elements().removeClass('focused highlight named');
-    const selected = cy.getElementById(state.selected || '');
+    cy.elements().removeClass('focused highlight named peripheral');
+    const selected = cy.getElementById((isNoteLayer() ? noteLayer.selected : state.selected) || '');
+    if (forceDirected && state.view !== 'relation' && selected.connectedEdges().nonempty()) {
+      cy.elements().difference(selected.closedNeighborhood()).addClass('peripheral');
+    }
     selected.addClass('focused');
     selected.connectedEdges().addClass('highlight');
     if (state.view==='relation' && state.depth===1) selected.connectedEdges('.meaning').addClass('named');
-    if (state.edge) cy.getElementById(state.edge).addClass('highlight named');
+    const edge = isNoteLayer() ? noteLayer.edge : state.edge;
+    if (edge) cy.getElementById(edge).addClass('highlight named');
   }
 
   function pill(type, value) {
@@ -545,11 +764,32 @@
   }
   function renderSidebar() {
     const container=byId('project-list');
+    const note = isNoteLayer();
+    const scope = byId('kn-note-scope');
+    if (scope) {
+      scope.hidden = !note;
+      host.querySelector('.projects-section').hidden = note;
+      byId('kinds').hidden = note;
+      byId('kind-hint').hidden = note;
+      byId('direction-filter').disabled = note;
+      byId('relation').disabled = note;
+      byId('search').placeholder = note ? '搜索当前范围的笔记' : '搜索节点、任务或文件';
+      if (note) {
+        scope.replaceChildren(new Option('中央 Obsidian Vault', ''), ...scopes().map(row => new Option(row.title, row.id)));
+        scope.value = noteLayer.scope;
+        byId('kn-relation-layer').value = state.layer;
+        byId('sources').disabled = true;
+        byId('changes').hidden = true;
+        updateStatus();
+        return;
+      }
+    }
     if (!data) { container.replaceChildren(); return; }
     container.replaceChildren();
     byId('project-count').textContent=data.projects.size;
     for (const p of data.projects.values()) {
       const option=button(null,()=>switchProject(p.id),'project-option'+(state.view!=='global' && p.id===state.project?' active':''));
+      option.title = p.title;
       option.setAttribute('aria-current',state.view!=='global' && p.id===state.project ? 'true':'false');
       const colors = [['#11614f','#e3f2ea'],['#49679b','#ebf0f8'],['#705b96','#eee9f7']];
       const color = colors[container.children.length%colors.length];
@@ -568,7 +808,7 @@
       return append(text('label',null,'kind-item'),check,dot,text('span',kind(name)[0]),text('small',count));
     }));
     const labels = [...new Set([...data.edges.values()].filter(e =>
-      state.view==='global' ? e.relation_type==='membership' : partOf(e,state.project)
+      inLayer(e) && (state.view==='global' ? forceDirected || e.relation_type==='membership' : partOf(e,state.project))
     ).map(e=>e.relation_type))].sort((a,b)=>relationName(a).localeCompare(relationName(b),'zh-CN'));
     const option=(value,label)=>{const item=text('option',label);item.value=value;return item;};
     byId('relation').replaceChildren(option('','全部关系'),...labels.map(key=>option(key,relationName(key))));
@@ -581,10 +821,11 @@
       dirSel.value = state.directionFilter;
     }
     byId('sources').checked=state.showSources;
-    byId('sources').disabled=state.view==='global';
+    byId('sources').disabled=state.view==='global' || (forceDirected && state.layer !== 'organization');
+    if (forceDirected) byId('kn-relation-layer').value = state.layer;
     const stamped=new Date(data.raw.generated_at);
     const date=Number.isNaN(stamped.getTime())?'':stamped.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
-    if (date && state.revision) byId('snapshot-status').textContent = '修订 ' + String(state.revision).slice(0, 16) + '… · ' + date;
+    if (date && state.revision && !forceDirected) byId('snapshot-status').textContent = '修订 ' + String(state.revision).slice(0, 16) + '… · ' + date;
     else updateStatus();
     byId('changes').hidden=!state.changes.length;
   }
@@ -594,6 +835,20 @@
     return append(el,text('small',label),text('strong',value));
   }
   function renderHeading() {
+    const note = isNoteLayer();
+    host.querySelector('.view-tabs').hidden = note;
+    if (note) {
+      const name = scopes().find(row => row.id === noteLayer.scope)?.title || '中央 Obsidian Vault';
+      byId('global-filter').hidden = true;
+      byId('depth-group').hidden = !noteLayer.focus;
+      byId('depth').value = noteLayer.depth;
+      byId('flow').textContent = '科研工程工作台 / 笔记引用';
+      byId('title').textContent = name;
+      byId('subtitle').textContent = '已保存的笔记双链。未解析引用可在详情中核对。';
+      byId('network-title').textContent = '笔记引用网络';
+      byId('metrics').replaceChildren();
+      return;
+    }
     if (!data) return;
     const project=data.projects.get(state.project);
     const selected=data.nodes.get(state.focus);
@@ -644,7 +899,12 @@
       const title = file.title || file.relative_path || file.path || '原始文件';
       const projectId = file.project_id || (data && data.nodes.get(file.id) && data.nodes.get(file.id).project_id);
       const sourceId = file.id || file.file_id || file.rpm_source_id;
+      const isNote = forceDirected && /\.(?:md|markdown)$/i.test(file.relative_path || '');
       const entry = button(title, async () => {
+        if (isNote && window.FullWorkspace?.openGraphNote) {
+          await window.FullWorkspace.openGraphNote(projectId, sourceId, file.relative_path);
+          return;
+        }
         if (!openSourceFile) { toast('当前环境不能打开原件'); return; }
         if (!projectId || !sourceId) { toast('缺少项目 ID 或来源 ID，未打开文件'); return; }
         const result = await openSourceFile(projectId, sourceId);
@@ -654,10 +914,7 @@
           toast('已打开原件');
         }
       }, 'file-open');
-      if (forceDirected && projectId === 'd72165400fae48eb9466e8151cdd15e3') {
-        entry.disabled = true;
-        entry.title = '仅显示原件元数据';
-      } else entry.title = '通过主进程复核后打开原件';
+      entry.title = '核对项目和来源后打开原件';
       item.append(entry);
       const status=file.status ? ' · '+statusName(file.status) : '';
       const path = text('code',(file.relative_path||file.path||'')+status);
@@ -678,7 +935,7 @@
   }
   function relatedList(node) {
     const list=text('div',null,'related-list');
-    const edges=(data.adjacent.get(node.id)||[]).filter(e=>!['membership','indexed_file'].includes(e.relation_type) &&
+    const edges=(data.adjacent.get(node.id)||[]).filter(e=>(forceDirected ? e.origin === 'research_relation' : !['membership','indexed_file'].includes(e.relation_type)) &&
       (!ownerScope()||partOf(e,ownerScope())) && (!state.relation||e.relation_type===state.relation));
     const preview=edges.filter(e=>e.relation_type!=='source');
     for (const e of preview.slice(0,8)) {
@@ -749,6 +1006,7 @@
   function renderDetails() {
     const target=byId('detail');
     if (!target) return;
+    if (isNoteLayer()) { renderNoteDetails(target); return; }
     if (!data) { target.replaceChildren(); target.append(text('p','正在读取或尚未取得 RPM 快照。')); return; }
     target.replaceChildren();
     byId('return-focus').hidden=state.panel==='node';
@@ -792,13 +1050,16 @@
         toast(result.ok ? '节点 ID 已复制，可粘贴到任务。' : result.error);
       });
       copyId.dataset.copyKnowledgeId = node.id;
-      section(target, '节点 ID', append(text('div', null, 'fw-reference-id'), text('code', node.id), copyId));
+      const advanced = append(text('details'), text('summary', '高级信息'),
+        append(text('div', null, 'fw-reference-id'), text('code', node.id), copyId));
+      target.append(advanced);
     }
     if (description && !(node.type==='source'&&/^(text|document|table|media|code|other)$/i.test(description))) {
       section(target,'研究内容',text('p',description));
     }
     if (node.claims && node.claims.length) {
-      const box = section(target, '登记主张与方法语境');
+      const box = append(text('details'), text('summary', '研究状态与项目说明'));
+      target.append(box);
       for (const row of node.claims) {
         const usage = (typeof KnowledgeSource !== 'undefined')
           ? KnowledgeSource.methodUsageLabel(row.method_usage)
@@ -817,9 +1078,10 @@
       section(target,'项目任务',progressList(project));
     }
     const evidenceRows = (data.adjacent.get(node.id) || []).filter(e =>
-      e.origin === 'research_relation' || (e.evidence && !['membership','indexed_file'].includes(e.relation_type)));
+      e.origin === 'research_relation' || (!forceDirected && e.evidence && !['membership','indexed_file'].includes(e.relation_type)));
     if (evidenceRows.length) {
-      const box = section(target, '关系依据');
+      const box = append(text('details'), text('summary', '关系依据'));
+      target.append(box);
       for (const e of evidenceRows.slice(0, 8)) {
         const other = data.nodes.get(e.source === node.id ? e.target : e.source);
         const ev = Array.isArray(e.evidence) ? e.evidence : [e.evidence];
@@ -834,6 +1096,9 @@
     const sources=fileForNode(node);
     const visibleSources = sources.map(f=>f.id).filter(id=>data.nodes.get(id)?.type==='source'&&id!==node.id);
     const controls=text('div',null,'detail-controls');
+    if (forceDirected && state.view === 'relation') {
+      controls.append(button('返回完整项目网络', () => switchView('project')));
+    }
     if (node.type==='project' && state.view==='global') controls.append(button('进入项目网络',()=>switchProject(node.id)));
     else if (state.view==='relation'&&node.id!==state.focus&&visibleGraph().distance.has(node.id)) {
       const expanded=state.branches.has(node.id);
@@ -843,21 +1108,31 @@
         else state.branches.add(node.id);
         render(false);
       }));
-      controls.append(button('设为追溯起点',()=>trace(node.id)));
-    } else if (node.type !== 'source') controls.append(button('追溯关系',()=>trace(node.id)));
+      controls.append(button('设为探索中心',()=>trace(node.id)));
+    } else if (forceDirected && state.view !== 'relation') controls.append(button('探索局部知识簇',()=>trace(node.id)));
+    else if (!forceDirected && node.type !== 'source') controls.append(button('追溯关系',()=>trace(node.id)));
     if (visibleSources.length && state.view!=='global') {
       const expanded=visibleSources.every(id=>state.explicit.has(id))||state.showSources;
       controls.append(button(expanded?'收起来源':'展开来源',()=>{
         if (expanded) {
           for (const id of visibleSources) state.explicit.delete(id);
           state.showSources=false;
-        } else for (const id of visibleSources) state.explicit.add(id);
+        } else {
+          if (forceDirected) state.layer = 'citation';
+          for (const id of visibleSources) state.explicit.add(id);
+        }
         render(true);
       }));
     }
+    const noteSource = sources.find(file => /\.(?:md|markdown)$/i.test(file.relative_path || ''));
+    if (forceDirected && noteSource && window.FullWorkspace?.openGraphNote) {
+      controls.append(button('阅读 Markdown', () => window.FullWorkspace.openGraphNote(
+        noteSource.project_id || scope || node.project_id, noteSource.id || noteSource.file_id, noteSource.relative_path, node.id
+      )));
+    }
     target.append(controls);
+    if (node.type!=='project') section(target,'科研关联',relatedList(node));
     if (sources.length) section(target,'原始文件 · '+sources.length,fileList(sources));
-    if (node.type!=='project') section(target,'关联节点',relatedList(node));
   }
 
   function render(fit) {
@@ -867,6 +1142,21 @@
   function search() {
     const field=byId('search');
     if (!field) return;
+    if (isNoteLayer()) {
+      const list = byId('search-results');
+      const query = field.value.trim().toLocaleLowerCase();
+      list.replaceChildren();
+      list.hidden = !query;
+      if (!query) return;
+      const matches = noteLayer.result?.notes.filter(row => row.path.toLocaleLowerCase().includes(query)) || [];
+      for (const row of matches.slice(0, 15)) list.append(append(button(null, () => {
+        field.value = '';
+        list.hidden = true;
+        selectNote(row.id, true);
+      }), text('strong', row.name), text('small', row.path)));
+      if (!matches.length) list.append(text('p', '没有匹配的笔记。'));
+      return;
+    }
     if (!data) { const result=byId('search-results'); if(result) result.hidden=true; return; }
     const result=byId('search-results');
     const query=field.value.trim().toLocaleLowerCase();
@@ -986,6 +1276,7 @@
     return raw;
   }
   async function refresh(force) {
+    if (isNoteLayer() && !force) return readNotes();
     try {
       const raw = await fetchSnapshot(!!force);
       if (!raw) return;
@@ -1016,9 +1307,15 @@
   function updateStatus() {
     const el = byId('snapshot-status');
     if (!el) return;
+    if (isNoteLayer()) {
+      el.textContent = noteLayer.error || (noteLayer.result?.partial ? '仅索引了部分范围，请缩小范围或检查未读取文件。' :
+        noteLayer.result ? '笔记引用已同步' : '正在扫描当前范围的笔记引用…');
+      return;
+    }
     if (state.loading) el.textContent = '正在读取快照…';
     else if (state.error && !data) el.textContent = '读取失败：' + (state.error.error || state.error.code || '未知错误');
     else if (state.incomplete) el.textContent = '登记不完整，图谱可能过期。不可读项目不会被当作已删除。';
+    else if (state.revision && forceDirected) el.textContent = '知识数据已更新';
     else if (state.revision) el.textContent = '修订 ' + String(state.revision).slice(0, 16) + '…' + (state.generated_at ? ' · ' + state.generated_at : '');
     else el.textContent = '尚未读取快照';
   }
@@ -1034,20 +1331,39 @@
   host.addEventListener('pointerdown',event=>{
     if (!byId('search-results').contains(event.target)&&!byId('search').contains(event.target)) byId('search-results').hidden=true;
   });
-  document.querySelectorAll('[data-view]').forEach(tab=>tab.addEventListener('click',()=>switchView(tab.dataset.view)));
+  host.querySelectorAll('[data-view]').forEach(tab=>tab.addEventListener('click',()=>switchView(tab.dataset.view)));
   byId('relation').addEventListener('change',event=>{state.relation=event.target.value;renderGraph(true);renderDetails();});
   if (byId('direction-filter')) byId('direction-filter').addEventListener('change',event=>{state.directionFilter=event.target.value;render(true);});
+  byId('kn-relation-layer')?.addEventListener('change', event => {
+    Object.assign(state, {layer: event.target.value, relation: '', showSources: false});
+    state.explicit.clear();
+    state.branches.clear();
+    if (isNoteLayer()) {
+      const rpmId = ownerScope();
+      chooseNoteScope(scopes().find(row => row.rpmProjectId === rpmId)?.id || '');
+    } else render(true);
+  });
+  byId('kn-note-scope')?.addEventListener('change', event => chooseNoteScope(event.target.value));
   byId('sources').addEventListener('change',event=>{
     state.showSources=event.target.checked;
     if (!state.showSources) state.explicit.clear();
     render(true);
   });
   byId('global-filter').addEventListener('change',event=>{state.globalFilter=event.target.value;if(state.globalFilter)state.selected=state.globalFilter;render(true);});
-  byId('depth').addEventListener('change',event=>{state.depth=Number(event.target.value);state.branches.clear();renderGraph(true);renderDetails();});
-  byId('clear-filters').addEventListener('click',()=>{
-    state.hidden.clear();state.explicit.clear();state.branches.clear();Object.assign(state,{relation:'',showSources:false,globalFilter:'',directionFilter:''});render(true);
+  byId('depth').addEventListener('change', event => {
+    if (isNoteLayer()) noteLayer.depth = Number(event.target.value);
+    else { state.depth = Number(event.target.value); state.branches.clear(); }
+    renderGraph(true);
+    renderDetails();
   });
-  byId('return-focus').addEventListener('click',()=>{state.edge=null;showPanel('node');styleSelection();});
+  byId('clear-filters').addEventListener('click',()=>{
+    state.hidden.clear();state.explicit.clear();state.branches.clear();Object.assign(state,{relation:'',layer:'research',showSources:false,globalFilter:'',directionFilter:''});render(true);
+  });
+  byId('return-focus').addEventListener('click',()=>{
+    if (isNoteLayer()) { noteLayer.edge = null; renderDetails(); }
+    else { state.edge=null; showPanel('node'); }
+    styleSelection();
+  });
   byId('layout').addEventListener('click',()=>renderGraph(true));
   byId('fit').addEventListener('click',graphFit);
   const zoom=factor=>cy.zoom({level:Math.max(cy.minZoom(),Math.min(cy.maxZoom(),cy.zoom()*factor)),renderedPosition:{x:cy.width()/2,y:cy.height()/2}});
@@ -1056,9 +1372,16 @@
   byId('refresh').addEventListener('click',()=>refresh(false));
   byId('changes').addEventListener('click',()=>showPanel('changes'));
   cy.on('tap','node',event=>selectNode(event.target.id()));
-  cy.on('tap','edge',event=>{state.edge=event.target.id();state.panel='edge';styleSelection();renderDetails();});
-  if (canvas) new ResizeObserver(()=>{ if (!fitting) graphFit(); }).observe(canvas);
-  render(true);
+  cy.on('tap','edge',event=>{
+    if (isNoteLayer()) noteLayer.edge = event.target.id();
+    else { state.edge=event.target.id(); state.panel='edge'; }
+    styleSelection();
+    renderDetails();
+  });
+  if (references) setInterval(() => {
+    if (isNoteLayer() && host.getClientRects().length) void readNotes();
+  }, 2500);
+  new ResizeObserver(resizeCanvas).observe(canvas);
 
   render(true);
   updateStatus();
@@ -1066,13 +1389,28 @@
   api = {
     mount: mount,
     mounted: function () { return mounted; },
-    resize: function () { if (cy) { cy.resize(); graphFit(); } },
+    resize: () => { resizeCanvas(); if (isNoteLayer() && host.getClientRects().length) void readNotes(); },
     refresh: refresh,
-    focus: function ({ rpmProjectId, fileId, nodeId } = {}) {
+    focus: function ({ rpmProjectId, fileId, nodeId, preserveSelection = false, referenceScope } = {}) {
+      if (referenceScope !== undefined && references) {
+        if (!isNoteLayer() || noteLayer.scope !== referenceScope) {
+          state.layer = 'notes';
+          chooseNoteScope(referenceScope);
+          return false;
+        }
+        if (!noteLayer.result) return false;
+        if (noteLayer.result.notes.some(row => row.id === nodeId)) {
+          if (!preserveSelection || noteLayer.selected !== nodeId) selectNote(nodeId, true);
+        }
+        return true;
+      }
       if (!data) return false;
+      if (isNoteLayer()) state.layer = 'research';
       const node = nodeId || (fileId && (data.raw.files || []).find(file =>
         (file.id === fileId || file.file_id === fileId) && (!rpmProjectId || file.project_id === rpmProjectId))?.id);
-      if (node && data.nodes.has(node)) selectNode(node, { fromSearch: true });
+      if (node && data.nodes.has(node)) {
+        if (!preserveSelection || node !== state.selected || cy.getElementById(node).empty()) selectNode(node, { fromSearch: true });
+      }
       else if (rpmProjectId && data.projects.has(rpmProjectId)) switchProject(rpmProjectId);
       else return false;
       return true;
@@ -1094,7 +1432,7 @@
     snapshot: function () { return data ? data.raw : null; },
     state: state,
     cy: function () { return cy; },
-    test: { cy: cy, state: state, snapshot: function () { return data && data.raw; }, load: load, camera: captureCamera, portal: { safeLocal: safeLocal } }
+    test: { cy: cy, state: state, snapshot: function () { return data && data.raw; }, load: load, camera: captureCamera, noteReferences: () => noteLayer.result, portal: { safeLocal: safeLocal } }
   };
   window.rpmNetworkTest = api.test;
   return api;

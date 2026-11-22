@@ -13,9 +13,9 @@ test('release metadata pins Electron 45.4.1 and the Snowzjd MIT license', () => 
   const pkg = JSON.parse(readFileSync(new URL('./package.json', root), 'utf8'));
   const desktop = JSON.parse(readFileSync(new URL('./desktop/package.json', root), 'utf8'));
   const lock = JSON.parse(readFileSync(new URL('./desktop/package-lock.json', root), 'utf8'));
-  assert.equal(pkg.version, '4.0.0-rc.1');
+  assert.equal(pkg.version, '4.0.0');
   assert.equal(pkg.license, 'MIT');
-  assert.equal(desktop.version, '4.0.0-rc.1');
+  assert.equal(desktop.version, '4.0.0');
   assert.equal(desktop.devDependencies.electron, '45.4.1');
   assert.equal(lock.packages['node_modules/electron'].version, '45.4.1');
   const license = readFileSync(new URL('./LICENSE', root), 'utf8');
@@ -33,13 +33,13 @@ test('release metadata pins Electron 45.4.1 and the Snowzjd MIT license', () => 
   assert.doesNotMatch(apiSource, /['"]3\.2\.1['"]/);
 });
 
-test('health and OpenAPI advertise 4.0.0-rc.1 without a renderer version', async () => {
+test('health and OpenAPI advertise 4.0.0 without a renderer version', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'rw-release-ver-'));
   try {
     const started = await api.start({ userDataDir: dir, port: 39221, strictPort: true, log() {} });
     assert.equal(started.ok, true);
     const health = await fetch('http://127.0.0.1:39221/api/health').then(response => response.json());
-    assert.equal(health.version, '4.0.0-rc.1');
+    assert.equal(health.version, '4.0.0');
     api.setWindow({
       isDestroyed: () => false,
       webContents: { executeJavaScript: async () => ({ ok: true, tools: [] }) }
@@ -47,7 +47,7 @@ test('health and OpenAPI advertise 4.0.0-rc.1 without a renderer version', async
     const spec = await fetch('http://127.0.0.1:39221/api/openapi.json', {
       headers: { Authorization: 'Bearer ' + started.token }
     }).then(response => response.json());
-    assert.equal(spec.info.version, '4.0.0-rc.1');
+    assert.equal(spec.info.version, '4.0.0');
   } finally {
     api.stop();
     api.setWindow(null);

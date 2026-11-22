@@ -30,7 +30,7 @@ const items = {
   todo_list: 'plan',
   error: 'item_error'
 };
-const skipDirectories = new Set(['.git', '.codex', '.obsidian', '.hg', '.svn', 'node_modules', 'candidate-user-data']);
+const skipDirectories = new Set(['.git', '.codex', '.obsidian', '.hg', '.svn', 'node_modules', 'candidate-user-data', 'portable-user-data']);
 const sensitiveName = /(?:^(?:device|auth|credentials?|secrets?|tokens?)\.|(?:^|[._-])(?:credential|password|api[_-]?key|private[_-]?key|secret)(?:[._-]|$)|^\.env(?:\.|$))/i;
 
 function samePath(left, right) {
@@ -374,7 +374,7 @@ function createCodexActivity({ onUpdate, pollIntervalMs = 400, disconnectMs = 12
         if (!child.kill()) finish(run, 'disconnected', 'fixture_timeout');
       }, 10000);
       send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
-        clientInfo: { name: 'research-workspace-fixture', version: '4.0.0-rc.1' }
+        clientInfo: { name: 'research-workspace-fixture', version: '4.0.0' }
       } });
       return { ok: true, runId: run.record.id };
     } catch {

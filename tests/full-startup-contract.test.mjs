@@ -33,7 +33,7 @@ function windowFixture(onLoad = () => {}) {
       fs: { existsSync: () => false }, path, __dirname: 'desktop', ROOT: '.', ICON_PATH: 'icon.ico',
       setTimeout: callback => timers.push(callback),
       resetBootLog() {}, logBoot: line => calls.push(line),
-      stopDesktopServices: () => calls.push('stopped'), app: { exit: code => calls.push(code), getVersion: () => '4.0.0-rc.1' },
+      stopDesktopServices: () => calls.push('stopped'), app: { exit: code => calls.push(code), getVersion: () => '4.0.0' },
       apiServer: { setWindow: window => calls.push(window) } }
   );
   return { createWindow, calls, timers };

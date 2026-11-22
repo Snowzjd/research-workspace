@@ -4,15 +4,24 @@ const fs = require('node:fs');
 const io = require('node:fs/promises');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
-const { metadataOnly } = require('./full-product');
+const { setTimeout: wait } = require('node:timers/promises');
+const { metadataOnly, protectedProjectWrite } = require('./full-product');
+const markdown = require('../assets/js/markdown-content');
 
 const MAX_BYTES = 2 * 1024 * 1024;
+const REFERENCE_BYTES = 32 * 1024 * 1024;
+const MAX_REFERENCES = 16000;
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 const EXT = /\.(?:md|markdown)$/i;
 const PROTECTED = /^(?:00_Project_Management|node_modules|rag[_-]?snowz|device|credentials?|secrets?|auth|tasks)(?:\.[^/]+)?$/i;
 const RESERVED = /^(?:CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])(?:\.|$)/i;
 const NOFOLLOW = fs.constants.O_NOFOLLOW || 0;
+const IMAGE_TYPES = new Map([
+  ['.png', 'image/png'], ['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'], ['.gif', 'image/gif'],
+  ['.webp', 'image/webp'], ['.avif', 'image/avif'], ['.bmp', 'image/bmp']
+]);
+const REVIEW_TEMPLATE = '---\ntags:\n  - 研究记录\n---\n\n# 研究记录\n\n## 研究问题\n\n## 方法与过程\n\n## 观察与证据\n\n## 下一步\n';
 
 function failure(code, message, extra = {}) {
   return Object.assign(new Error(message), { code, publicMessage: message, ...extra });
@@ -21,11 +30,11 @@ function failure(code, message, extra = {}) {
 function resultError(error) {
   const code = error.publicMessage ? error.code : ({
     ENOENT: 'not_found', ENOTDIR: 'not_found', EACCES: 'access_denied', EPERM: 'access_denied',
-    ELOOP: 'unsafe_path', EBUSY: 'busy'
+    ELOOP: 'unsafe_path', EBUSY: 'busy', EEXIST: 'EEXIST'
   }[error.code] || 'io_error');
   return { ok: false, code, message: error.publicMessage || ({
     not_found: '原始文件或目录不存在', access_denied: '无法访问该文件或目录',
-    unsafe_path: '链接路径已被拒绝', busy: '文件正在被其他程序占用'
+    unsafe_path: '链接路径已被拒绝', busy: '文件正在被其他程序占用', EEXIST: '同名文件已存在'
   }[code] || 'Markdown 文件操作失败'), ...(error.revision ? { revision: error.revision } : {}) };
 }
 
@@ -34,9 +43,9 @@ function safeSegment(name) {
     && !PROTECTED.test(name) && !RESERVED.test(name);
 }
 
-function segments(input, directory = false) {
+function segments(input, directory = false, attachment = false) {
   if (directory && (input == null || input === '')) return [];
-  if (typeof input !== 'string' || input.length > 1024 || (!directory && !EXT.test(input))) {
+  if (typeof input !== 'string' || input.length > 1024 || (!directory && !attachment && !EXT.test(input))) {
     throw failure('invalid_path', '请选择根目录内的 Markdown 文件');
   }
   const parts = input.split(/[\\/]/);
@@ -136,9 +145,9 @@ function encode(text, previous) {
   return bytes;
 }
 
-async function readFileRecord(target, checkPath) {
+async function readFileRecord(target, checkPath, maxBytes = MAX_BYTES) {
   const initial = await checkPath();
-  if (initial.size > BigInt(MAX_BYTES)) throw failure('too_large', 'Markdown 文件超过 2 MiB 上限');
+  if (initial.size > BigInt(maxBytes)) throw failure('too_large', '文件超过工作区读取上限');
   const handle = await io.open(target, fs.constants.O_RDONLY | NOFOLLOW);
   try {
     if (!sameStat(initial, await handle.stat({ bigint: true })) || !sameStat(initial, await checkPath())) {
@@ -155,7 +164,7 @@ async function readFileRecord(target, checkPath) {
       || !sameStat(initial, await checkPath())) throw conflict();
     const exact = bytes.subarray(0, total);
     const revision = digest([pathKey(target), initial.dev, initial.ino, initial.mtimeNs, initial.ctimeNs, digest(exact)].join('\0'));
-    return { bytes: exact, revision, mode: Number(initial.mode & 0o777n) };
+    return { bytes: exact, revision, stat: initial, mode: Number(initial.mode & 0o777n) };
   } finally {
     await handle.close();
   }
@@ -176,9 +185,22 @@ async function writeNew(target, bytes, mode, preserveMode = false) {
   }
 }
 
-function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange, pollIntervalMs = 1400 } = {}) {
+async function allowWindowsShareDelay(action) {
+  for (let retry = 0; ; retry++) {
+    try { return await action(); }
+    catch (error) {
+      const heldOpen = process.platform === 'win32' && ['EACCES', 'EPERM', 'EBUSY'].includes(error.code);
+      if (!heldOpen || retry === 5) throw error;
+      await wait(70 * (retry + 1));
+    }
+  }
+}
+
+function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange, openAttachment, pollIntervalMs = 1400 } = {}) {
   const locks = new Map();
   const watchers = new Map();
+  const referenceCache = new Map();
+  const referenceReads = new Map();
   let closed = false;
 
   async function rootFor(projectId) {
@@ -191,24 +213,34 @@ function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange,
     if (metadataOnly('', root)) {
       throw failure('metadata_only', '该项目仅连接了只读文件元数据');
     }
-    return { root, projectId: projectId || null, readOnly: Boolean(config.readOnly) };
+    const ownedRoots = new Set((config.registeredRoots || []).filter(value => typeof value === 'string' &&
+      path.isAbsolute(value) && !isSamePath(root, value)).map(value => pathKey(path.normalize(value))));
+    return { root, ownedRoots, projectId: projectId || null,
+      readOnly: Boolean(config.readOnly || protectedProjectWrite(config.rpmProjectId, root)) };
   }
 
-  async function targetFor(payload) {
-    const parts = segments(payload.path);
-    const scope = await rootFor(payload.projectId);
+  async function targetFor(payload, { attachment = false } = {}) {
+    return targetInScope(await rootFor(payload.projectId), payload.path, attachment);
+  }
+
+  function targetInScope(scope, relative, attachment = false) {
+    const parts = segments(relative, false, attachment);
     const target = path.join(scope.root, ...parts);
     if (metadataOnly('', target)) throw failure('metadata_only', '该目录仅连接只读元数据');
-    async function check() {
+    async function checkParent() {
       await checkedRoot(scope.root);
       let current = scope.root;
       for (const part of parts.slice(0, -1)) {
         current = path.join(current, part);
         await pathInfo(current, true);
       }
+    }
+    async function check() {
+      await checkParent();
       return pathInfo(target, false);
     }
-    return { ...scope, target, relative: parts.join('/'), check };
+    return { ...scope, target, relative: parts.join('/'), check, checkParent,
+      readOnly: scope.readOnly || protectedProjectWrite('', target) };
   }
 
   function document(target, file) {
@@ -218,10 +250,14 @@ function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange,
   }
 
   async function list(payload) {
-    const parts = segments(payload.directory, true);
     const scope = await rootFor(payload.projectId);
-    const query = typeof payload.query === 'string' ? payload.query.trim().toLowerCase().slice(0, 120) : '';
     const limit = Number.isInteger(payload.limit) ? Math.min(1500, Math.max(1, payload.limit)) : 500;
+    return collectNotes(scope, payload, limit, 1800);
+  }
+
+  async function collectNotes(scope, payload, limit, visitLimit, excludeRegistered = false) {
+    const parts = segments(payload.directory, true);
+    const query = typeof payload.query === 'string' ? payload.query.trim().toLowerCase().slice(0, 120) : '';
     let directory = scope.root;
     for (const part of parts) {
       directory = path.join(directory, part);
@@ -230,7 +266,8 @@ function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange,
     const files = [];
     const pending = [{ absolute: directory, parent: parts }];
     let visited = 0;
-    while (pending.length && visited < 1800 && files.length <= limit) {
+    let partial = false;
+    while (pending.length && visited < visitLimit && files.length <= limit) {
       const { absolute, parent } = pending.pop();
       visited++;
       let entries;
@@ -239,6 +276,7 @@ function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange,
         entries = await io.readdir(absolute, { withFileTypes: true });
       } catch (error) {
         if (absolute === directory) throw error;
+        partial = true;
         continue;
       }
       const dirs = [];
@@ -247,7 +285,7 @@ function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange,
         if (!safeSegment(entry.name)) continue;
         // Even a broad registered root must not traverse the protected project.
         const child = path.join(absolute, entry.name);
-        if (metadataOnly('', child)) continue;
+        if (metadataOnly('', child) || (excludeRegistered && scope.ownedRoots.has(pathKey(child)))) continue;
         const next = [...parent, entry.name];
         if (entry.isDirectory() && next.length < 40) {
           dirs.push({ absolute: child, parent: next });
@@ -260,12 +298,230 @@ function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange,
       pending.push(...dirs.reverse());
     }
     return { ok: true, projectId: scope.projectId, readOnly: scope.readOnly,
-      files: files.slice(0, limit), truncated: files.length > limit || pending.length > 0 };
+      files: files.slice(0, limit), truncated: partial || files.length > limit || pending.length > 0 };
   }
 
   async function read(payload) {
     const target = await targetFor(payload);
     return document(target, await readFileRecord(target.target, target.check));
+  }
+
+  async function create(payload) {
+    const target = await targetFor(payload);
+    if (target.readOnly) throw failure('read_only', '该项目中的文件为只读');
+    const template = payload.template === 'research' ? REVIEW_TEMPLATE : '';
+    await target.checkParent();
+    await writeNew(target.target, Buffer.from(template), 0o644);
+    return document(target, await readFileRecord(target.target, target.check));
+  }
+
+  function linkCandidates(reference, from) {
+    const name = reference.name;
+    const raw = name.startsWith('.') ? [path.posix.join(path.posix.dirname(from), name)] :
+      [path.posix.join(path.posix.dirname(from), name), path.posix.normalize(name)];
+    const candidates = raw.flatMap(value => reference.attachment || EXT.test(value) ? [value] : [value + '.md', value + '.markdown']);
+    return [...new Set(candidates)].filter(value => {
+      try { segments(value, false, reference.attachment); return true; }
+      catch (_) { return false; }
+    });
+  }
+
+  function indexedLink(reference, from, files) {
+    const direct = linkCandidates(reference, from);
+    for (const candidate of direct) {
+      const found = files.paths.get(pathKey(candidate));
+      if (found) return found;
+    }
+    if (reference.name.includes('/')) return '';
+    const filename = path.posix.basename(reference.name);
+    const names = EXT.test(filename) ? [filename] : [filename + '.md', filename + '.markdown'];
+    const matches = names.flatMap(name => files.names.get(pathKey(name)) || []);
+    return matches.length === 1 ? matches[0] : '';
+  }
+
+  function pathIndex(files, additionalPath) {
+    const paths = new Map();
+    const names = new Map();
+    for (const relative of [...new Set(files.map(file => file.path).concat(additionalPath))]) {
+      paths.set(pathKey(relative), relative);
+      const filename = pathKey(path.posix.basename(relative));
+      if (!names.has(filename)) names.set(filename, []);
+      names.get(filename).push(relative);
+    }
+    return { paths, names };
+  }
+
+  async function findLink(payload, reference) {
+    for (const relative of linkCandidates(reference, payload.path)) {
+      const target = await targetFor({ projectId: payload.projectId, path: relative }, { attachment: reference.attachment });
+      try {
+        await target.check();
+        return target;
+      } catch (error) {
+        if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error;
+      }
+    }
+    if (!reference.attachment && !reference.name.includes('/')) {
+      const files = await list({ projectId: payload.projectId, query: reference.name.replace(EXT, ''), limit: 1500 });
+      if (files.truncated) throw failure('incomplete_search', '同名候选范围过大，请使用相对路径');
+      const relative = indexedLink(reference, payload.path, pathIndex(files.files, payload.path));
+      if (relative) return targetFor({ projectId: payload.projectId, path: relative });
+    }
+    throw failure('not_found', '找不到此链接的原件，请核对相对路径或同名文件');
+  }
+
+  function assertImageHeader(bytes, mime) {
+    const at = (index, value) => bytes.subarray(index, index + value.length).equals(Buffer.from(value, 'latin1'));
+    const valid = {
+      'image/png': at(0, '\x89PNG\r\n\x1a\n'), 'image/jpeg': at(0, '\xff\xd8\xff'),
+      'image/gif': at(0, 'GIF87a') || at(0, 'GIF89a'), 'image/webp': at(0, 'RIFF') && at(8, 'WEBP'),
+      'image/avif': at(4, 'ftyp') && (at(8, 'avif') || at(8, 'avis')), 'image/bmp': at(0, 'BM')
+    }[mime];
+    if (!valid) throw failure('invalid_attachment', '文件内容与图片格式不符');
+  }
+
+  async function resolveLink(payload) {
+    const original = await read(payload);
+    const wiki = payload.wiki === true;
+    const reference = markdown.localRef(payload.target, wiki);
+    if (!reference || !markdown.links(original.text).some(link => link.wiki === wiki && link.target === payload.target)) {
+      throw failure('unlinked_file', '原件中暂无此链接，请先保存当前修改');
+    }
+    const target = await findLink(payload, reference);
+    if (!reference.attachment) {
+      await target.check();
+      return { ok: true, kind: 'note', path: target.relative };
+    }
+    if (payload.action === 'open') {
+      if (typeof openAttachment !== 'function') throw failure('unavailable', '当前无法打开附件');
+      await target.check();
+      if (await openAttachment(target.target)) throw failure('open_failed', '系统无法打开此附件');
+      return { ok: true, kind: 'attachment', opened: true };
+    }
+    const mime = IMAGE_TYPES.get(path.extname(target.target).toLowerCase());
+    if (payload.action === 'preview' && mime) {
+      const { bytes } = await readFileRecord(target.target, target.check, 3 * 1024 * 1024);
+      assertImageHeader(bytes, mime);
+      return { ok: true, kind: 'attachment', preview: 'data:' + mime + ';base64,' + bytes.toString('base64') };
+    }
+    return { ok: true, kind: 'attachment', path: target.relative };
+  }
+
+  async function readReferenceScope(scope) {
+    const key = JSON.stringify([scope.projectId, pathKey(scope.root)]);
+    if (referenceReads.has(key)) return referenceReads.get(key);
+    const pending = buildReferenceScope(scope, key);
+    referenceReads.set(key, pending);
+    try { return await pending; }
+    finally { referenceReads.delete(key); }
+  }
+
+  async function buildReferenceScope(scope, key) {
+    const before = referenceCache.get(key);
+    const found = await collectNotes(scope, {}, 4000, 5000, true);
+    const notes = new Map();
+    let partial = found.truncated;
+    let byteCount = 0;
+    let refCount = 0;
+
+    // Re-read only changed originals; bound parallel filesystem work and index size.
+    async function scan(entry) {
+      try {
+        const file = targetInScope(scope, entry.path);
+        const stat = await file.check();
+        const prior = before?.notes.get(entry.path);
+        if (stat.size > BigInt(MAX_BYTES)) { partial = true; return null; }
+        if (byteCount + Number(stat.size) > REFERENCE_BYTES) { partial = true; return null; }
+        byteCount += Number(stat.size);
+        if (prior && sameStat(stat, prior.stat)) return prior;
+        const record = await readFileRecord(file.target, file.check);
+        if (!sameStat(stat, record.stat)) { partial = true; return null; }
+        const body = decode(record.bytes).text;
+        return { note: { ...entry, id: 'md-' + digest(pathKey(file.target)) },
+          stat, occurrences: markdown.wikiOccurrences(body).slice(0, MAX_REFERENCES + 1),
+          refs: markdown.links(body).slice(0, MAX_REFERENCES), updatedAt: new Date(Number(stat.mtimeMs)).toISOString() };
+      } catch (_) {
+        partial = true;
+        return null;
+      }
+    }
+
+    for (let offset = 0; offset < found.files.length; offset += 8) {
+      const batch = await Promise.all(found.files.slice(offset, offset + 8).map(scan));
+      for (const row of batch) {
+        if (!row) continue;
+        if (refCount + row.occurrences.length + row.refs.length > MAX_REFERENCES) {
+          partial = true;
+          continue;
+        }
+        refCount += row.occurrences.length + row.refs.length;
+        notes.set(row.note.path, row);
+      }
+    }
+
+    const files = [...notes.values()].map(row => row.note);
+    const index = pathIndex(files, []);
+    const resolveReference = (ref, from) => {
+      if (!ref) return { status: 'invalid' };
+      const candidates = linkCandidates(ref, from);
+      if (!candidates.length) return { status: 'invalid' };
+      const direct = candidates.map(name => index.paths.get(pathKey(name))).find(Boolean);
+      if (direct) return { status: 'resolved', target: notes.get(direct)?.note };
+      if (!ref.name.includes('/')) {
+        const name = path.posix.basename(ref.name);
+        const extensions = EXT.test(name) ? [name] : [name + '.md', name + '.markdown'];
+        const matches = extensions.flatMap(item => index.names.get(pathKey(item)) || []);
+        if (matches.length > 1) return { status: 'ambiguous' };
+        if (!partial && matches.length === 1) return { status: 'resolved', target: notes.get(matches[0])?.note };
+      }
+      return { status: partial ? 'unchecked' : 'unresolved' };
+    };
+    const links = [];
+    const incoming = new Map();
+    for (const row of notes.values()) {
+      const source = row.note;
+      for (const occurrence of row.occurrences) {
+        const reference = markdown.localRef(occurrence.target, occurrence.wiki);
+        if (reference?.attachment) continue;
+        const { status, target } = resolveReference(reference, source.path);
+        if (target?.id === source.id) continue;
+        const { line, column } = occurrence;
+        links.push({ id: 'link-' + digest(JSON.stringify([source.id, line, column, occurrence.target, links.length])),
+          sourceId: source.id, sourcePath: source.path, targetId: target?.id || null, targetPath: target?.path || null,
+          text: occurrence.target, label: occurrence.label, status, line, ...(column ? { column } : {}), updatedAt: row.updatedAt });
+      }
+      for (const item of row.refs) {
+        const ref = markdown.localRef(item.target, item.wiki);
+        if (!ref || ref.attachment) continue;
+        const { target } = resolveReference(ref, source.path);
+        if (target && target.id !== source.id) {
+          if (!incoming.has(target.path)) incoming.set(target.path, new Map());
+          incoming.get(target.path).set(source.id, { path: source.path, name: source.name });
+        }
+      }
+    }
+
+    const result = { ok: true, revision: digest(JSON.stringify([files, links, partial])), notes: files, links, partial };
+    referenceCache.delete(key);
+    referenceCache.set(key, { notes });
+    while (referenceCache.size > 4) referenceCache.delete(referenceCache.keys().next().value);
+    return { result, incoming };
+  }
+
+  async function references(payload) {
+    const scope = await rootFor(payload.projectId);
+    const { result } = await readReferenceScope(scope);
+    return payload.ifRevision === result.revision
+      ? { ok: true, notModified: true, revision: result.revision, partial: result.partial }
+      : result;
+  }
+
+  async function backlinks(payload) {
+    const original = await read(payload);
+    const { result, incoming } = await readReferenceScope(await rootFor(original.projectId));
+    const matches = [...(incoming.get(original.path)?.values() || [])];
+    return { ok: true, backlinks: matches.slice(0, 150), scanned: result.notes.length,
+      partial: result.partial || matches.length > 150 };
   }
 
   async function versionDirectory(target, create) {
@@ -306,8 +562,10 @@ function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange,
     if (locks.has(key)) throw failure('busy', '该文件已有正在进行的保存');
     locks.set(key, true);
     let temporary;
+    let backupPath;
+    let replaced = false;
     try {
-      const before = await readFileRecord(target.target, target.check);
+      const before = await allowWindowsShareDelay(() => readFileRecord(target.target, target.check));
       if (payload.revision !== before.revision) throw conflict(before.revision);
       const previous = decode(before.bytes);
       let bytes;
@@ -329,15 +587,20 @@ function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange,
       if (bytes.equals(before.bytes)) return document(target, before);
       const directory = await versionDirectory(target, true);
       const backupVersionId = randomUUID();
-      await writeNew(path.join(directory, backupVersionId), before.bytes, 0o600);
+      const backup = path.join(directory, backupVersionId);
+      await writeNew(backup, before.bytes, 0o600);
+      backupPath = backup;
       await target.check();
       temporary = path.join(path.dirname(target.target), '.rw-markdown-' + randomUUID() + '.tmp');
       await writeNew(temporary, bytes, before.mode, true);
-      const latest = await readFileRecord(target.target, target.check);
-      if (latest.revision !== before.revision) throw conflict(latest.revision);
-      await io.rename(temporary, target.target);
+      await allowWindowsShareDelay(async () => {
+        const latest = await readFileRecord(target.target, target.check);
+        if (latest.revision !== before.revision) throw conflict(latest.revision);
+        await io.rename(temporary, target.target);
+      });
+      replaced = true;
       temporary = null;
-      const saved = await readFileRecord(target.target, target.check);
+      const saved = await allowWindowsShareDelay(() => readFileRecord(target.target, target.check));
       if (!saved.bytes.equals(bytes)) throw conflict(saved.revision);
       return { ...document(target, saved), backupVersionId };
     } finally {
@@ -346,6 +609,13 @@ function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange,
           await checkedRoot(path.dirname(temporary));
           await io.unlink(temporary);
         } catch (_) { /* A concurrent move can make the temporary file unreachable here. */ }
+      }
+      if (backupPath && !replaced) {
+        try {
+          await checkedRoot(path.dirname(backupPath));
+          await pathInfo(backupPath, false);
+          await io.unlink(backupPath);
+        } catch (_) { /* Keep an already-created backup if its directory is unavailable. */ }
       }
       locks.delete(key);
     }
@@ -406,9 +676,17 @@ function createMarkdownService({ vaultRoot, resolveProject, backupDir, onChange,
     };
   }
 
-  return { list: route(list), read: route(read), save: route(payload => mutate(payload, false)),
+  return { list: route(list), read: route(read), create: route(create), resolveLink: route(resolveLink),
+    backlinks: route(backlinks), references: route(references), save: route(payload => mutate(payload, false)),
     versions: route(versions), restore: route(payload => mutate(payload, true)), watch: route(watch),
-    unwatch: route(unwatch), close() { closed = true; for (const timer of watchers.values()) clearInterval(timer); watchers.clear(); } };
+    unwatch: route(unwatch), close() { closed = true; for (const timer of watchers.values()) clearInterval(timer); watchers.clear(); referenceCache.clear(); } };
 }
 
-module.exports = { createMarkdownService };
+async function readOriginalMarkdown(target) {
+  try {
+    const record = await readFileRecord(target, () => pathInfo(target, false));
+    return { ok: true, text: decode(record.bytes).text };
+  } catch (error) { return resultError(error); }
+}
+
+module.exports = { createMarkdownService, readOriginalMarkdown };

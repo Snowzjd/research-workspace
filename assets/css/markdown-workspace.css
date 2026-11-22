@@ -1,0 +1,16 @@
+.rw-note-yaml { margin: 6px 0; overflow-wrap: anywhere; }
+.rw-note-yaml dt { font-size: 11px; color: var(--fw-muted); }
+.rw-note-yaml dd { margin: 2px 0 8px; }
+.rw-note-embed { display: block; margin: 6px 0; }
+.rw-note-embed img { display: block; max-width: 100%; max-height: 360px; object-fit: contain; }
+.rw-markdown-display-math { overflow: auto; padding: 8px 0; text-align: center; }
+.rw-note-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rw-note-compare label { display: grid; gap: 6px; min-width: 0; color: var(--fw-text); }
+.rw-note-compare textarea { min-height: 240px; width: 100%; resize: vertical; font: 13px/1.6 Consolas, monospace; }
+#fw-new-note { display: grid; gap: 10px; }
+#fw-note-content table { border-collapse: collapse; }
+#fw-note-content th, #fw-note-content td { padding: 4px 7px; border: 1px solid var(--fw-line); }
+@media (max-width: 720px) {
+  .rw-note-compare { grid-template-columns: 1fr; }
+  .rw-note-compare textarea { min-height: 140px; }
+}

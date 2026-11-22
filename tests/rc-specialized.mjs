@@ -12,7 +12,7 @@ if (!programArg || !evidenceArg || !fixtureParent || !rpmSkill) {
 }
 const program = fs.realpathSync.native(programArg);
 const evidence = path.resolve(evidenceArg);
-const userData = path.join(program, 'candidate-user-data');
+const userData = path.join(program, 'portable-user-data');
 assert.equal(fs.existsSync(userData), false, 'use a clean extracted candidate');
 fs.mkdirSync(evidence, { recursive: true });
 const room = fs.mkdtempSync(path.join(fs.realpathSync.native(fixtureParent), 'rpm-interface-'));
@@ -98,9 +98,13 @@ async function start() {
   await channel.request('Page.enable');
   await until(() => channel.eval('window.workspace?.full?.enabled'), 'candidate bridge unavailable');
   const status = await channel.eval('window.workspace.full.status()');
-  assert.equal(status.apiPort, 17400);
-  assert.equal(status.version, '4.0.0-rc.1');
+  assert.equal(status.apiPort, 17403);
+  assert.equal(status.version, '4.0.0');
   assert.equal(status.apiReady, true);
+  await until(async () => {
+    const health = await fetch('http://127.0.0.1:17403/api/health', {signal: AbortSignal.timeout(1200)}).then(row => row.json());
+    return health.windowReady && await channel.eval('document.readyState === "complete" && window.FullWorkspace?.enabled');
+  }, 'Electron window is fully loaded');
   const profile = await channel.eval('window.workspace.dataFilePath()');
   assert.equal(path.normalize(profile).toLowerCase(), path.join(userData, 'workspace-data.json').toLowerCase(),
     'control window belongs to this isolated candidate');
@@ -161,6 +165,7 @@ try {
   }));
   await start();
   await check('force-directed graph one-hop focus, two-hop expansion and relationship evidence', async () => {
+    await route('graph');
     await until(() => channel.eval('window.rpmNetworkTest?.snapshot()?.nodes?.length > 0'), 'RPM graph ready');
     const result = await channel.eval(`(() => {
       const test = window.rpmNetworkTest, cy = test.cy;
@@ -171,9 +176,6 @@ try {
         && n.type !== 'source' && n.type !== 'project');
       for (const seed of eligible) {
         window.KnowledgeNetwork.focus({ nodeId: seed.id });
-        const trace = [...area.querySelectorAll('#detail button')].find(b=>b.textContent === '追溯关系');
-        if (!trace) continue;
-        trace.click();
         const first = cy.nodes().map(n=>n.id());
         if (test.state.depth !== 1 || !cy.getElementById(seed.id).hasClass('focused')) continue;
         const highlight = cy.getElementById(seed.id).connectedEdges().filter('.highlight').length;
@@ -204,10 +206,12 @@ try {
     assert.ok(vaultText.text.startsWith(fixture.yaml.replaceAll('\r\n', '\n')));
     await route('notes');
     await openNote(note.path);
-    assert.match(await channel.eval('document.querySelector("#fw-note-properties").innerText'), /title: "两相测量"/);
-    await click('#fw-note-properties [data-full="note"][value="校准基准.md"]');
+    assert.match(await channel.eval('document.querySelector("#fw-note-properties").innerText'), /title\s+两相测量/);
+    await click('#fw-note-properties [data-full="follow-note"][value="校准基准"]');
+    await until(() => channel.eval('document.querySelector("#fw-note-properties")?.innerText.includes("校准基准.md")'), 'wikilink opens target');
+    await click('#fw-note-properties [data-full="note-backlinks"]');
     await until(() => channel.eval(`[...document.querySelectorAll('#fw-note-properties [data-full=note]')].some(b=>b.value===${JSON.stringify(note.path)})`), 'opened-note backlink');
-    assert.match(await channel.eval('document.querySelector("#fw-note-properties").innerText'), /反链/);
+    assert.match(await channel.eval('document.querySelector("#fw-note-properties").innerText'), /反向链接/);
     await channel.screen('supplemental-vault-backlink');
   });
   await check('central Vault external replacement warns editor and preserves unsaved draft', async () => {
@@ -222,7 +226,7 @@ try {
     const replacement = path.join(vault, 'external-work.tmp');
     fs.writeFileSync(replacement, Buffer.concat([initial, Buffer.from('外部修改\r\n')]));
     fs.renameSync(replacement, actual);
-    await until(() => channel.eval('document.querySelector("#fw-note-status")?.innerText.includes("外部变化")'), 'watch detects external replacement');
+    await until(() => channel.eval(`Boolean(document.querySelector('#fw-note-status [data-full="compare-note"]'))`), 'watch detects external replacement');
     assert.ok(await channel.eval('document.querySelector("#fw-note-editor").value.includes("待合并的本地更改")'));
     assert.ok(await channel.eval(`document.querySelector('#fw-note-toolbar [data-full="save-note"]').disabled`));
     const refused = await markdown('save', { ...note, revision: opened.revision, text: opened.text + '过期草稿\n' });

@@ -16,6 +16,7 @@ const apiServer = require('../desktop/api-server.js');
 const adapter = require('../desktop/rpm-adapter.js');
 const projectRoot = require('../desktop/project-root.js');
 const materialSource = require('../assets/js/material-source.js');
+const { queryFiles } = require('../desktop/rpm-http.js');
 
 const PYTHON = process.env.RPM_TEST_PYTHON
   || 'D:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python312\\python.exe';
@@ -172,6 +173,35 @@ test('materials list matches RPM CLI and shows category, purpose, absolute path'
   assert.ok(decided.files.some((f) => f.category && f.purpose));
   assert.equal(materialSource.openRootOf({ decided }), files.json.resolvedRoot);
   saveSample('files.json', files.json);
+});
+
+test('material catalog counts standard categories and pages one category without changing exact lookup', async () => {
+  const registry = rpmCli('list');
+  const [rpmProjectId] = Object.keys(registry);
+  const ctx = {
+    getConfig: () => ({ pythonPath: PYTHON, scriptPath: SCRIPT, settingsPath, cache: false }),
+    listWorkbenchProjects: () => [{ id: boundId, rpmProjectId, rpmRoot: projectRootDir }]
+  };
+  const overview = await queryFiles(ctx, boundId, { catalog: true });
+  assert.equal(overview.ok, true, overview.error);
+  assert.equal(overview.rpmBound, true);
+  assert.equal(overview.total, 3);
+  assert.deepEqual(overview.files, []);
+  assert.equal(overview.categories.length, 12);
+  assert.deepEqual(overview.categories.at(0), { id: '00_Project_Management', count: 0 });
+  assert.deepEqual(overview.categories.at(-1), { id: '99_Archive', count: 0 });
+  const category = '09_Documents';
+  assert.deepEqual(overview.categories.find(row => row.id === category), { id: category, count: 2 });
+  const documents = await Promise.all([0, 1, 2].map(offset => queryFiles(ctx, boundId, {
+    catalog: true, category, offset, limit: 1
+  })));
+  assert.deepEqual(documents.map(page => page.total), [2, 2, 2]);
+  assert.deepEqual(documents.map(page => page.files.map(row => row.name)), [['keep-me.md'], ['sample-record.md'], []]);
+  assert.ok(path.isAbsolute(documents[0].files[0].absolute_path));
+  const exact = await queryFiles(ctx, boundId, { fileIds: [documents[0].files[0].file_id] });
+  assert.deepEqual(exact.files, documents[0].files);
+  const invalid = await queryFiles(ctx, boundId, { catalog: true, category: '98_Unknown' });
+  assert.equal(invalid.code, 'invalid_request');
 });
 
 test('relations and audit match CLI; unbound stays 409; writes rejected before spawn', async () => {

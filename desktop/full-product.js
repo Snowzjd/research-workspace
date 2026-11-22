@@ -4,13 +4,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const MARKER = 'FULL-CANDIDATE-PORTABLE.txt';
+const MARKER = 'RESEARCH-WORKSPACE-PORTABLE.txt';
 const { version: VERSION } = require('../package.json');
 const MARKER_CONTENT = 'RESEARCH-WORKSPACE-FULL-' + VERSION;
-const PORT = 17400;
-const TPMS_ID = 'd72165400fae48eb9466e8151cdd15e3';
+const PORT = 17403;
+const METADATA_ONLY_PROJECT = 'ae428f0f9a857d151ccb32517d77a3a4e78106d7cb021b8064866250be65c26d';
+const READ_ONLY_PROJECT = '68df7416ee6f059dd6b7c0b07cc224775917d9dce92d8db40a7754dd372ba20a';
+const READ_ONLY_WINDOWS_ROOT = 'fc2fbb1e2e7a0e602bb45a1fdd7a1f33a324c620a6430a9d29c7577f6e225702';
 const PROTECTED_WINDOWS_ROOT = 'fdde8cf29c223e6481bc9e6ccf3ee44e2fa953775800c29caf9acf8efd91f743';
 const SAFE_DOCUMENTS = new Set(['.md', '.markdown', '.txt', '.pdf', '.docx', '.xlsx', '.pptx', '.csv', '.png', '.jpg', '.jpeg', '.webp']);
+const SAFE_MATERIALS = new Set(['.scdoc', '.scdocx', '.step', '.stp', '.stl', '.iges', '.igs', '.x_t', '.x_b',
+  '.opj', '.opju', '.lay', '.plt', '.szplt']);
 
 function samePath(a, b) {
   const normalize = p => process.platform === 'win32'
@@ -25,18 +29,18 @@ function isolatedDirectory(executable, appRoot, dailyDirectory) {
     try {
       return fs.lstatSync(candidate).isFile() && fs.readFileSync(candidate, 'utf8').trim() === MARKER_CONTENT;
     } catch (_) { return false; }
-  })) throw new Error('Full candidate markers are missing or invalid');
-  if (!samePath(directory, fs.realpathSync.native(directory))) throw new Error('Candidate executable directory is redirected');
-  const data = path.join(directory, 'candidate-user-data');
-  if (samePath(data, dailyDirectory) || inside(dailyDirectory, data)) throw new Error('Candidate data overlaps daily data');
+  })) throw new Error('Portable release markers are missing or invalid');
+  if (!samePath(directory, fs.realpathSync.native(directory))) throw new Error('Portable executable directory is redirected');
+  const data = path.join(directory, 'portable-user-data');
+  if (samePath(data, dailyDirectory) || inside(dailyDirectory, data)) throw new Error('Portable data overlaps existing application data');
   try { fs.mkdirSync(data); } catch (error) { if (error.code !== 'EEXIST') throw error; }
   if (!fs.lstatSync(data).isDirectory() || !samePath(data, fs.realpathSync.native(data))) {
-    throw new Error('Candidate user data is redirected');
+    throw new Error('Portable user data is redirected');
   }
   for (const entry of fs.readdirSync(data, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) throw new Error('Candidate user data contains a redirected entry');
+    if (entry.isSymbolicLink()) throw new Error('Portable user data contains a redirected entry');
     if (entry.isFile() && fs.lstatSync(path.join(data, entry.name)).nlink !== 1) {
-      throw new Error('Candidate user data contains a linked file');
+      throw new Error('Portable user data contains a linked file');
     }
   }
   return data;
@@ -47,28 +51,45 @@ function inside(root, target) {
   return !!relative && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep);
 }
 
-function metadataOnly(projectId, root) {
-  if (projectId === TPMS_ID) return true;
+function pathDigest(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function underProtectedWindowsRoot(root, digest) {
   if (process.platform !== 'win32' || typeof root !== 'string' || !path.isAbsolute(root)) return false;
   let current = path.resolve(root);
   for (;;) {
-    if (crypto.createHash('sha256').update(current.toLowerCase()).digest('hex') === PROTECTED_WINDOWS_ROOT) return true;
+    if (pathDigest(current.toLowerCase()) === digest) return true;
     const parent = path.dirname(current);
     if (parent === current) return false;
     current = parent;
   }
 }
 
-function safeDocument(root, relative) {
+function metadataOnly(projectId, root) {
+  if (typeof projectId === 'string' && pathDigest(projectId) === METADATA_ONLY_PROJECT) return true;
+  return underProtectedWindowsRoot(root, PROTECTED_WINDOWS_ROOT);
+}
+
+function protectedProjectWrite(projectId, root) {
+  if (metadataOnly(projectId, root)) return true;
+  if (typeof projectId === 'string' && pathDigest(projectId) === READ_ONLY_PROJECT) return true;
+  return underProtectedWindowsRoot(root, READ_ONLY_WINDOWS_ROOT);
+}
+
+function safeDocument(root, relative, { allowIndexedOriginal = false, material = false, locateOnly = false } = {}) {
   if (typeof relative !== 'string' || !relative || relative.includes(':') || /[\x00-\x1f]/.test(relative)) return null;
   const segments = relative.split(/[\\/]/);
   if (segments.some(part => !part || part === '.' || part === '..' || /[. ]$/.test(part))) return null;
   const target = path.resolve(root, ...segments);
-  if (!inside(root, target) || !SAFE_DOCUMENTS.has(path.extname(target).toLowerCase())) return null;
+  const extension = path.extname(target).toLowerCase();
+  if (!inside(root, target) || (!locateOnly && !SAFE_DOCUMENTS.has(extension) &&
+    !(material && SAFE_MATERIALS.has(extension)))) return null;
   try {
     const real = fs.realpathSync.native(target);
     const stat = fs.statSync(real);
-    return samePath(real, target) && stat.isFile() && stat.nlink === 1 && !metadataOnly('', real) ? real : null;
+    return samePath(real, target) && stat.isFile() && stat.nlink === 1 &&
+      (allowIndexedOriginal || !metadataOnly('', real)) ? real : null;
   } catch (_) { return null; }
 }
 
@@ -108,7 +129,7 @@ function importWorkspace(file, destination) {
   const prior = fs.lstatSync(destination, { throwIfNoEntry: false });
   if (prior) {
     if (!prior.isFile() || prior.nlink !== 1 || !samePath(destination, fs.realpathSync.native(destination))) {
-      return { ok: false, error: '候选数据文件是链接或不可用，未导入' };
+      return { ok: false, error: '本机数据文件是链接或不可用，未导入' };
     }
     const backupDir = path.join(path.dirname(destination), 'migration-backups');
     fs.mkdirSync(backupDir, { recursive: true });
@@ -120,4 +141,4 @@ function importWorkspace(file, destination) {
   return { ok: true, backedUp, projects: data.projects.length, tasks: data.tasks.length };
 }
 
-module.exports = { MARKER, MARKER_CONTENT, VERSION, PORT, isolatedDirectory, metadataOnly, samePath, inside, safeDocument, atomicWrite, importWorkspace };
+module.exports = { MARKER, MARKER_CONTENT, VERSION, PORT, isolatedDirectory, metadataOnly, protectedProjectWrite, samePath, inside, safeDocument, atomicWrite, importWorkspace };

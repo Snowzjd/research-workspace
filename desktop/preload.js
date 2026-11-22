@@ -138,7 +138,7 @@ if (process.argv.includes('--rw-full-bridge')) {
     return () => ipcRenderer.removeListener('full:' + channel, listener);
   };
   const markdown = Object.fromEntries(
-    ['list', 'read', 'save', 'versions', 'restore', 'watch', 'unwatch'].map(name => [name, invoke('markdown:' + name)])
+    ['list', 'read', 'save', 'versions', 'restore', 'watch', 'unwatch', 'create', 'backlinks', 'resolveLink', 'references'].map(name => [name, invoke('markdown:' + name)])
   );
   contextBridge.exposeInMainWorld('workspace', {
     ...Object.fromEntries(safe.map(name => [name, workspace[name]])),
@@ -149,13 +149,18 @@ if (process.argv.includes('--rw-full-bridge')) {
       status: invoke('status'),
       search: invoke('search'),
       openMaterial: invoke('openMaterial'),
+      openOriginal: invoke('openOriginal'),
       rpmProjects: invoke('rpmProjects'),
       rpmBinding: invoke('rpmBinding'),
+      rpmRegister: invoke('rpmRegister'),
+      rpmOnboarding: Object.fromEntries(['preview', 'page', 'confirm', 'list', 'save', 'rescan', 'abandon', 'finish']
+        .map(name => [name, invoke('rpmOnboarding:' + name)])),
       importWorkspace: invoke('import'),
+      migration: { profile: invoke('migration:profile'), backup: invoke('migration:backup'), status: invoke('migration:status') },
       vault: { status: invoke('vault:status'), choose: invoke('vault:choose') },
       markdown: { ...markdown, onChange: subscribe('markdown:change') },
       codex: {
-        ...Object.fromEntries(['capabilities', 'pending', 'discover', 'bind', 'list', 'refresh', 'handoff']
+        ...Object.fromEntries(['capabilities', 'pending', 'discover', 'bind', 'list', 'refresh', 'handoff', 'artifact']
           .map(name => [name, invoke('codex:' + name)])),
         onChange: subscribe('codex:change')
       }

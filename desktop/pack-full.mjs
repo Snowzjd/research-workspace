@@ -14,8 +14,8 @@ const packageData = JSON.parse(fs.readFileSync(path.join(desktop, 'package.json'
 const marker = full.MARKER;
 const markerContents = full.MARKER_CONTENT + '\r\n';
 
-if (packageData.version !== full.VERSION) throw new Error('Unexpected candidate version');
-if (fs.existsSync(output)) throw new Error('Candidate already exists. Keep it and use a fresh output parent for another build.');
+if (packageData.version !== full.VERSION) throw new Error('Unexpected portable release version');
+if (fs.existsSync(output)) throw new Error('Portable release directory already exists. Choose a fresh output parent.');
 const lock = JSON.parse(fs.readFileSync(path.join(desktop, 'package-lock.json'), 'utf8'));
 if (lock.version !== full.VERSION || lock.packages['']?.version !== full.VERSION) throw new Error('Lockfile version mismatch');
 const electronPackage = path.join(desktop, 'node_modules', 'electron');
@@ -24,12 +24,34 @@ if (!fs.existsSync(path.join(electronPackage, 'dist', 'electron.exe'))) {
 }
 const electron = verifyElectronDistribution(electronPackage,
   packageData.devDependencies.electron, lock.packages['node_modules/electron']?.version);
+const releaseDocNames = [
+  'RELEASE-NOTES.md', 'CHANGELOG.md', 'INSTALLATION-GUIDE.md', 'MIGRATION-GUIDE.md',
+  'ROLLBACK-GUIDE.md', 'THIRD-PARTY-NOTICES.md', 'ACCEPTANCE-REPORT.md', 'KNOWN-LIMITATIONS.md'
+];
+const releaseDocs = releaseDocNames.filter(name => fs.existsSync(path.join(root, name)));
+const requestedCommit = process.env.RW_RELEASE_COMMIT;
+const gitOptions = { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true };
+let sourceCommit = null;
+let sourceClean = null;
+try {
+  sourceCommit = execFileSync('git', ['rev-parse', '--verify', 'HEAD'], gitOptions).trim();
+  sourceClean = !execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], gitOptions).trim();
+} catch (error) {
+  if (requestedCommit) throw error;
+}
+if (requestedCommit && (!/^[a-f0-9]{40}$/.test(requestedCommit) ||
+    requestedCommit !== sourceCommit || !sourceClean || releaseDocs.length !== releaseDocNames.length)) {
+  throw new Error('A formal distribution requires the matching clean source commit and all eight release documents.');
+}
+if (!process.env.RW_RCEDIT) {
+  throw new Error('Set RW_RCEDIT to the Windows rcedit executable to apply the portable release version metadata.');
+}
 fs.mkdirSync(release, { recursive: true });
 if (fs.realpathSync.native(release).toLowerCase() !== release.toLowerCase()) {
   throw new Error('Build output directory must be a real directory');
 }
 
-const staging = fs.mkdtempSync(path.join(release, '.full-candidate-build-'));
+const staging = fs.mkdtempSync(path.join(release, '.portable-build-'));
 const app = path.join(staging, 'resources', 'app');
 fs.cpSync(electron, staging, {
   recursive: true,
@@ -37,7 +59,8 @@ fs.cpSync(electron, staging, {
 });
 fs.renameSync(path.join(staging, 'electron.exe'), path.join(staging, 'ResearchWorkspace.exe'));
 if (process.env.RW_RCEDIT) {
-  const numericVersion = packageData.version.replace(/-rc\.(\d+)$/, '.$1');
+  const numericVersion = /^\d+\.\d+\.\d+$/.test(packageData.version)
+    ? packageData.version + '.0' : packageData.version.replace(/-rc\.(\d+)$/, '.$1');
   execFileSync(process.env.RW_RCEDIT, [
     path.join(staging, 'ResearchWorkspace.exe'),
     '--set-icon', path.join(root, 'icon.ico'),
@@ -53,7 +76,7 @@ const csp = [
   "font-src 'self' data:", "connect-src 'none'", "object-src 'none'", "frame-src 'none'", "form-action 'none'", "base-uri 'none'"
 ].join('; ');
 const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
-  .replace(/<title>[^<]*<\/title>/, '<title>个人科研工程工作台</title>')
+  .replace(/<title>[^<]*<\/title>/, '<title>个人科研工程工作台 V' + packageData.version + '</title>')
   .replace('<meta charset="UTF-8">', '<meta charset="UTF-8">\n<meta http-equiv="Content-Security-Policy" content="' + csp + '">');
 fs.writeFileSync(path.join(app, 'index.html'), index);
 fs.cpSync(path.join(root, 'icon.ico'), path.join(app, 'icon.ico'));
@@ -79,16 +102,29 @@ const seed = {
 fs.writeFileSync(dataFile, dataSource.replace(demoSeed, 'const SEED = ' + JSON.stringify(seed, null, 2) + ';')
   .replace(demoMaterials, 'const MATERIALS = {};'), 'utf8');
 fs.copyFileSync(path.join(root, 'THIRD-PARTY-NOTICES.md'), path.join(staging, 'THIRD-PARTY-NOTICES.md'));
+const docsDir = path.join(staging, 'docs');
+fs.mkdirSync(docsDir);
+for (const name of releaseDocs) fs.copyFileSync(path.join(root, name), path.join(docsDir, name));
+const buildInfo = {
+  version: packageData.version,
+  platform: 'win32',
+  arch: 'x64',
+  electron: packageData.devDependencies.electron,
+  sourceCommit,
+  sourceClean
+};
+fs.writeFileSync(path.join(staging, 'BUILD-INFO.json'), JSON.stringify(buildInfo, null, 2) + '\n', 'utf8');
 const modules = [
   'account.js', 'ai-chat-loop.js', 'ai.js', 'api-server.js', 'backup.js', 'cloud.js', 'connectors.js',
-  'device.js', 'codex-collaboration.js', 'codex-handoff.js', 'full-markdown.js', 'full-product.js', 'full-search.js', 'handoff.js',
+  'device.js', 'codex-collaboration.js', 'codex-artifacts.js', 'codex-block-evidence.js', 'codex-handoff.js', 'full-markdown.js', 'full-product.js', 'full-search.js', 'handoff.js',
   'kb-service.js', 'main.js', 'preload.js', 'project-root.js', 'rag.js', 'rpm-adapter.js', 'rpm-http.js',
-  'rpm-knowledge.js', 'store.js', 'sync-carrier.js', 'sync-cloud.js', 'sync-merge.js', 'updater.js'
+  'rpm-knowledge.js', 'rpm-registration.js', 'store.js', 'sync-carrier.js', 'sync-cloud.js', 'sync-merge.js', 'updater.js'
 ];
+if (requestedCommit || fs.existsSync(path.join(desktop, 'full-migration.js'))) modules.push('full-migration.js');
 for (const file of modules) fs.cpSync(path.join(desktop, file), path.join(app, 'desktop', file));
 const rpm = path.join(app, 'rpm-integration');
 fs.mkdirSync(rpm);
-for (const file of ['rpm_knowledge_api.py', 'workbench-rpm-knowledge.cjs', 'VERSION']) {
+for (const file of ['rpm_knowledge_api.py', 'rpm_onboarding.py', 'rpm_dependency_refs.py', 'rpm_codex_artifact.py', 'workbench-rpm-knowledge.cjs', 'VERSION']) {
   fs.cpSync(path.join(root, 'rpm-integration', file), path.join(rpm, file));
 }
 const { name, version, description, license } = packageData;

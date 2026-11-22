@@ -9,6 +9,8 @@ from pathlib import Path
 import hashlib
 import json
 import os
+from stat import S_ISREG
+from time import perf_counter
 import re
 import sys
 
@@ -245,8 +247,73 @@ def method_context(kind, status):
     return None
 
 
-def build_graph(api, entries, issues):
+class SnapshotPaths:
+    """Reuse directory validation within one read. Opening an original still rechecks its live path."""
+    def __init__(self, core):
+        self.core = core
+        self.parents = {}
+        self.files = {}
+
+    def file(self, root, relative):
+        key = (root, relative)
+        if key in self.files:
+            return self.files[key]
+        rel = Path(relative)
+        if rel.anchor or not rel.parts or '..' in rel.parts:
+            raise ValueError(f'项目相对路径无效 {relative}')
+        name = rel.name
+        if any(c in name for c in ':<>|?*"') or name.rstrip('. ') != name or Path(name).is_reserved():
+            raise ValueError(f'路径包含保留名称 {relative}')
+        parent_key = (root, rel.parent)
+        if parent_key not in self.parents:
+            self.parents[parent_key] = root if len(rel.parts) == 1 else self.core.inside(root, rel.parent)
+        target = self.parents[parent_key] / name
+        try:
+            info = target.lstat()
+        except FileNotFoundError:
+            opened = False
+        else:
+            if self.core.reparse(info):
+                raise ValueError(f'路径经过符号链接或重解析点 {target}')
+            opened = S_ISREG(info.st_mode)
+        self.files[key] = (target, opened)
+        return self.files[key]
+
+
+def inputs_signature(api, roots, tracked, paths):
+    """A fast conditional-read guard for the complete graph, including original availability."""
+    core, _, project, _, _, _ = api
+    digest = hashlib.sha256()
+
+    def record(value):
+        digest.update(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+        digest.update(b'\0')
+
+    record(['graph-inputs-v2', sorted((key, str(root)) for key, root in roots.items())])
+    code_files = {Path(__file__), *(Path(module.__file__) for module in api[:4])}
+    for filename in sorted(code_files, key=str):
+        with filename.open('rb') as stream:
+            record([str(filename), hashlib.file_digest(stream, 'sha256').hexdigest()])
+    for pathname in sorted(tracked, key=str):
+        record(str(pathname))
+        if tracked[pathname] is not None:
+            # Check the actual control contents so same-length metadata edits are observed.
+            with pathname.open('rb') as stream:
+                record(hashlib.file_digest(stream, 'sha256').hexdigest())
+    for key, root in sorted(roots.items()):
+        for name in sorted(core.CONTROL):
+            control = core.control_path(root, name)
+            record([name, control.is_file()])
+        for row in project.load_index(root):
+            relative = row['relative_path']
+            _, exists = paths.file(root, relative)
+            record([key, relative, exists])
+    return digest.hexdigest()
+
+
+def build_graph(api, entries, issues, paths=None):
     core, knowledge, project, *_ = api
+    paths = paths or SnapshotPaths(core)
     nodes, files, edges = {}, {}, {}
     local = {}
     invalid_shares = lookup_shares(entries, issues)
@@ -294,9 +361,9 @@ def build_graph(api, entries, issues):
             identifier = row['file_id']
             if identifier in files or identifier in nodes:
                 raise QueryError('identity_collision', f'索引文件 ID 已被占用 {identifier}')
-            file_path = core.inside(root, row['relative_path'])
+            file_path, is_file = paths.file(root, row['relative_path'])
             presence = row['presence']
-            openable = presence == 'present' and file_path.is_file()
+            openable = presence == 'present' and is_file
             if presence == 'present' and not openable:
                 issues.append(dict(code='indexed_file_unavailable', project_id=project_id, item=identifier,
                                    message=f'索引仍登记在场，原件不可访问 {row["relative_path"]}'))
@@ -314,7 +381,7 @@ def build_graph(api, entries, issues):
                 continue
             active_statuses[row['status'] or 'unconfirmed'] += 1
             ref = describe_ref(core, knowledge, project_id, root, row['relative_path'],
-                               row['name'], identifier, record['status'], None)
+                               row['name'], identifier, record['status'], None, file_path)
             insert_node(identifier, {
                 'id': identifier, 'type': 'source', 'title': row['name'], 'project_id': project_id,
                 'project_ids': [project_id], 'description': row['purpose'] or None, 'status': record['status'],
@@ -409,8 +476,8 @@ def build_graph(api, entries, issues):
     return nodes, files, edges
 
 
-def describe_ref(core, knowledge, project_id, root, relative, title, file_id, status, evidence):
-    path = core.inside(root, relative)
+def describe_ref(core, knowledge, project_id, root, relative, title, file_id, status, evidence, path=None):
+    path = path or core.inside(root, relative)
     note_identity = knowledge.identity('source', project_id, file_id or relative.casefold())
     return {
         'id': file_id or note_identity, 'file_id': file_id, 'rpm_source_id': note_identity,
@@ -447,8 +514,9 @@ def scope_payload(payload, requested):
     }
 
 
-def snapshot(api, settings, requested=None, conditional=None):
+def snapshot(api, settings, requested=None, conditional=None, previous_inputs=None):
     core = api[0]
+    started = perf_counter()
     for _ in range(3):
         # Capture settings/registry before resolving or reading their contents.
         before_settings = stamp(settings)
@@ -456,8 +524,30 @@ def snapshot(api, settings, requested=None, conditional=None):
         roots, tracked, issues = roots_and_stamps(api, home, settings, register, registered)
         if tracked[settings] != before_settings or api[3].registry(home) != registered:
             continue
+        paths = SnapshotPaths(core)
+        validation = None
+        if not issues:
+            try:
+                validation = inputs_signature(api, roots, tracked, paths)
+            except (OSError, ValueError, KeyError, TypeError):
+                # A bad or incomplete input follows the normal validation/reporting path.
+                paths = SnapshotPaths(core)
+        check_finished = perf_counter()
+        mtime = max((value[1] for value in tracked.values() if value is not None), default=None)
+        updated = datetime.fromtimestamp(mtime / 1e9).astimezone().isoformat() if mtime is not None else None
+        if conditional and previous_inputs and validation == previous_inputs:
+            if any(stamp(path) != value for path, value in tracked.items()):
+                continue
+            return {
+                'ok': True, 'schema_version': SCHEMA, 'revision': conditional,
+                'generated_at': core.now(), 'data_updated_at': updated, 'scope': requested, 'not_modified': True,
+                'registry_complete': True, 'input_stamp': validation,
+                'timing_ms': {'input_check': round((check_finished - started) * 1000), 'fast_path': True},
+            }
         entries = project_entries(api, roots, issues)
-        nodes, files, edges = build_graph(api, entries, issues)
+        parsed = perf_counter()
+        nodes, files, edges = build_graph(api, entries, issues, paths)
+        built = perf_counter()
         if any(stamp(path) != value for path, value in tracked.items()):
             continue
         for node in nodes.values():
@@ -472,15 +562,19 @@ def snapshot(api, settings, requested=None, conditional=None):
             'files': sort_rows(files), 'nodes': sort_rows(nodes), 'edges': sort_rows(edges),
             'issues': issues,
         }, requested)
-        mtime = max((value[1] for value in tracked.values() if value is not None), default=None)
-        updated = datetime.fromtimestamp(mtime / 1e9).astimezone().isoformat() if mtime is not None else None
         registry_complete = len(entries) == len(registered)
         revision = hashlib.sha256(json.dumps([SCHEMA, requested, registry_complete, payload], ensure_ascii=False,
                                              separators=(',', ':'), sort_keys=True).encode('utf-8')).hexdigest()
         header = {'ok': True, 'schema_version': SCHEMA, 'revision': revision,
                   'generated_at': core.now(), 'data_updated_at': updated,
                   'not_modified': revision == conditional, 'scope': requested,
-                  'registry_complete': registry_complete}
+                  'registry_complete': registry_complete,
+                  'input_stamp': validation if registry_complete and not issues else None,
+                  'timing_ms': {'input_check': round((check_finished - started) * 1000),
+                                'record_parse': round((parsed - check_finished) * 1000),
+                                'graph_build': round((built - parsed) * 1000),
+                                'revision_encode': round((perf_counter() - built) * 1000),
+                                'fast_path': False}}
         if header['not_modified']:
             return header
         return {**header, **payload}
@@ -504,6 +598,29 @@ def resolve_file(api, settings, project_id, identifier):
             'file': {**ref, 'path': str(path), 'href': path.as_uri()}, 'revision': result['revision']}
 
 
+def material_catalog(api, settings, project_id, category, offset, limit):
+    core, _, project, _, _, _ = api
+    if not project_id or (category is not None and category not in core.DIRECTORIES):
+        raise QueryError('invalid_request', '须提供项目 ID 和有效的 RPM 分类')
+    if not 0 <= offset <= 2147483647 or not 1 <= limit <= 100:
+        raise QueryError('invalid_request', '材料分页参数超出范围')
+    home, _, registry = input_registry(api, settings, project_id)
+    root = core.project_root(registry[project_id])
+    if core.overlaps(root, home) or core.config(root).get('project_id') != project_id:
+        raise QueryError('project_unavailable', 'RPM 登记与项目目录不一致')
+    rows = [row for row in project.load_index(root) if row['presence'] == 'present']
+    counts = Counter(row['category'] for row in rows)
+    matches = sorted(
+        (row for row in rows if row['category'] == category),
+        key=lambda row: (row['relative_path'].casefold(), row['file_id']),
+    ) if category else []
+    return {
+        'ok': True, 'schema_version': SCHEMA, 'total': counts[category] if category else len(rows),
+        'categories': [{'id': name, 'count': counts[name]} for name in core.DIRECTORIES],
+        'files': matches[offset:offset + limit],
+    }
+
+
 def cli():
     parser = Parser(description=__doc__, allow_abbrev=False)
     parser.add_argument('--skill-root', type=Path, default=DEFAULT_SKILL)
@@ -520,10 +637,17 @@ def cli():
     modes = transport.add_mutually_exclusive_group(required=True)
     modes.add_argument('--knowledge-network', action='store_true')
     modes.add_argument('--resolve-evidence', action='store_true')
+    modes.add_argument('--material-files', action='store_true')
+    modes.add_argument('--material-catalog', action='store_true')
     transport.add_argument('--skill-root', dest='transport_skill_root', type=Path)
     transport.add_argument('--project-id')
     transport.add_argument('--file-id')
+    transport.add_argument('--material-id', action='append', default=[])
+    transport.add_argument('--material-category')
+    transport.add_argument('--material-offset', type=int, default=0)
+    transport.add_argument('--material-limit', type=int, default=30)
     transport.add_argument('--if-revision')
+    transport.add_argument('--if-input-stamp')
     return parser.parse_args()
 
 
@@ -539,6 +663,21 @@ def run():
     skill = (getattr(args, 'transport_skill_root', None) or args.skill_root).resolve()
     api = load_api(skill)
     settings = (args.settings or skill / 'local.json').absolute()
+    if getattr(args, 'material_catalog', False):
+        return material_catalog(api, settings, project_id, args.material_category,
+                                args.material_offset, args.material_limit)
+    if getattr(args, 'material_files', False):
+        ids = args.material_id
+        if not project_id or not 1 <= len(ids) <= 30 or not all(RPM_ID.fullmatch(item) for item in ids):
+            raise QueryError('invalid_request', '须提供项目 ID 及 1–30 个材料 ID')
+        core, _, project, _, _, _ = api
+        _, _, registry = input_registry(api, settings, project_id)
+        root = core.project_root(registry[project_id])
+        indexed = {row['file_id']: row for row in project.load_index(root) if row['file_id'] in ids}
+        rows = [indexed[item] for item in dict.fromkeys(ids) if item in indexed
+                and indexed[item]['presence'] == 'present'
+                and core.inside(root, indexed[item]['relative_path']).is_file()]
+        return {'ok': True, 'schema_version': SCHEMA, 'files': rows}
     resolving = args.command == 'resolve-file' or getattr(args, 'resolve_evidence', False)
     if resolving:
         if not project_id or not file_id or not RPM_ID.fullmatch(file_id) or previous:
@@ -546,7 +685,10 @@ def run():
         return resolve_file(api, settings, project_id, file_id)
     if file_id is not None:
         raise QueryError('invalid_request', '快照操作不接受文件 ID')
-    return snapshot(api, settings, project_id, previous)
+    previous_inputs = getattr(args, 'if_input_stamp', None)
+    if previous_inputs is not None and (not previous or not re.fullmatch(r'[a-f0-9]{64}', previous_inputs)):
+        raise QueryError('invalid_request', '输入校验须对应已知修订号')
+    return snapshot(api, settings, project_id, previous, previous_inputs)
 
 
 def main():

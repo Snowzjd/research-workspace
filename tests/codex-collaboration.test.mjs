@@ -6,6 +6,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 import os from 'node:os';
 import path from 'node:path';
 import adapter from '../desktop/codex-collaboration.js';
+import rpm from '../desktop/rpm-adapter.js';
+import registration from '../desktop/rpm-registration.js';
+import { artifactIndex, registerRpmArtifact } from '../desktop/codex-artifacts.js';
 
 const t0 = 1795210000;
 
@@ -59,6 +62,19 @@ function setup(t) {
 }
 
 const match = { projectId: 'p', taskId: 't', sessionId: 'session-1' };
+
+test('a protected project can explicitly opt into session tracking without changing file protection', async t => {
+  const { options, project } = setup(t);
+  const service = adapter.createCodexCollaboration({
+    ...options, resolveProject: () => ({ root: project, metadataOnly: true, allowActivityTracking: true }),
+    pollIntervalMs: 60000
+  });
+  t.after(() => service.close());
+  const found = await service.discover({ projectId: 'p' });
+  assert.equal(found.root, project);
+  assert.deepEqual(found.sessions.map(row => row.sessionId), ['session-1', 'session-2']);
+  assert.equal((await service.bind(match)).ok, true);
+});
 
 test('scoped discovery and binding reject wrong projects, repository subfolders and duplicate registration', async t => {
   const { service, calls, project } = setup(t);
@@ -124,7 +140,7 @@ test('project evidence has structured provenance and never includes raw content 
   turn.status = 'completed';
   turn.completedAt = t0 + 2;
   run = (await service.refresh()).runs[0];
-  assert.equal(run.status, 'completed');
+  assert.equal(run.status, 'test_failed');
   assert.equal(run.endedAt, new Date((t0 + 2) * 1000).toISOString());
   assert.deepEqual(workspace.tasks, [{id:'t',p:'p'}, {id:'alternate',p:'p'}, {id:'t2',p:'q'}]);
   assert.deepEqual((await service.refresh()).runs[0], run);
@@ -460,4 +476,145 @@ test('relocated Codex home supplies a canonical watch root while a redirected se
     watchSessions() { assert.fail('the sessions junction must never be watched'); } });
   t.after(() => rejected.close());
   assert.equal((await rejected.capabilities()).notificationMode, 'reconcile-only');
+});
+
+test('trusted tool rejection reports blocked for the bound turn, and a later turn clears it', async t => {
+  const { project, file, threads, options } = setup(t);
+  const sessionsDirectory = path.join(path.dirname(file), 'sessions');
+  const room = path.join(sessionsDirectory, '2026', '11', '22');
+  fs.mkdirSync(room, { recursive: true });
+  const rollout = path.join(room, 'rollout-fixture-session-1.jsonl');
+  threads[0].path = rollout;
+  const rows = [
+    { type:'session_meta', payload:{ id:'session-1', cwd:project, unrelated:'never display private instructions' } },
+    { type:'turn_context', payload:{ turn_id:'turn-1', cwd:project } },
+    { type:'response_item', payload:{ type:'custom_tool_call', call_id:'write', name:'exec',
+      input:'text(await tools.apply_patch("*** Begin Patch\\n*** Add File: new.md\\n*** End Patch"))' } },
+    { type:'response_item', payload:{ type:'custom_tool_call_output', call_id:'write',
+      output:[{type:'input_text',text:'Script error:\npatch rejected: writing is blocked by read-only sandbox; rejected by user approval settings'}] } },
+    { type:'response_item', payload:{ type:'custom_tool_call', call_id:'test', name:'exec',
+      input:'text(await tools.exec_command({cmd:"node --test evidence-check.test.mjs --token private"}))' } },
+    { type:'response_item', payload:{ type:'custom_tool_call_output', call_id:'test',
+      output:[{type:'input_text',text:'exec_command failed: CreateProcess { message: "rejected: blocked by policy (private path)" }'}] } },
+    { type:'response_item', payload:{ type:'agentMessage', text:'Claim user called private agent tool' } }
+  ];
+  fs.writeFileSync(rollout, rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+  Object.assign(threads[0].turns[1], { status:'completed', completedAt:t0+2 });
+  const service = adapter.createCodexCollaboration({ ...options, sessionsDirectory, pollIntervalMs:60000 });
+  t.after(() => service.close());
+  const run = (await service.bind(match)).run;
+  assert.equal(run.status,'blocked');
+  assert.deepEqual(run.denials.map(row=>[row.operation,row.path || row.command,row.source]), [
+    ['write','new.md','codex-tool-rejection'], ['command','node --test evidence-check.test.mjs','codex-tool-rejection']
+  ]);
+  assert.equal(run.checks.length,0);
+  assert.equal(run.files.length,0);
+  assert.ok(!fs.readFileSync(file,'utf8').includes('private'));
+  threads[0].turns.push({id:'turn-new',startedAt:t0+5,completedAt:t0+6,status:'completed',items:[]});
+  const next=(await service.refresh()).runs[0];
+  assert.equal(next.status,'completed');
+  assert.deepEqual(next.denials,[]);
+  const saved=JSON.parse(fs.readFileSync(file,'utf8'));
+  assert.equal(saved.runs[0].turnId,'turn-new');
+});
+
+test('structured declined command, wait and interrupted states remain independent', async t => {
+  const { service, threads, project } = setup(t);
+  const thread = threads[0];
+  thread.status = {type:'active',activeFlags:['waitingOnUserInput']};
+  assert.equal((await service.bind(match)).run.status,'waiting');
+  Object.assign(thread.turns[1], {status:'completed',completedAt:t0+3,items:[
+    {id:'denied',type:'commandExecution',status:'declined',cwd:project,command:'npm test',exitCode:null},
+    {id:'unconfirmed',type:'commandExecution',status:'failed',cwd:project,command:'pytest',exitCode:null}
+  ]});
+  let run=(await service.refresh()).runs[0];
+  assert.equal(run.status,'blocked');
+  assert.equal(run.denials.length,1);
+  assert.equal(run.denials[0].command,'npm test');
+  assert.equal(run.checks.every(check => check.exitCode === null),true);
+  thread.turns.push({id:'interrupt',startedAt:t0+6,status:'interrupted',items:[]});
+  run=(await service.refresh()).runs[0];
+  assert.equal(run.status,'paused');
+  assert.deepEqual(run.denials,[]);
+});
+
+test('actual RPM registers one explicit safe output and preserves its identity across restart', async t => {
+  const installed = rpm.describeStatus({});
+  if (!installed.available) return t.skip('local RPM CLI unavailable');
+  const { file, project, threads, options, workspace } = setup(t);
+  const vault = path.join(path.dirname(file),'vault');
+  const settingsPath = path.join(path.dirname(file),'settings.json');
+  fs.mkdirSync(vault);
+  fs.writeFileSync(settingsPath,JSON.stringify({ vault }));
+  const config = { settingsPath, scriptPath:installed.scriptPath, pythonPath:installed.pythonPath };
+  const initial = await registration.registerProject({ root:project, name:'隔离验证', direction:'产物登记' },config);
+  assert.ok(initial.ok,initial.error);
+  const scope={root:project,rpmProjectId:initial.binding.rpmProjectId,registeredRoots:[project]};
+  const target = path.join(project,'温升 #1,复核.md');
+  const other = path.join(project,'other.md');
+  fs.writeFileSync(target,'# 隔离产物\n原件内容');
+  fs.writeFileSync(other,'unreported');
+  const official = path.join(project,'00_Project_Management','FILE_INDEX.csv');
+  const before = fs.readFileSync(official);
+  const registryPath = path.join(vault,'.rpm','projects.json');
+  const registry=fs.readFileSync(registryPath);
+  assert.equal(artifactIndex(scope).has(path.basename(target).toLowerCase()),false);
+  threads[0].turns[1].items=[{type:'fileChange',status:'completed',id:'artifact',
+    changes:[{path:path.basename(target),kind:{type:'add'}},{path:'absent.md',kind:{type:'add'}}]}];
+  let confirm = false;
+  let locked = false;
+  let drift = false;
+  let failRegistration = true;
+  let nativeTarget;
+  const serviceOptions={...options,pollIntervalMs:60000,resolveProject:()=>({...scope,readOnly:locked}),rpmConfig:()=>config,
+    confirmArtifact:async()=>{
+      if(drift) fs.appendFileSync(target,'\n确认期间变更');
+      return confirm;
+    },
+    registerArtifact:(...args)=>failRegistration ?
+      {ok:false,code:'rpm_registration_failed',error:'隔离索引未就绪，请重试'} : registerRpmArtifact(...args),
+    revealArtifact:value=>{nativeTarget=value;}};
+
+  const service=adapter.createCodexCollaboration(serviceOptions);
+  t.after(() => service.close());
+  const run=(await service.bind(match)).run;
+  const pick={projectId:'p',taskId:'t',runId:run.id,path:path.basename(target)};
+  assert.equal(run.files[0].registered,false);
+  assert.equal((await service.artifact({...pick,path:path.basename(other)})).code,'unapproved_artifact');
+  assert.equal((await service.artifact({...pick,path:'absent.md'})).code,'artifact_missing');
+  assert.equal((await service.artifact({...pick,action:'reveal'})).ok,true);
+  assert.equal(nativeTarget,target);
+  assert.equal((await service.artifact({...pick,action:'register'})).code,'cancelled');
+  assert.deepEqual(fs.readFileSync(official),before);
+  confirm=true;
+  locked=true;
+  assert.equal((await service.artifact({...pick,action:'register'})).code,'protected_root');
+  locked=false;
+  drift=true;
+  assert.equal((await service.artifact({...pick,action:'register'})).code,'artifact_changed');
+  assert.deepEqual(fs.readFileSync(official),before);
+  drift=false;
+  fs.writeFileSync(target,'# 隔离产物\n原件内容');
+  assert.equal((await service.artifact({...pick,action:'register'})).code,'rpm_registration_failed');
+  assert.match(service.list().runs[0].files[0].registrationError,/请重试/);
+  assert.match((await service.refresh()).runs[0].files[0].registrationError,/请重试/);
+  assert.deepEqual(fs.readFileSync(official),before);
+  failRegistration=false;
+  const result=await service.artifact({...pick,action:'register'});
+  assert.equal(result.ok,true,result.error);
+  assert.equal(result.registered,true);
+  assert.match(result.fileId,/^[a-f0-9]{32}$/);
+  const after=fs.readFileSync(official);
+  assert.equal((await service.artifact({...pick,action:'register'})).fileId,result.fileId);
+  assert.deepEqual(fs.readFileSync(official),after);
+  assert.equal(fs.readFileSync(target,'utf8'),'# 隔离产物\n原件内容');
+  assert.deepEqual(fs.readFileSync(registryPath),registry);
+  assert.equal(fs.readFileSync(official,'utf8').includes('other.md'),false);
+  assert.equal(workspace.tasks[0].st,undefined);
+  service.close();
+  const restarted=adapter.createCodexCollaboration(serviceOptions);
+  t.after(() => restarted.close());
+  assert.equal(restarted.list().runs[0].files[0].fileId,result.fileId);
+  assert.equal(restarted.list().runs[0].files[0].registrationError,undefined);
+  assert.equal((await restarted.artifact(pick)).fileId,result.fileId);
 });

@@ -2277,7 +2277,7 @@ function settingsView() {
       ['版本', '当前软件版本', (() => {
         const u = state.update || {};
         const chip = u.portable ? '<span class="chip gray" style="font-size:9px;padding:1px 5px">便携版</span>' : '';
-        return `<span class="row" style="gap:6px"><span class="set-path" style="max-width:150px">v${esc(u.version || '4.0.0-rc.1')} Desktop</span>${chip}</span>`;
+        return `<span class="row" style="gap:6px"><span class="set-path" style="max-width:150px">v${esc(u.version || '4.0.0')} Desktop</span>${chip}</span>`;
       })()],
       ['检查更新', '从更新源拉取版本清单，只下载约 1MB 的应用资源增量包；替换在软件关闭后自动完成并重启', (() => {
         const u = state.update || {};
@@ -2525,12 +2525,11 @@ function render() {
       if (!full || !full.renderView(view)) view.innerHTML = (VIEWS[state.route] || homeView)();
     }
     if (knPane) {
+      const enteringKnowledgeNet = showKnowledgeNet && knPane.hidden;
       knPane.hidden = !showKnowledgeNet;
-      if (showKnowledgeNet && window.KnowledgeNetwork && typeof window.KnowledgeNetwork.mount === 'function') {
-        window.KnowledgeNetwork.mount(knPane);
+      if (showKnowledgeNet) {
+        if (enteringKnowledgeNet || !window.KnowledgeNetwork?.mounted()) window.KnowledgeNetwork?.mount(knPane);
         if (full) full.syncGraph();
-      } else if (showKnowledgeNet && window.KnowledgeNetwork && typeof window.KnowledgeNetwork.resize === 'function') {
-        window.KnowledgeNetwork.resize();
       }
     }
   }

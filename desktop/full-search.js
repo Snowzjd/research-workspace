@@ -3,6 +3,20 @@
 function createSearch({ readWorkspace, searchRpm, readGraph, listNotes }) {
   const normalize = value => String(value ?? '').normalize('NFKC').toLowerCase();
   const section = (rows, code = '') => ({ rows, code });
+  let graphRead = null;
+  function recentGraph() {
+    if (graphRead && Date.now() < graphRead.expires) return graphRead.promise;
+    const call = { expires: Infinity };
+    call.promise = Promise.resolve().then(readGraph).then(result => {
+      call.expires = Date.now() + (result.ok ? 10_000 : 0);
+      return result;
+    }, error => {
+      call.expires = 0;
+      throw error;
+    });
+    graphRead = call;
+    return call.promise;
+  }
   const settled = result => result.status === 'fulfilled' ? result.value : section([], 'unavailable');
 
   function structured(data, query) {
@@ -61,9 +75,9 @@ function createSearch({ readWorkspace, searchRpm, readGraph, listNotes }) {
   }
 
   async function graph(query) {
-    const result = await readGraph();
+    const result = await recentGraph();
     if (!result.ok) return section([], 'unavailable');
-    const rows = (result.nodes || []).filter(node => normalize(node.title).includes(query))
+    const rows = (result.nodes || []).filter(node => node.type !== 'source' && normalize(node.title).includes(query))
       .slice(0, 25).map(node => ({
         source: 'rpm', kind: 'node', id: node.id, title: node.title,
         detail: node.type, rpmProjectId: node.project_id
@@ -77,6 +91,20 @@ function createSearch({ readWorkspace, searchRpm, readGraph, listNotes }) {
       if (!query || query.length > 500) return { ok: false, error: '输入 1–500 个字符进行检索', results: [], sources: {} };
       const data = readWorkspace();
       const normalized = normalize(query);
+      const requested = payload?.source;
+      if (requested != null) {
+        const providers = new Map([
+          ['workspace', () => structured(data, normalized)],
+          ['rpm', () => rpm(data, query)],
+          ['knowledge', () => graph(normalized)],
+          ['vault', () => notes(query)]
+        ]);
+        if (!providers.has(requested)) return { ok: false, error: '无法识别检索范围', results: [], sources: {} };
+        const [attempt] = await Promise.allSettled([Promise.resolve().then(providers.get(requested))]);
+        const { rows, code } = settled(attempt);
+        return { ok: true, results: rows.map(row => ({ ...row, source: requested })),
+          sources: { [requested]: { ok: !code, code, count: rows.length } } };
+      }
       const [files, nodes, vault] = (await Promise.allSettled([
         rpm(data, query), graph(normalized), notes(query)
       ])).map(settled);

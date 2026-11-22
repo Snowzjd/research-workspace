@@ -154,10 +154,10 @@ function openTaskForm(idx) {
   const dirs = Object.keys(materialIndexOf(t.p) || {});
 
   const body = `
-    ${fText('t', '任务名称', t.t, { req: true, ph: '例如：优化 TPMS 晶胞参数' })}
+    ${fText('t', '任务名称', t.t, { req: true, ph: '例如：复核对比结果' })}
     <div class="field-row">
       ${fSelect('p', '所属项目', t.p, DB.projects.map(p2 => [p2.id, projName(p2)]))}
-      ${fSelect('agent', '负责 Agent', t.agent, agents)}
+      ${fSelect('agent', candidate ? '协作助手' : '负责 Agent', t.agent, agents)}
     </div>
     <div class="field-row">
       ${fText('tool', '使用工具', t.tool, {
@@ -327,7 +327,7 @@ function openProjectForm(id, draft) {
 
   openModal({
     title: isNew ? '新建科研项目' : '编辑项目',
-    sub: isNew ? (candidate ? '在候选工作台登记项目，可在创建后绑定现有 RPM。' : '套用模板生成阶段与材料目录，之后可随时调整') : esc(p.name),
+    sub: isNew ? (candidate ? '在工作台登记项目，可在创建后绑定现有 RPM。' : '套用模板生成阶段与材料目录，之后可随时调整') : esc(p.name),
     body,
     footer: `<span class="grow"></span>
       <button class="btn" data-act="modal-close">取消</button>
@@ -2049,16 +2049,17 @@ document.addEventListener('click', async e => {
     case 'task-create': {
       const m = document.querySelector('.modal'); if (!validate(m, ['t'])) return;
       const v = formValues(m);
+      const taskId = 'tk' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
       mutate(() => {
         DB.tasks.unshift({
-          id: 'tk' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+          id: taskId,
           t: v.t, p: v.p, agent: v.agent, tool: v.tool, due: v.due, pri: v.pri, st: v.st, dir: v.dir,
           ...(window.FullWorkspace?.enabled && {
             description: v.description, acceptance: v.acceptance, codexReferences: v.codexReferences
           })
         });
         DB.workspace.project = (P(v.p) || {}).name || DB.workspace.project;
-      }, { activity: { text: `新建任务 <b>${esc(v.t)}</b>`, kind: 'create', color: '#218358' } });
+      }, { activity: { text: `新建任务 <b>${esc(v.t)}</b>`, kind: 'create', color: '#218358', projectId: v.p, objectId: taskId } });
       closeModal(); toast('任务已创建', 'ok'); return;
     }
     case 'task-update': {
@@ -2068,17 +2069,17 @@ document.addEventListener('click', async e => {
           ...(window.FullWorkspace?.enabled && {
             description: v.description, acceptance: v.acceptance, codexReferences: v.codexReferences
           }) }),
-        { activity: { text: `更新任务 <b>${esc(v.t)}</b>`, kind: 'edit', color: '#AD5700' } });
+        { activity: { text: `更新任务 <b>${esc(v.t)}</b>`, kind: 'edit', color: '#AD5700', projectId: v.p, objectId: task.id } });
       closeModal(); toast('任务已保存', 'ok'); return;
     }
     case 'task-complete': {
       const task = DB.tasks[+t.dataset.idx]; closeModal();
-      mutate(() => { task.st = 'done'; }, { activity: { text: `完成任务 <b>${esc(task.t)}</b>`, kind: 'save', color: '#218358' } });
+      mutate(() => { task.st = 'done'; }, { activity: { text: `完成任务 <b>${esc(task.t)}</b>`, kind: 'save', color: '#218358', projectId: task.p, objectId: task.id } });
       toast('任务已完成', 'ok'); return;
     }
     case 'task-reopen': {
       const task = DB.tasks[+t.dataset.idx]; closeModal();
-      mutate(() => { task.st = 'doing'; }, { activity: { text: `重新打开任务 <b>${esc(task.t)}</b>`, kind: 'refresh', color: '#3E63DD' } });
+      mutate(() => { task.st = 'doing'; }, { activity: { text: `重新打开任务 <b>${esc(task.t)}</b>`, kind: 'refresh', color: '#3E63DD', projectId: task.p, objectId: task.id } });
       return;
     }
     case 'task-run': {
@@ -4132,7 +4133,7 @@ async function boot() {
   const h = location.hash.slice(1);
   const resolved = h ? consumeRoute(h) : '';
   if (resolved && VIEWS[resolved]) state.route = resolved;
-  else if (window.FullWorkspace?.enabled) state.route = 'graph';
+  else if (window.FullWorkspace?.enabled) state.route = 'dashboard';
   else if (DB.settings.resumeLast && DB.settings.lastRoute) {
     const last = consumeRoute(DB.settings.lastRoute);
     if (VIEWS[last]) state.route = last;

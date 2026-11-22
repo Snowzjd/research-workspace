@@ -17,9 +17,12 @@ test('candidate requires both markers and refuses a redirected user-data directo
   const app = path.join(root, 'resources');
   const daily = path.join(root, 'daily-profile');
   const initial = path.join(root, 'ResearchWorkspace.exe');
-  const profile = path.join(root, 'candidate-user-data');
+  const profile = path.join(root, 'portable-user-data');
   fs.mkdirSync(app);
   fs.mkdirSync(daily);
+  const priorCandidate = path.join(root, 'candidate-user-data');
+  fs.mkdirSync(priorCandidate);
+  fs.writeFileSync(path.join(priorCandidate, 'workspace-data.json'), 'unmodified candidate data');
   fs.writeFileSync(path.join(app, product.MARKER), product.MARKER_CONTENT + '\r\n');
   assert.throws(() => product.isolatedDirectory(initial, app, daily), /markers/);
   fs.writeFileSync(path.join(root, product.MARKER), product.MARKER_CONTENT + '\r\n');
@@ -28,6 +31,7 @@ test('candidate requires both markers and refuses a redirected user-data directo
   fs.symlinkSync(daily, profile, process.platform === 'win32' ? 'junction' : 'dir');
   assert.throws(() => product.isolatedDirectory(initial, app, daily), /redirected/);
   assert.deepEqual(fs.readdirSync(daily), []);
+  assert.equal(fs.readFileSync(path.join(priorCandidate, 'workspace-data.json'), 'utf8'), 'unmodified candidate data');
 });
 
 test('opt-in migration keeps source bytes and IDs, removes credential-like fields and backs up the candidate', t => {

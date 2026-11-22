@@ -313,7 +313,7 @@ describe('POST /api/ai/chat', { concurrency: false }, () => {
     const pending = await call('/api/health');
     assert.equal(pending.json.knowledge_indexed, null);
     assert.equal(pending.json.knowledge_index_status, 'external');
-    assert.equal(pending.json.version, '4.0.0-rc.1');
+    assert.equal(pending.json.version, '4.0.0');
 
     api.setWindow({ isDestroyed: () => true });
     const down = await call('/api/health');

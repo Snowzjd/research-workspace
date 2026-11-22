@@ -170,6 +170,26 @@ def verify_before(fixture, before, report):
     report('重复读取和条件刷新：相同数据 revision 一致，单项目与全局共享节点 ID 一致')
 
 
+def verify_fast_refresh(fixture, before, report):
+    def conditional():
+        return fixture.call('context', '--knowledge-network', '--if-revision', before['revision'],
+                            '--if-input-stamp', before['input_stamp'])
+
+    repeat = conditional()
+    assert repeat['not_modified'] and repeat['timing_ms']['fast_path']
+    path = fixture.file('a', DATA_A)
+    bytes_before = path.read_bytes()
+    path.unlink()
+    try:
+        missing = conditional()
+        assert not missing['not_modified'] and not missing['timing_ms']['fast_path']
+        assert not file_by_id(missing, fixture.file_ids('a')[DATA_A])['openable']
+    finally:
+        path.write_bytes(bytes_before)
+    assert conditional()['not_modified']
+    report('快速修订校验：无变化走快路径，未改索引的原件删除会使缓存失效')
+
+
 def verify_update(fixture, before, updated, report):
     assert updated['revision'] != before['revision'], updated
     assert updated['data_updated_at'] and before['data_updated_at']
@@ -254,6 +274,7 @@ def main():
         fixture.seed()
         base = checked_snapshot(fixture)
         verify_before(fixture, base, report)
+        verify_fast_refresh(fixture, base, report)
         fixture.update()
         updated = checked_snapshot(fixture, '--if-revision', base['revision'])
         assert updated.get('not_modified') is not True

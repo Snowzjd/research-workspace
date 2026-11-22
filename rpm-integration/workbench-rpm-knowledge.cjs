@@ -32,7 +32,26 @@ function createKnowledgeReader(adapter, trustedConfig = {}) {
     return base ? ['--skill-root',path.dirname(path.dirname(path.resolve(base)))] : [];
   }
   return Object.freeze({
-    snapshot({projectId, ifRevision}={}) {
+    materialCatalog(projectId, { category = '', offset = 0, limit = 30 } = {}) {
+      if (typeof projectId !== 'string' || !ID.test(projectId) || typeof category !== 'string' ||
+          (category && !/^\d{2}_[A-Za-z_]+$/.test(category)) ||
+          !Number.isInteger(offset) || offset < 0 || offset > 2147483647 ||
+          !Number.isInteger(limit) || limit < 1 || limit > 100) {
+        return Promise.resolve(fail('invalid_request','项目、分类或分页参数无效'));
+      }
+      return query('--material-catalog',[...skillArgs(),'--project-id',projectId,
+        '--material-offset',String(offset),'--material-limit',String(limit),
+        ...(category ? ['--material-category',category] : [])]);
+    },
+    materialFiles(projectId, ids) {
+      if (typeof projectId !== 'string' || !ID.test(projectId) || !Array.isArray(ids) ||
+          !ids.length || ids.length > 30 || ids.some(id => typeof id !== 'string' || !ID.test(id))) {
+        return Promise.resolve(fail('invalid_request','须提供项目 ID 及 1–30 个材料 ID'));
+      }
+      return query('--material-files',[...skillArgs(),'--project-id',projectId,
+        ...ids.flatMap(id=>['--material-id',id])]);
+    },
+    snapshot({projectId, ifRevision, ifInputStamp}={}) {
       if (projectId !== undefined && (typeof projectId !== 'string' || !ID.test(projectId))) {
         return Promise.resolve(fail('invalid_request','项目 ID 须为 RPM 登记 ID'));
       }
@@ -42,7 +61,8 @@ function createKnowledgeReader(adapter, trustedConfig = {}) {
       return query('--knowledge-network',[
         ...skillArgs(),
         ...(projectId === undefined ? [] : ['--project-id',projectId]),
-        ...(ifRevision === undefined ? [] : ['--if-revision',ifRevision])
+        ...(ifRevision === undefined ? [] : ['--if-revision',ifRevision]),
+        ...(ifInputStamp && REVISION.test(ifInputStamp) ? ['--if-input-stamp',ifInputStamp] : [])
       ]);
     },
     resolveFile(projectId,fileId) {

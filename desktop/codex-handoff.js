@@ -17,7 +17,8 @@ async function createHandoff({ context, readWorkspace, resolveProject, resolveRe
   const task = Array.isArray(db.tasks) && db.tasks.find(row => row.id === taskId && row.p === projectId);
   if (!project || !task) return invalid;
   const registered = await resolveProject(projectId);
-  if (!registered || registered.metadataOnly || !path.isAbsolute(registered.root) || /[\r\n]/.test(registered.root)) {
+  if (!registered || (registered.metadataOnly && !registered.allowActivityTracking) ||
+      !path.isAbsolute(registered.root) || /[\r\n]/.test(registered.root)) {
     return { ok: false, code: 'unbound_project', error: '请先绑定可用于协同的 RPM 项目' };
   }
   const projectName = clean(project.name, 180) || projectId;
@@ -46,7 +47,10 @@ async function createHandoff({ context, readWorkspace, resolveProject, resolveRe
       description && ('任务要求：\n' + description),
       acceptance && ('完成条件：\n' + acceptance),
       references.length ? ('已核对的当前项目资料或节点 ID：' + references.join('、')) : '',
-      '先确认 Codex 会话的工作目录是上述根目录或明确归属该项目的工作子目录。仅处理用户授权的项目文件，禁止上传敏感资料或擅自写入 RPM 索引、Obsidian 笔记与其他项目。修改原件前按会话中的授权确认。请分别列出文件变化、实际测试、仍待验证与待用户验收项。'
+      '先确认 Codex 会话的工作目录是上述根目录或明确归属该项目的工作子目录。',
+      registered.metadataOnly
+        ? '此项目交接仅用于只读核对。请保留项目文件、RPM 索引与 Obsidian 笔记原样，在回复中报告实际核对结果和待处理事项。'
+        : '仅处理用户授权的项目文件，禁止上传敏感资料或擅自写入 RPM 索引、Obsidian 笔记与其他项目。修改原件前按会话中的授权确认。请分别列出文件变化、实际测试、仍待验证与待用户验收项。'
     ].filter(Boolean).join('\n\n')
   };
 }

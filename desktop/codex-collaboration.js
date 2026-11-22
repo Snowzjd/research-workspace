@@ -6,8 +6,10 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { randomUUID, createHash } = require('node:crypto');
 const { StringDecoder } = require('node:string_decoder');
-const { atomicWrite, inside, samePath, VERSION } = require('./full-product');
+const { atomicWrite, inside, protectedProjectWrite, samePath, VERSION } = require('./full-product');
 const { inspectPath } = require('./project-root');
+const { checkedDenial, safeCommand, rolloutDenials } = require('./codex-block-evidence');
+const { artifactIndex, pathKey, verifyFile, registerRpmArtifact } = require('./codex-artifacts');
 
 const source = 'codex-app-server-snapshot';
 const sourceKinds = ['cli', 'vscode', 'exec', 'appServer'];
@@ -16,7 +18,7 @@ const turnStates = { inProgress: 'running', interrupted: 'paused', completed: 'c
 const labels = {
   pending: '会话已关联，等待执行', running: 'Codex 开始执行', waiting: 'Codex 等待输入或批准',
   paused: 'Codex 执行中断', completed: 'Codex 回合结束', failed: 'Codex 执行失败',
-  cancelled: 'Codex 执行取消', unknown: '执行状态未知'
+  blocked: 'Codex 执行受阻', test_failed: 'Codex 测试未通过', cancelled: 'Codex 执行取消', unknown: '执行状态未知'
 };
 const safeId = value => typeof value === 'string' && /^[\w.-]{1,160}$/.test(value);
 const iso = epoch => Number.isFinite(epoch) && epoch > 0 && epoch < 1e11
@@ -207,7 +209,7 @@ function testCommand(command) {
     /^\s*(?:pytest(?:\.exe)?(?:\s|$)|python(?:3|\.exe)?\s+-m\s+(?:pytest|unittest)\b|(?:node|deno)(?:\.exe)?\s+--test\b|(?:npm|pnpm|yarn|cargo|go|dotnet|ctest|vitest|jest)(?:\.exe)?\s+(?:run\s+)?test\b)/i.test(command);
 }
 
-function observe(run, thread, scope, directory) {
+function observe(run, thread, scope, directory, sessionsDirectory) {
   const turns = (Array.isArray(thread.turns) ? thread.turns : []).filter(turn => safeId(turn.id))
     .sort((a, b) => (a.startedAt ?? a.completedAt ?? 0) - (b.startedAt ?? b.completedAt ?? 0));
   const anchor = turns.findIndex(turn => turn.id === run.anchorTurnId);
@@ -219,6 +221,11 @@ function observe(run, thread, scope, directory) {
   const files = new Map(run.files.map(file => [process.platform === 'win32' ? file.path.toLowerCase() : file.path, file]));
   const checks = new Map(run.checks.map(check => [check.id, check]));
   const observedAt = new Date().toISOString();
+  const latestChecks = new Map();
+  const currentDenials = rolloutDenials({ thread, turnId: latest?.id, directory: directory.absolute,
+    sessionsDirectory, resolvePath: reported => evidencePath(scope, directory.absolute, reported) });
+  const turnDenial = checkedDenial(latest?.error?.message);
+  if (turnDenial) currentDenials.push({ operation: 'turn', message: turnDenial, source });
   function event(key, at, kind, label) {
     const id = createHash('sha256').update(run.sessionId + ':' + key).digest('hex');
     if (events.has(id)) return false;
@@ -232,6 +239,18 @@ function observe(run, thread, scope, directory) {
     for (const item of Array.isArray(turn.items) ? turn.items : []) {
       if (!safeId(item?.id)) continue;
       const key = turn.id + ':item:' + item.id;
+      const itemDenial = item.status === 'declined' ? checkedDenial(item.error?.message || item.aggregatedOutput) :
+        item.exitCode == null && item.status === 'failed' ? checkedDenial(item.error?.message) : '';
+      const itemBlocked = item.status === 'declined' || Boolean(itemDenial);
+      if (turn.id === latest?.id && itemBlocked && ['fileChange', 'commandExecution'].includes(item.type) &&
+          (item.type !== 'commandExecution' || projectDirectory(scope, item.cwd))) {
+        const reported = item.type === 'fileChange' && Array.isArray(item.changes) ?
+          item.changes.map(change => evidencePath(scope, directory.absolute, change.path)).find(Boolean) : null;
+        const command = item.type === 'commandExecution' ? safeCommand(item.command) : '';
+        currentDenials.push({ operation: item.type === 'fileChange' ? 'write' : 'command',
+          message: itemDenial || 'Codex 将该操作标记为 declined', source,
+          ...(reported ? { path: reported.path } : {}), ...(command ? { command } : {}) });
+      }
       if (item.type === 'fileChange' && item.status === 'completed') {
         const ownedChanges = [];
         for (const change of Array.isArray(item.changes) ? item.changes : []) {
@@ -245,7 +264,9 @@ function observe(run, thread, scope, directory) {
         if (!ownedChanges.length) continue;
         if (!event(key + ':patch', at, 'file_change', 'Codex 报告已应用文件变更') && turn.id !== latest?.id) continue;
         for (const file of ownedChanges) {
-          files.set(process.platform === 'win32' ? file.path.toLowerCase() : file.path, file);
+          const filename = pathKey(file.path);
+          const registrationError = files.get(filename)?.registrationError;
+          files.set(filename, registrationError && file.kind !== 'deleted' ? { ...file, registrationError } : file);
         }
       } else if (item.type === 'commandExecution' && projectDirectory(scope, item.cwd)) {
         const actions = Array.isArray(item.commandActions) ? item.commandActions : [];
@@ -259,16 +280,40 @@ function observe(run, thread, scope, directory) {
           exitCode == null ? label + '（无退出码）' : label + '（退出码 ' + exitCode + '）';
         event(key + ':' + legalStatus + ':' + exitCode, at, isTest ? 'test' : 'command', display);
         if (isTest && (legalStatus !== 'inProgress' || !checks.has(key))) {
-          checks.set(key, { id: key, at, label, status: legalStatus, exitCode, source });
+          const check = { id: key, at, label, status: legalStatus, exitCode, source };
+          checks.set(key, check);
+          if (turn.id === latest?.id) {
+            const command = safeCommand(item.command) || actions.map(action => safeCommand(action.command)).find(Boolean);
+            latestChecks.set(command || key, check);
+          }
         }
       } else if (item.type === 'mcpToolCall' || item.type === 'dynamicToolCall') {
         event(key + ':tool', at, 'tool', 'Codex 调用工具');
       }
     }
   }
-  const candidateState = stateOf(thread, latest);
-  const currentTerminalState = ['completed', 'failed', 'cancelled', 'paused'].includes(run.status);
-  const regressed = latest?.id === run.turnId && currentTerminalState && ['running', 'waiting', 'unknown'].includes(candidateState);
+  const turnState = stateOf(thread, latest);
+  const sameTurn = latest?.id === run.turnId;
+  const denied = [...new Map([...(sameTurn ? run.denials || [] : []), ...currentDenials]
+    .slice(0, 32).map(entry => [JSON.stringify(entry), entry])).values()].slice(0, 12);
+  const hasTestFailure = [...latestChecks.values()].some(check => Number.isInteger(check.exitCode) && check.exitCode !== 0);
+  const terminal = ['completed', 'failed'].includes(turnState);
+  const candidateState = terminal && denied.length ? 'blocked' : terminal && (hasTestFailure || sameTurn && run.status === 'test_failed' && !latestChecks.size)
+    ? 'test_failed' : turnState;
+  if (latest && candidateState !== turnState) {
+    event(latest.id + ':state:' + candidateState, iso(latest.completedAt), candidateState, labels[candidateState]);
+  }
+  const currentTerminalState = ['completed', 'failed', 'cancelled', 'paused', 'blocked', 'test_failed'].includes(run.status);
+  const regressed = sameTurn && currentTerminalState && ['running', 'waiting', 'unknown'].includes(candidateState);
+  const index = scope.rpmProjectId && files.size ? artifactIndex(scope) : null;
+  const knownFiles = [...files.values()].flatMap(file => {
+    const current = evidencePath(scope, scope.root, file.path);
+    if (!current) return [];
+    const known = index?.get(pathKey(file.path));
+    const { registrationError, ...record } = file;
+    return [{ ...record, present: current.present, fileId: known?.present ? known.fileId : null,
+      registered: index ? Boolean(known?.present) : null, ...(registrationError && !known?.present ? { registrationError } : {}) }];
+  });
   return {
     ...run, connection: 'snapshot', directory: directory.relative, rootKey: scope.rootKey, scopeLost: false,
     turnId: latest?.id || run.turnId,
@@ -276,8 +321,9 @@ function observe(run, thread, scope, directory) {
     status: latest && !regressed ? candidateState : run.status,
     startedAt: run.startedAt || iso(latest?.startedAt),
     endedAt: latest && !regressed ? iso(latest.completedAt) : run.endedAt,
-    events: [...events.values()], files: [...files.values()].filter(file =>
-      evidencePath(scope, scope.root, file.path)), checks: [...checks.values()]
+    events: [...events.values()], files: knownFiles, checks: [...checks.values()],
+    artifactRegistrationAllowed: Boolean(scope.rpmProjectId && !scope.readOnly),
+    denials: latest && !regressed ? denied : run.denials || []
   };
 }
 
@@ -307,7 +353,8 @@ function codexSessionsRoot() {
 function createCodexCollaboration({
   file, readWorkspace, resolveProject, onChange, connect = connectAppServer, pollIntervalMs = 12000,
   sessionsDirectory = codexSessionsRoot(), watchSessions = fs.watch,
-  signalDelayMs = 180, settleDelayMs = 1200
+  signalDelayMs = 180, settleDelayMs = 1200, openArtifact, revealArtifact, confirmArtifact,
+  rpmConfig = () => ({}), registerArtifact = registerRpmArtifact
 }) {
   let records = [];
   let readError = false;
@@ -381,7 +428,7 @@ function createCodexCollaboration({
     if (!db?.projects?.some(project => project.id === projectId) ||
         (taskId && !db?.tasks?.some(task => task.id === taskId && task.p === projectId))) return null;
     const ref = await resolveProject(projectId);
-    const root = ref && !ref.metadataOnly && canonicalDirectory(ref.root);
+    const root = ref && (!ref.metadataOnly || ref.allowActivityTracking === true) && canonicalDirectory(ref.root);
     if (!root) return null;
     const registered = Array.isArray(ref.registeredRoots) ? ref.registeredRoots.filter(localAbsolute) : [];
     const descendants = registered.some(item => samePath(root, item));
@@ -398,7 +445,9 @@ function createCodexCollaboration({
     }
     const keyPath = process.platform === 'win32' ? root.toLowerCase() : root;
     const rootKey = createHash('sha256').update(keyPath).digest('hex');
-    return { root, rootKey, descendants, children: [...children] };
+    return { root, rootKey, descendants, children: [...children], rpmProjectId: ref.rpmProjectId,
+      metadataOnly: Boolean(ref.metadataOnly),
+      readOnly: Boolean(ref.readOnly || ref.metadataOnly || protectedProjectWrite(ref.rpmProjectId, root)) };
   }
 
   const sessionQuery = { useStateDbOnly: true, currentAccountOnly: true, sourceKinds, modelProviders: [] };
@@ -471,8 +520,8 @@ function createCodexCollaboration({
         let value;
         try {
           const project = await context(projectId);
-          value = project ? { ok: true, sessions: await findSessions(project, cycle) } :
-            reply('ineligible_project', '项目未绑定已登记的真实根目录，或只允许读取元数据');
+          value = project ? { ok: true, root: project.root, sessions: await findSessions(project, cycle) } :
+            reply('ineligible_project', '无法核对 RPM 项目根目录，请检查登记和目录可用性');
         } catch (_) { value = unavailable(); }
         const changed = scope.value && JSON.stringify(value) !== JSON.stringify(scope.value);
         scope.value = value;
@@ -501,6 +550,7 @@ function createCodexCollaboration({
       delete safe.directory;
       safe.files = [];
       safe.checks = [];
+      safe.denials = [];
     }
     return structuredClone(safe);
   }
@@ -538,7 +588,7 @@ function createCodexCollaboration({
           id: randomUUID(), projectId, taskId, sessionId, status: 'pending', connection: 'snapshot',
           anchorTurnId: latest?.id || null, anchorTime: latest?.startedAt ?? Math.floor(Date.now() / 1000),
           startedAt: iso(latest?.startedAt), endedAt: null, updatedAt: now, events: [], files: [], checks: []
-        }, thread, scope, directory);
+        }, thread, scope, directory, sessionsDirectory);
         if (!persist([...records, run], projectId)) return reply('history_write_failed', '无法保存 Codex 执行记录');
         if (pendingScopes.has(projectId)) notify({ kind: 'pending', projectId });
         return { ok: true, run: displayRun(run) };
@@ -565,7 +615,7 @@ function createCodexCollaboration({
           try {
             const scope = await context(run.projectId, run.taskId);
             const fresh = scopeStillApproved(run, scope) && await readThread(run.sessionId, scope, run.directory || '.');
-            if (fresh) updated = observe(run, fresh.thread, scope, fresh.directory);
+            if (fresh) updated = observe(run, fresh.thread, scope, fresh.directory, sessionsDirectory);
             else updated.scopeLost = true;
           } catch (_) {
             updated.connection = 'unavailable';
@@ -591,6 +641,72 @@ function createCodexCollaboration({
       }).finally(() => { refreshJob = null; });
     }
     return refreshJob.then(error => error || list(filter));
+  }
+
+  function artifact({ projectId, taskId, runId, path: requested, action = 'inspect' } = {}) {
+    if (!['inspect', 'open', 'reveal', 'register'].includes(action) ||
+        !safeId(runId) || !safeId(taskId) || !safeId(projectId) || typeof requested !== 'string') {
+      return Promise.resolve(reply('invalid_artifact', '请选择已关联执行中的文件'));
+    }
+    return runSerial(async () => {
+      if (closed || readError) return reply('history_unavailable', '执行记录暂不可核对');
+      const run = records.find(row => row.id === runId && row.projectId === projectId && row.taskId === taskId);
+      const reported = run?.files.find(row => row.path === requested && ['added', 'modified'].includes(row.kind));
+      if (!reported || run.scopeLost) return reply('unapproved_artifact', '此执行未报告该文件或项目归属已变化');
+      const scope = await context(projectId, taskId);
+      if (!scopeStillApproved(run, scope) || !run.rootKey) return reply('unapproved_artifact', '项目绑定已变化，请刷新执行记录');
+      const current = evidencePath(scope, scope.root, requested);
+      if (!current?.present) return reply('artifact_missing', '项目文件已移走、不可访问或不在授权目录内');
+      const makeTarget = () => verifyFile(scope, requested, action !== 'open');
+      const target = makeTarget();
+      if (!target) return reply('artifact_unsupported', '此格式不支持从工作台直接打开，可在磁盘定位');
+      const index = artifactIndex(scope);
+      const item = index?.get(pathKey(requested));
+      const canRegister = Boolean(index && !scope.readOnly && !item);
+      const state = { ok: true, path: current.path, present: true, registered: index ? Boolean(item?.present) : null,
+        fileId: item?.present ? item.fileId : null, canRegister };
+      if (action === 'inspect') return state;
+      if (action === 'open' || action === 'reveal') {
+        if (scope.metadataOnly && !item?.present) return reply('protected_root', '该项目只提供已登记原件的读取与定位');
+        const operation = action === 'open' ? openArtifact : revealArtifact;
+        if (typeof operation !== 'function') return reply('artifact_unavailable', '暂无法从系统访问文件');
+        try {
+          if (await operation(target)) return reply('artifact_open_failed', '操作系统暂无法访问该文件，可重新定位');
+          return state;
+        } catch (_) { return reply('artifact_open_failed', '操作系统暂无法访问该文件，可重新定位'); }
+      }
+      if (scope.readOnly) return reply('protected_root', '项目只读，正式文件索引未修改');
+      if (item?.present) return state;
+      if (!canRegister || !confirmArtifact) return reply('artifact_registration_unavailable', '请核对 RPM 文件索引后重试');
+      const stamp = stat => [stat.size, stat.mtimeNs, stat.ctimeNs, stat.ino, stat.dev].join(':');
+      let original;
+      try { original = stamp(fs.lstatSync(target, { bigint: true })); }
+      catch (_) { return reply('artifact_changed', '文件已失效，请重新核对'); }
+      if (!await confirmArtifact({ path: current.path, projectId, taskId })) return reply('cancelled', '已取消登记');
+      const renewed = await context(projectId, taskId);
+      if (!scopeStillApproved(run, renewed) || renewed.readOnly || renewed.rpmProjectId !== scope.rpmProjectId ||
+          !evidencePath(renewed, renewed.root, requested)?.present || makeTarget() !== target) {
+        return reply('artifact_changed', '确认期间文件或项目绑定发生变化，请重新核对后重试');
+      }
+      try {
+        if (original !== stamp(fs.lstatSync(target, { bigint: true }))) {
+          return reply('artifact_changed', '确认期间文件内容已变化，请重新核对后重试');
+        }
+      } catch (_) { return reply('artifact_changed', '确认期间文件已失效，请重新核对'); }
+      const replaceFile = update => records.map(row => row.id === runId ? { ...row,
+        files: row.files.map(file => file.path === requested ? update(file) : file) } : row);
+      const result = await registerArtifact(renewed, requested, await rpmConfig());
+      if (!result?.ok) {
+        const failure = result || reply('rpm_registration_failed', 'RPM 未返回登记结果，请重试');
+        const registrationError = String(failure.error || '登记失败，请重试').slice(0, 250);
+        persist(replaceFile(file => ({ ...file, registrationError })), projectId);
+        return failure;
+      }
+      const linked = persist(replaceFile(({ registrationError, ...file }) =>
+        ({ ...file, registered: true, fileId: result.fileId })), projectId);
+      return { ...state, registered: true, canRegister: false, fileId: result.fileId, linked,
+        ...(linked ? {} : { notice: '文件已登记，执行关联暂未保存。刷新可重新核对登记' }) };
+    });
   }
 
   async function reconcile() {
@@ -640,7 +756,7 @@ function createCodexCollaboration({
       const checked = inspectPath(sessionsDirectory);
       if (!checked.exists || checked.hasReparseInPath || !rootMatches(sessionsDirectory, checked.realPath) ||
           !fs.statSync(checked.realPath).isDirectory()) return;
-      // Directory notifications only invalidate structured API snapshots. No rollout is opened.
+      // Directory notifications invalidate snapshots. Error evidence is scoped to the linked session and active turn.
       const current = watchSessions(checked.realPath, { recursive: true, persistent: false }, () => fileSignal());
       watcher = current;
       current.on('error', () => {
@@ -658,7 +774,7 @@ function createCodexCollaboration({
   const timer = setInterval(() => { reconcile().catch(() => {}); }, pollIntervalMs);
   timer.unref?.();
   return {
-    capabilities, discover, pending, bind, list, refresh,
+    capabilities, discover, pending, bind, list, refresh, artifact,
     close() {
       closed = true;
       clearInterval(timer);

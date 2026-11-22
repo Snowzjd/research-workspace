@@ -14,7 +14,7 @@ if (!['fixture', 'live', 'codex'].includes(mode) || !candidateArgument || !outpu
 const candidate = fs.realpathSync.native(candidateArgument);
 const output = path.resolve(outputArgument);
 const exe = path.join(candidate, 'ResearchWorkspace.exe');
-const profile = path.join(candidate, 'candidate-user-data');
+const profile = path.join(candidate, 'portable-user-data');
 const workspace = path.join(profile, 'workspace-data.json');
 const source = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const debug = 17326;
@@ -154,16 +154,16 @@ try {
   const call = (method, args) => evaluate('window.workspace.full.' + method + '(' + JSON.stringify(args) + ')');
   const graph = () => evaluate('window.KnowledgeNetwork?.status?.()');
   const runTool = (tool, args = {}) => evaluate('window.__RW_API__(' + JSON.stringify({ tool, args, client: 'synthetic acceptance' }) + ')');
-  const workspaceHealth = () => fetch('http://127.0.0.1:17400/api/health', { signal: AbortSignal.timeout(1500) }).then(r => r.json());
+  const workspaceHealth = () => fetch('http://127.0.0.1:17403/api/health', { signal: AbortSignal.timeout(1500) }).then(r => r.json());
 
   await check('direct packaged launch, strict port, sandbox bridge, no demo entry', async () => {
     await until(() => evaluate('window.workspace?.full?.enabled && typeof window.__RW_API__ === "function"'), 'candidate bridge', 25000, checkLaunch);
     const status = await call('status');
-    assert.equal(status.apiPort, 17400);
+    assert.equal(status.apiPort, 17403);
     assert.equal(status.apiReady, true);
     const health = await until(() => workspaceHealth().then(row => row.windowReady && row), 'candidate health');
-    assert.equal(health.version, '4.0.0-rc.1');
-    assert.equal(health.port, 17400);
+    assert.equal(health.version, '4.0.0');
+    assert.equal(health.port, 17403);
     assert.equal(await evaluate('typeof require === "undefined" && !window.workspace.openPath && !window.workspace.launchApp && !window.workspace.ragReindex && !window.workspace.webview'), true);
     assert.equal(await evaluate('document.querySelector("meta[http-equiv=Content-Security-Policy]").content.includes("connect-src")'), true);
     assert.equal(fs.existsSync(path.join(candidate, 'resources', 'app', 'demo.html')), false);
@@ -320,17 +320,19 @@ try {
       devtools.socket.close();
       electron = launch();
       devtools = await DevTools.connect(checkLaunch);
-      await until(() => devtools.evaluate('window.workspace?.full?.codex && typeof DB === "object"'), 'restarted workspace');
+      await until(() => devtools.evaluate('window.workspace?.full?.codex && DB.tasks.some(row=>row.t==="Codex 双向协同合成验收")'), 'restarted workspace');
       const records = await codex('list', { projectId });
       assert.equal(records.runs.length, 2);
       assert.equal(await evaluate('DB.tasks.filter(row=>row.t==="Codex 双向协同合成验收").length'), 1);
       assert.equal(records.runs.find(run => run.sessionId === metadata.inboundSession).id, inbound.id);
-      await click('.fw-nav [data-route="dashboard"]');
-      await until(() => evaluate('document.querySelectorAll("[data-fw-codex-run]").length === 2'), 'dashboard hydrated');
-      await devtools.screenshot('03-codex-dashboard');
+      await openTask('fixture-codex-in');
+      await until(() => evaluate('!!document.querySelector("[data-fw-codex-task] [data-fw-codex-run]")'), 'task activity restored');
+      await devtools.screenshot('03-codex-task-restored');
     });
   } else {
-  await check('real RPM graph is initial route, revisions are available', async () => {
+  await check('dashboard is first, native graph opens and provides actual RPM revisions', async () => {
+    assert.equal(await evaluate('state.route'), 'dashboard');
+    await click('.fw-nav [data-route="graph"]');
     const status = await until(() => graph().then(row => row?.revision && !row.loading && row), 'RPM graph revision');
     assert.ok(status.projects >= (mode === 'fixture' ? 2 : 1));
     assert.ok(status.nodes > 0 && status.edges > 0);
@@ -469,6 +471,12 @@ try {
       assert.equal(await evaluate('document.querySelector("#fw-edit-task-status").value'), 'review');
       await click('[data-full="task-materials"]');
       await until(() => evaluate('state.route === "materials" && !document.querySelector("#fw-dialog[open]")'), 'task to materials closes its modal');
+      await evaluate(`(() => {
+        const field = document.querySelector('#fw-material-filter');
+        field.value = ${JSON.stringify(metadata.relative.split('/').at(-1))};
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        document.querySelector('#fw-material-search').requestSubmit();
+      })()`);
       const fileRow = `[...document.querySelectorAll('#fw-material-list [data-full="material"]')]
         .find(row => row.innerText.includes(${JSON.stringify(metadata.relative.split('/').at(-1))}))`;
       await until(() => evaluate('!!(' + fileRow + ')'), 'task project evidence');

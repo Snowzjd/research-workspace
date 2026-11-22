@@ -44,12 +44,13 @@ if (fullCandidate) {
     const daily = path.join(app.getPath('appData'), '个人科研工作台');
     app.setPath('userData', full.isolatedDirectory(process.execPath, ROOT, daily));
     if (process.argv.slice(1).some(arg => /^--(?:data-dir|api-port|user-data-dir|demo|shot|fresh|sync|handoff|account|update|github|nutstore|probe|dev|smoke|no-sandbox)(?:$|[-=])/.test(arg))) {
-      throw new Error('This candidate does not accept data, port, probe or security overrides');
+      throw new Error('This portable release does not accept data, port, probe or security overrides');
     }
-    apiServer.setChat(() => ({ ok: false, error: '候选版仅启用本机检索' }));
+    apiServer.setChat(() => ({ ok: false, error: '工作台仅启用本机检索' }));
     if (!app.requestSingleInstanceLock()) process.exit(0);
+    require('./full-migration').applyBeforeStartup(app.getPath('userData'));
   } catch (error) {
-    process.stderr.write('Candidate startup declined: ' + error.message + '\n');
+    process.stderr.write('Portable startup declined: ' + error.message + '\n');
     process.exit(1);
   }
 }
@@ -200,10 +201,10 @@ function createWindow(opts = {}) {
   const win = new BrowserWindow({
     width: 1520,
     height: 940,
-    minWidth: 1160,
+    minWidth: fullCandidate ? 820 : 1160,
     minHeight: 700,
     backgroundColor: isDemoPortable || fullCandidate ? '#FFF9F5' : '#F4F4F7',
-    title: opts.title || (fullCandidate ? '个人科研工程工作台' : isDemoPortable ? '科研工程工作台 · 演示数据' : '个人 AI 科研工程工作台'),
+    title: opts.title || (fullCandidate ? '个人科研工程工作台 V' + app.getVersion() : isDemoPortable ? '科研工程工作台 · 演示数据' : '个人 AI 科研工程工作台'),
     show: false,
     autoHideMenuBar: true,
     ...(fs.existsSync(ICON_PATH) ? { icon: ICON_PATH } : {}),
@@ -233,7 +234,7 @@ function createWindow(opts = {}) {
   const failStartup = detail => {
     if (startupFailed) return;
     startupFailed = true;
-    logBoot('Candidate startup failed: ' + detail);
+    logBoot('Portable startup failed: ' + detail);
     apiServer.setWindow(null);
     stopDesktopServices();
     app.exit(1);
@@ -241,8 +242,8 @@ function createWindow(opts = {}) {
 
   /* 主路径：内容就绪后再显示，避免白屏 */
   /* 页面 <title> 会覆盖窗口标题，预览窗口需要固定住 */
-  if (opts.title) {
-    win.on('page-title-updated', e => { e.preventDefault(); win.setTitle(opts.title); });
+  if (opts.title || fullCandidate) {
+    win.on('page-title-updated', e => { e.preventDefault(); win.setTitle(opts.title || '个人科研工程工作台 V' + app.getVersion()); });
   }
 
   win.once('ready-to-show', () => {
@@ -348,7 +349,7 @@ app.whenReady().then(async () => {
     port: requestedApiPort(),
     strictPort: fullCandidate,
     version: fullCandidate ? app.getVersion() : '',
-    searchKnowledge: fullCandidate ? () => ({ ok: false, code: 'deferred', error: 'RAG full-text search is deferred in this candidate.' }) : undefined,
+    searchKnowledge: fullCandidate ? () => ({ ok: false, code: 'deferred', error: 'RAG_Snowz 全文检索尚未接入。' }) : undefined,
     log: m => logBoot('[api] ' + m)
   });
   logBoot(started.ok ? `本地 API 就绪 http://127.0.0.1:${started.port}` : '本地 API 启动失败: ' + started.error);
@@ -511,11 +512,16 @@ const fullChannels = new Set([
   'backup:info', 'backup:auto', 'backup:now', 'device:info',
   'rpm:projectRoot', 'rpm:files', 'rpm:relations', 'rpm:rpm-audit',
   'rpm:knowledgeSnapshot', 'rpm:knowledgeResolve', 'rpm:knowledgeOpenFile',
-  'full:status', 'full:vault:status', 'full:vault:choose', 'full:search', 'full:openMaterial', 'full:import', 'full:rpmProjects', 'full:rpmBinding',
+  'full:status', 'full:vault:status', 'full:vault:choose', 'full:search', 'full:openMaterial', 'full:openOriginal', 'full:import', 'full:rpmProjects', 'full:rpmBinding', 'full:rpmRegister',
+  'full:migration:profile', 'full:migration:backup', 'full:migration:status',
   'full:markdown:list', 'full:markdown:read', 'full:markdown:save', 'full:markdown:versions',
   'full:markdown:restore', 'full:markdown:watch', 'full:markdown:unwatch',
+  'full:markdown:create', 'full:markdown:backlinks', 'full:markdown:resolveLink', 'full:markdown:references',
+  'full:rpmOnboarding:preview', 'full:rpmOnboarding:page', 'full:rpmOnboarding:confirm',
+  'full:rpmOnboarding:list', 'full:rpmOnboarding:save', 'full:rpmOnboarding:rescan',
+  'full:rpmOnboarding:abandon', 'full:rpmOnboarding:finish',
   'full:codex:capabilities', 'full:codex:pending', 'full:codex:discover', 'full:codex:bind', 'full:codex:list',
-  'full:codex:refresh', 'full:codex:handoff'
+  'full:codex:refresh', 'full:codex:handoff', 'full:codex:artifact'
 ]);
 
 function registerIpc(channel, handler) {
@@ -545,7 +551,8 @@ async function registeredProjectRoot(projectId) {
     root: resolved.resolvedRoot,
     rpmProjectId: resolved.rpmProjectId,
     registeredRoots: Object.values(listed.data).filter(value => typeof value === 'string' && path.isAbsolute(value)),
-    metadataOnly: full.metadataOnly(resolved.rpmProjectId, resolved.resolvedRoot)
+    metadataOnly: full.metadataOnly(resolved.rpmProjectId, resolved.resolvedRoot),
+    readOnly: full.protectedProjectWrite(resolved.rpmProjectId, resolved.resolvedRoot)
   };
 }
 
@@ -564,10 +571,10 @@ async function codexReferences(project) {
 
 async function codexProjectRoot(projectId) {
   const project = await registeredProjectRoot(projectId);
-  if (!project || project.metadataOnly) return null;
+  if (!project) return null;
   const inspected = require('./project-root').inspectPath(project.root);
   if (!inspected.exists || inspected.hasReparseInPath || !full.samePath(inspected.realPath, project.root)) return null;
-  return project;
+  return { ...project, allowActivityTracking: true };
 }
 
 function validatedVaultDirectory(folder) {
@@ -601,6 +608,7 @@ function initializeFullProduct(win, apiReady) {
     vaultRoot,
     backupDir: path.join(userData, 'markdown-versions'),
     resolveProject: registeredProjectRoot,
+    openAttachment: file => shell.openPath(file),
     onChange: event => notify('full:markdown:change', event)
   });
 
@@ -615,6 +623,17 @@ function initializeFullProduct(win, apiReady) {
     file: path.join(userData, 'codex-executions.json'),
     readWorkspace: readCanonicalWorkspace,
     resolveProject: codexProjectRoot,
+    openArtifact: target => shell.openPath(target),
+    revealArtifact: target => shell.showItemInFolder(target),
+    confirmArtifact: async ({ path: originalPath }) => {
+      const choice = await dialog.showMessageBox(fullWindow, {
+        type: 'question', buttons: ['取消', '登记到 RPM'], defaultId: 0, cancelId: 0,
+        message: '将此执行文件原位登记到 RPM？',
+        detail: originalPath + '\n\n此文件作为任务资料，科研成果和任务状态保持原样。'
+      });
+      return choice.response === 1;
+    },
+    rpmConfig: () => rpmContext().getConfig(),
     onChange: change => notify('full:codex:change', change)
   });
   fullServices = { markdown, search, codex, apiReady, vaultRoot };
@@ -650,7 +669,7 @@ if (fullCandidate) {
     if (!fullServices) return unavailable;
     if (process.env.RW_VAULT_ROOT) return { ok: false, error: '当前启动已指定 Vault 目录' };
     const selected = await dialog.showOpenDialog(fullWindow, {
-      title: '选择当前候选使用的中央 Markdown Vault', properties: ['openDirectory']
+      title: '选择当前工作台使用的中央 Obsidian Vault', properties: ['openDirectory']
     });
     if (selected.canceled) return { ok: false, code: 'cancelled' };
     const vaultRoot = validatedVaultDirectory(selected.filePaths[0]);
@@ -658,7 +677,7 @@ if (fullCandidate) {
     try {
       full.atomicWrite(path.join(app.getPath('userData'), 'vault-config.json'), JSON.stringify({ vaultRoot }));
       return { ok: true, restartRequired: true };
-    } catch (_) { return { ok: false, error: '无法保存候选 Vault 设置' }; }
+    } catch (_) { return { ok: false, error: '无法保存工作台 Vault 设置' }; }
   });
   async function registeredRpmProjects() {
     const result = await require('./rpm-adapter').listProjects(rpmContext().getConfig());
@@ -675,11 +694,82 @@ if (fullCandidate) {
     return valid.exists && !valid.hasReparseInPath && full.samePath(valid.realPath, binding.rpmRoot)
       ? { ok: true, binding } : { ok: false, error: 'RPM 登记项目的真实根目录不可用' };
   });
-  for (const method of ['list', 'read', 'save', 'versions', 'restore', 'watch', 'unwatch']) {
+  registerIpc('full:rpmRegister', async (_e, payload) => {
+    const project = readCanonicalWorkspace().projects?.find(row => row.id === payload?.projectId);
+    if (!project) return { ok: false, error: '找不到要绑定的工作台项目' };
+    const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+    const direction = typeof payload.direction === 'string' ? payload.direction.trim() : '';
+    if (!name || !direction) return { ok: false, error: '请填写项目名称和研究方向' };
+    try {
+      const selected = await dialog.showOpenDialog(fullWindow, {
+        title: '选择或新建 RPM 项目根目录', properties: ['openDirectory', 'createDirectory']
+      });
+      if (selected.canceled || selected.filePaths.length !== 1) return { ok: false, code: 'cancelled' };
+      const root = selected.filePaths[0];
+      const choice = await dialog.showMessageBox(fullWindow, {
+        type: 'question', buttons: ['取消', '登记并绑定'], defaultId: 0, cancelId: 0,
+        message: '登记并绑定此 RPM 项目？',
+        detail: root + '\n\n已有登记会沿用。新登记会创建标准目录和管理记录，原位建立文件索引，并同步 RPM 的中央导航。'
+      });
+      if (choice.response !== 1) return { ok: false, code: 'cancelled' };
+      return await require('./rpm-registration').registerProject({ root, name, direction, emptyOnly: true }, rpmContext().getConfig());
+    } catch (_) { return { ok: false, error: 'RPM 登记未完成，请核对目录和 RPM 安装' }; }
+  });
+  const rpmRegistration = () => require('./rpm-registration');
+  const onboardingConfig = () => ({
+    ...rpmContext().getConfig(), onboardingDirectory: path.join(app.getPath('userData'),'rpm-onboarding')
+  });
+  const scopedOnboarding = payload => {
+    if (!payload || typeof payload !== 'object') return null;
+    if (payload.projectId == null || payload.projectId === '') return { ...payload, projectId: 'new-workspace-project' };
+    return readCanonicalWorkspace().projects?.some(row => row.id === payload.projectId) ? payload : null;
+  };
+  const missingOnboardingProject = { ok: false, error: '找不到当前工作台项目' };
+  registerIpc('full:rpmOnboarding:preview', async (_event, supplied) => {
+    const payload = scopedOnboarding(supplied);
+    if (!payload) return missingOnboardingProject;
+    const chosen = await dialog.showOpenDialog(fullWindow, {
+      title: '选择要接管的已有项目文件夹', properties: ['openDirectory']
+    });
+    if (chosen.canceled || chosen.filePaths.length !== 1) return { ok: false, code: 'cancelled' };
+    return rpmRegistration().previewOnboarding({
+      projectId: payload.projectId, name: payload.name, direction: payload.direction,
+      projectType: payload.projectType, root: chosen.filePaths[0]
+    }, onboardingConfig());
+  });
+  registerIpc('full:rpmOnboarding:list', () => rpmRegistration().listOnboarding(onboardingConfig()));
+  for (const [action, method] of Object.entries({
+    save: 'saveOnboarding', rescan: 'rescanOnboarding', abandon: 'abandonOnboarding', finish: 'finishOnboarding'
+  })) {
+    registerIpc('full:rpmOnboarding:' + action, (_event, supplied) => {
+      const payload = scopedOnboarding(supplied);
+      return payload ? rpmRegistration()[method](payload, onboardingConfig()) : missingOnboardingProject;
+    });
+  }
+  registerIpc('full:rpmOnboarding:page', (_event, supplied) => {
+    const payload = scopedOnboarding(supplied);
+    return payload ? rpmRegistration().onboardingPage(payload, onboardingConfig()) : missingOnboardingProject;
+  });
+  registerIpc('full:rpmOnboarding:confirm', async (_event, supplied) => {
+    const payload = scopedOnboarding(supplied);
+    if (!payload) return missingOnboardingProject;
+    const preview = await rpmRegistration().onboardingPage({ token: payload.token, projectId: payload.projectId }, onboardingConfig());
+    if (!preview.ok) return preview;
+    if (preview.phase === 'registered') return rpmRegistration().confirmOnboarding(payload, onboardingConfig());
+    if (preview.blocked) return { ok: false, code: 'preview_blocked', error: preview.blocked };
+    const selected = await dialog.showMessageBox(fullWindow, {
+      type: 'question', buttons: ['取消', '确认原位登记'], defaultId: 0, cancelId: 0,
+      message: '允许写入项目管理记录并更新 RPM 中央导航？',
+      detail: preview.root + '\n\n将建立或更新项目管理记录和中央导航。原始文件路径保持不变。'
+    });
+    if (selected.response !== 1) return { ok: false, code: 'cancelled' };
+    return rpmRegistration().confirmOnboarding(payload, onboardingConfig());
+  });
+  for (const method of ['list', 'read', 'save', 'versions', 'restore', 'watch', 'unwatch', 'create', 'backlinks', 'resolveLink', 'references']) {
     registerIpc('full:markdown:' + method, (_e, payload) => fullServices?.markdown[method](payload || {}) || unavailable);
   }
   registerIpc('full:search', (_e, query) => fullServices?.search.search(query) || unavailable);
-  for (const method of ['capabilities', 'pending', 'discover', 'bind', 'list', 'refresh']) {
+  for (const method of ['capabilities', 'pending', 'discover', 'bind', 'list', 'refresh', 'artifact']) {
     registerIpc('full:codex:' + method, async (_event, payload) => {
       try { return await fullServices?.codex[method](payload || {}) || unavailable; }
       catch (_) { return { ok: false, code: 'codex_unavailable', error: 'Codex 本机连接或执行记录暂不可用' }; }
@@ -699,28 +789,65 @@ if (fullCandidate) {
       return { ok: false, code: 'handoff_unavailable', error: '无法核对项目或写入本机剪贴板' };
     }
   });
+  registerIpc('full:openOriginal', async (_e, payload) => {
+    try {
+      return await require('./rpm-knowledge').openOriginal(rpmContext().getConfig(), payload);
+    } catch (_) { return { ok: false, error: '原件暂时无法打开' }; }
+  });
   registerIpc('full:openMaterial', async (_e, payload) => {
-    const project = await handleRpmQuery('root', payload?.projectId);
-    if (!project.ok || !project.rpmBound || !project.rpmProjectId || !project.resolvedRoot) {
-      return { ok: false, error: '项目尚未绑定 RPM' };
-    }
-    return openFullRpmFile(project.rpmProjectId, payload?.id);
+    try {
+      const project = await registeredProjectRoot(payload?.projectId);
+      if (!project) return { ok: false, error: '项目尚未绑定 RPM' };
+      return await require('./rpm-knowledge').accessMaterial(rpmContext().getConfig(), project, payload, {
+        open: target => shell.openPath(target),
+        reveal: target => shell.showItemInFolder(target),
+        copy: target => clipboard.writeText(target)
+      });
+    } catch (_) { return { ok: false, error: '暂时无法访问此文件' }; }
   });
-  registerIpc('full:import', async () => {
-    const selected = await dialog.showOpenDialog(fullWindow, {
-      title: '选择要复制到候选版的 workspace-data.json', properties: ['openFile'],
-      filters: [{ name: '工作台数据', extensions: ['json'] }]
-    });
-    if (selected.canceled) return { ok: false, code: 'cancelled' };
-    const action = await dialog.showMessageBox(fullWindow, {
-      type: 'warning', buttons: ['取消', '备份并导入'], defaultId: 0, cancelId: 0,
-      message: '将选中的工作台数据复制到候选版？',
-      detail: '导入会替换候选版数据并备份当前候选版。原始文件保持原样。'
-    });
-    if (!action.response) return { ok: false, code: 'cancelled' };
-    try { return full.importWorkspace(selected.filePaths[0], store.dataFile()); }
-    catch (_) { return { ok: false, error: '工作台数据无法读取或备份，导入未完成' }; }
+  const migration = require('./full-migration');
+  const migrationError = error => ({ ok: false, error: error instanceof Error ? error.message : '迁移未完成' });
+  let migrationBusy = false;
+  async function requestMigration(kind) {
+    if (migrationBusy) return { ok: false, error: '已有迁移操作正在进行' };
+    migrationBusy = true;
+    try {
+      const target = app.getPath('userData');
+      const status = migration.readStatus(target);
+      if (!status.ok || status.pending) return { ok: false, error: status.error || '已有迁移等待重启' };
+      const selected = await dialog.showOpenDialog(fullWindow, kind === 'json' ? {
+        title: '选择工作台 JSON 副本', properties: ['openFile'],
+        filters: [{ name: '工作台数据', extensions: ['json'] }]
+      } : { title: '选择旧版程序旁的数据文件夹或迁移备份', properties: ['openDirectory'] });
+      if (selected.canceled || selected.filePaths.length !== 1) return { ok: false, code: 'cancelled' };
+      const source = selected.filePaths[0];
+      const before = migration.preview(target, source, kind, validatedVaultDirectory);
+      const choice = await dialog.showMessageBox(fullWindow, {
+        type: 'warning', buttons: ['取消', '备份并迁移'], defaultId: 0, cancelId: 0,
+        message: '迁移到科研工程工作台 4.0.0？',
+        detail: [
+          before.version + ' · ' + before.projects + ' 个项目 · ' + before.tasks + ' 个任务' +
+            (kind === 'json' ? '' : ' · ' + before.runs + ' 条 Codex 执行记录'),
+          '重新启动时会备份 4.0.0 数据，再替换相应记录。旧版程序和原始文件保持原样。',
+          ...before.warnings
+        ].join('\n')
+      });
+      if (choice.response !== 1) return { ok: false, code: 'cancelled' };
+      const after = migration.preview(target, source, kind, validatedVaultDirectory);
+      if (before.version !== after.version || JSON.stringify(before.sourceDigest) !== JSON.stringify(after.sourceDigest)) {
+        return { ok: false, error: '原数据在确认期间有变化，请关闭旧版程序后重试' };
+      }
+      return migration.stage(target, after);
+    } catch (error) { return migrationError(error); }
+    finally { migrationBusy = false; }
+  }
+  registerIpc('full:import', () => requestMigration('json'));
+  registerIpc('full:migration:profile', () => requestMigration('profile'));
+  registerIpc('full:migration:backup', () => {
+    try { return { ok: true, ...migration.captureBackup(app.getPath('userData')) }; }
+    catch (error) { return migrationError(error); }
   });
+  registerIpc('full:migration:status', () => migration.readStatus(app.getPath('userData')));
 }
 
 async function openFullRpmFile(projectId, fileId) {
@@ -820,7 +947,7 @@ registerIpc('data:path', () => store.dataFile());
 /* ==========================================================================
    IPC：数据备份（真备份 —— 副本落盘，可列历史、可恢复）
    ========================================================================== */
-registerIpc('device:info', () => fullCandidate ? { deviceId: 'full-candidate', deviceName: '便携候选版' } : device.info());
+registerIpc('device:info', () => fullCandidate ? { deviceId: 'full-candidate', deviceName: '便携版' } : device.info());
 
 /* 多设备同步：三方合并（纯逻辑，不读写文件） */
 registerIpc('sync:merge', (_e, payload) => {
@@ -854,7 +981,7 @@ registerIpc('account:setPass', (_e, p) => {
 });
 registerIpc('account:clearPass', () => account.clearPass());
 registerIpc('account:unlock', (_e, p) => {
-  if (fullCandidate) return { ok: false, error: '便携候选版使用独立本机数据' };
+  if (fullCandidate) return { ok: false, error: '便携版使用独立本机数据' };
   try { return account.unlock(p); }
   catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
 });

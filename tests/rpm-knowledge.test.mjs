@@ -3,7 +3,7 @@
  * 运行：node --test tests/rpm-knowledge.test.mjs
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -19,6 +19,30 @@ before(() => {
 });
 after(() => {
   try { rmSync(tmp, { recursive: true, force: true }); } catch (_) {}
+});
+
+test('material actions resolve a registered original and reject mismatched paths', async () => {
+  mkdirSync(path.join(tmp, 'materials'));
+  const root = realpathSync.native(path.join(tmp, 'materials'));
+  const filename = 'fixture CAD.scdoc';
+  const target = path.join(root, filename);
+  writeFileSync(target, 'synthetic fixture');
+  const project = { rpmProjectId: 'project-a', root };
+  const calls = [];
+  const hooks = {
+    resolve: async (_config, projectId) => ({
+      ok: true, file: { project_id: projectId, relative_path: filename, path: target }
+    }),
+    open: file => { calls.push(['open', file]); return ''; },
+    reveal: file => calls.push(['reveal', file]),
+    copy: file => calls.push(['copy-path', file])
+  };
+  for (const action of ['open', 'reveal', 'copy-path']) {
+    assert.equal((await knowledge.accessMaterial({}, project, { id: 'fixture', action }, hooks)).ok, true);
+  }
+  assert.deepEqual(calls, ['open', 'reveal', 'copy-path'].map(action => [action, target]));
+  assert.equal((await knowledge.accessMaterial({}, { ...project, root: tmp }, { id: 'fixture' }, hooks)).ok, false);
+  assert.equal(calls.length, 3);
 });
 
 test('arbitrary python scripts are rejected before spawn', async () => {
